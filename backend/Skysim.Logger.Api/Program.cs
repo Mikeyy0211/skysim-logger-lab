@@ -14,7 +14,20 @@ builder.Services.Configure<KafkaConsumerOptions>(
 
 // Register DbContext
 builder.Services.AddDbContext<LoggerDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+{
+    options.UseNpgsql(
+        builder.Configuration.GetConnectionString("DefaultConnection"),
+        npgsqlOptions =>
+        {
+            // Use the custom NoRetryExecutionStrategy so that EF Core does not
+            // wrap every query in its own retry loop.  The Kafka consumer
+            // already uses Polly (ResiliencePipeline) to retry the entire
+            // persist operation as an atomic unit; two retry layers cause
+            // connection-state corruption (NpgsqlConnection disposed) on
+            // transient PostgreSQL failures.
+            npgsqlOptions.ExecutionStrategy(_ => new NoRetryExecutionStrategy());
+        });
+});
 
 // Register repositories
 builder.Services.AddScoped<ILogFlowRepository, LogFlowRepository>();
@@ -38,6 +51,7 @@ builder.Services.AddHostedService<KafkaLogConsumerService>();
 
 // Add services to the container.
 builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
 
@@ -48,7 +62,6 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-app.UseHttpsRedirection();
 
 app.MapGet("/health", () => Results.Ok(new { status = "healthy", timestamp = DateTime.UtcNow }))
    .WithName("HealthCheck")

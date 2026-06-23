@@ -11,11 +11,9 @@ using Polly;
 using Skysim.Logger.Api.Common;
 using Skysim.Logger.Api.Contracts.DTOs;
 using Skysim.Logger.Api.Domain.Entities;
-using Skysim.Logger.Api.Domain.Enums;
 using Skysim.Logger.Api.Infrastructure.Persistence;
 using Skysim.Logger.Api.Infrastructure.Persistence.Exceptions;
 using Skysim.Logger.Api.Infrastructure.Persistence.Repositories;
-using Status = Skysim.Logger.Api.Domain.Enums.Status;
 
 namespace Skysim.Logger.Api.Infrastructure.Kafka;
 
@@ -23,11 +21,7 @@ public class KafkaLogConsumerService : BackgroundService
 {
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly KafkaConsumerOptions _options;
-    private readonly IValidator<LogEventMessage> _validator;
     private readonly IDlqPublisher _dlqPublisher;
-    private readonly SensitiveDataMasker _masker;
-    private readonly ResiliencePipeline _dbRetryPolicy;
-    private readonly ResiliencePipeline _brokerRetryPolicy;
     private readonly ILogger<KafkaLogConsumerService> _logger;
 
     private IConsumer<byte[], byte[]>? _consumer;
@@ -35,20 +29,23 @@ public class KafkaLogConsumerService : BackgroundService
     public KafkaLogConsumerService(
         IServiceScopeFactory scopeFactory,
         IOptions<KafkaConsumerOptions> options,
-        IValidator<LogEventMessage> validator,
         IDlqPublisher dlqPublisher,
-        SensitiveDataMasker masker,
         ILogger<KafkaLogConsumerService> logger)
     {
         _scopeFactory = scopeFactory;
         _options = options.Value;
-        _validator = validator;
         _dlqPublisher = dlqPublisher;
-        _masker = masker;
         _logger = logger;
+    }
 
-        _dbRetryPolicy = RetryPolicyFactory.CreateDbRetryPolicy(options);
-        _brokerRetryPolicy = RetryPolicyFactory.CreateBrokerRetryPolicy(options);
+    private ResiliencePipeline CreateDbRetryPolicy()
+    {
+        return RetryPolicyFactory.CreateDbRetryPolicy(Options.Create(_options));
+    }
+
+    private ResiliencePipeline CreateBrokerRetryPolicy()
+    {
+        return RetryPolicyFactory.CreateBrokerRetryPolicy(Options.Create(_options));
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -74,6 +71,9 @@ public class KafkaLogConsumerService : BackgroundService
 
         _logger.LogInformation("Subscribed to topic: {Topic}", _options.Consumer.Topic);
 
+        // Yield control to allow host startup to complete before entering blocking consume loop
+        await Task.Yield();
+
         try
         {
             while (!stoppingToken.IsCancellationRequested)
@@ -95,6 +95,14 @@ public class KafkaLogConsumerService : BackgroundService
                 {
                     _logger.LogError(ex, "Kafka consume error. ErrorCode={ErrorCode}", ex.Error.Code);
                 }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Unexpected error during message processing. Continuing consumption.");
+                }
             }
         }
         catch (OperationCanceledException)
@@ -114,10 +122,10 @@ public class KafkaLogConsumerService : BackgroundService
         var rawPayload = result.Message.Value;
         LogEventMessage? message = null;
 
-        // Step 1-2: Deserialize
+        // Step 1: Deserialize (non-retryable - bad payload will never succeed)
         try
         {
-            message = DeserializeMessage(rawPayload);
+            message = LogEventMessage.Deserialize(rawPayload);
         }
         catch (JsonException ex)
         {
@@ -128,18 +136,20 @@ public class KafkaLogConsumerService : BackgroundService
                 result.Partition.Value,
                 result.Offset.Value);
 
-            await HandleFailureAsync(result, "DESERIALIZATION_FAILED: " + ex.Message, 1, ct);
+            await PublishToDlqAndCommitAsync(result, "DESERIALIZATION_FAILED: " + ex.Message, ct);
             return;
         }
 
         if (message == null)
         {
-            await HandleFailureAsync(result, "DESERIALIZATION_FAILED: null message", 1, ct);
+            await PublishToDlqAndCommitAsync(result, "DESERIALIZATION_FAILED: null message", ct);
             return;
         }
 
-        // Step 3: Validate
-        var validationResult = await _validator.ValidateAsync(message, ct);
+        // Step 2: Validate (non-retryable - invalid payload will never succeed)
+        using var validationScope = _scopeFactory.CreateScope();
+        var validator = validationScope.ServiceProvider.GetRequiredService<IValidator<LogEventMessage>>();
+        var validationResult = await validator.ValidateAsync(message, ct);
         if (!validationResult.IsValid)
         {
             var errors = string.Join("; ", validationResult.Errors.Select(e => e.ErrorMessage));
@@ -149,13 +159,14 @@ public class KafkaLogConsumerService : BackgroundService
                 message.FlowId,
                 errors);
 
-            await HandleFailureAsync(result, "VALIDATION_FAILED: " + errors, 1, ct);
+            await PublishToDlqAndCommitAsync(result, "VALIDATION_FAILED: " + errors, ct);
             return;
         }
 
-        // Step 4-7: Try to persist with retry
+        // Step 3-7: Try to persist with retry (transient DB failures may succeed on retry)
         var attempt = 0;
-        var success = await TryPersistWithRetryAsync(message, ct, () => attempt++);
+        var dbRetryPolicy = CreateDbRetryPolicy();
+        var success = await TryPersistWithRetryAsync(message, ct, () => attempt++, dbRetryPolicy);
 
         if (success)
         {
@@ -168,13 +179,32 @@ public class KafkaLogConsumerService : BackgroundService
         }
         else
         {
-            await HandleFailureAsync(result, "PERSISTENCE_FAILED: Max retries exceeded", attempt, ct);
+            await PublishToDlqAndCommitAsync(result, "PERSISTENCE_FAILED: Max retries exceeded", ct);
         }
     }
 
-    private async Task<bool> TryPersistWithRetryAsync(LogEventMessage message, CancellationToken ct, Action onAttempt)
+    private async Task PublishToDlqAndCommitAsync(ConsumeResult<byte[], byte[]> result, string reason, CancellationToken ct)
     {
-        return await _dbRetryPolicy.ExecuteAsync(async token =>
+        try
+        {
+            var brokerRetryPolicy = CreateBrokerRetryPolicy();
+            await brokerRetryPolicy.ExecuteAsync(async token =>
+            {
+                await _dlqPublisher.PublishAsync(result, reason, 0, token);
+            }, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(
+                ex,
+                "Failed to publish to DLQ. Reason={Reason}",
+                reason);
+        }
+    }
+
+    private async Task<bool> TryPersistWithRetryAsync(LogEventMessage message, CancellationToken ct, Action onAttempt, ResiliencePipeline retryPolicy)
+    {
+        return await retryPolicy.ExecuteAsync(async token =>
         {
             onAttempt();
 
@@ -196,7 +226,7 @@ public class KafkaLogConsumerService : BackgroundService
         var actionRepo = scope.ServiceProvider.GetRequiredService<ILogActionRepository>();
         var detailRepo = scope.ServiceProvider.GetRequiredService<ILogActionDetailRepository>();
 
-        using var transaction = await dbContext.Database.BeginTransactionAsync(ct);
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(ct);
 
         try
         {
@@ -205,19 +235,7 @@ public class KafkaLogConsumerService : BackgroundService
 
             // Step 6: Insert action (may throw DuplicateEventException)
             var action = await BuildLogActionAsync(message, flow.Id, ct);
-            try
-            {
-                action = await actionRepo.InsertAsync(action, ct);
-            }
-            catch (DuplicateEventException dex)
-            {
-                _logger.LogInformation(
-                    "Duplicate event detected (idempotent skip). EventId={EventId}",
-                    dex.EventId);
-
-                await transaction.RollbackAsync(ct);
-                return true; // Return true to commit offset
-            }
+            action = await actionRepo.InsertAsync(action, ct);
 
             // Step 7: Insert/upsert details
             await TryUpsertDetailAsync(detailRepo, action.Id, message, ct);
@@ -228,15 +246,14 @@ public class KafkaLogConsumerService : BackgroundService
         }
         catch (DuplicateEventException dex)
         {
-            await transaction.RollbackAsync(ct);
+            // Duplicate event detected - idempotent skip, transaction will be disposed without explicit rollback
             _logger.LogInformation(
-                "Duplicate event detected during persist (idempotent skip). EventId={EventId}",
+                "Duplicate event detected (idempotent skip). EventId={EventId}",
                 dex.EventId);
             return true;
         }
         catch (Exception ex)
         {
-            await transaction.RollbackAsync(ct);
             _logger.LogError(
                 ex,
                 "Failed to persist message. EventId={EventId}, FlowId={FlowId}",
@@ -323,64 +340,6 @@ public class KafkaLogConsumerService : BackgroundService
         }
 
         await detailRepo.UpsertAsync(detail, ct);
-    }
-
-    private async Task HandleFailureAsync(ConsumeResult<byte[], byte[]> result, string reason, int attempt, CancellationToken ct)
-    {
-        if (attempt < _options.Retry.MaxAttempts)
-        {
-            var delay = CalculateDelay(attempt, _options.Retry);
-            _logger.LogWarning(
-                "Retrying after failure. Reason={Reason}, Attempt={Attempt}, DelayMs={DelayMs}",
-                reason,
-                attempt,
-                delay.TotalMilliseconds);
-
-            await Task.Delay(delay, ct);
-        }
-        else
-        {
-            _logger.LogError(
-                "Max retry attempts reached, publishing to DLQ. Reason={Reason}, MaxAttempts={MaxAttempts}",
-                reason,
-                _options.Retry.MaxAttempts);
-
-            try
-            {
-                await _brokerRetryPolicy.ExecuteAsync(async token =>
-                {
-                    await _dlqPublisher.PublishAsync(result, reason, attempt, token);
-                }, ct);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(
-                    ex,
-                    "Failed to publish to DLQ after retries. Reason={Reason}, Attempt={Attempt}",
-                    reason,
-                    attempt);
-            }
-        }
-    }
-
-    private static TimeSpan CalculateDelay(int attempt, RetryOptions options)
-    {
-        var delay = options.InitialDelayMs * Math.Pow(options.BackoffMultiplier, attempt - 1);
-        return TimeSpan.FromMilliseconds(Math.Min(delay, options.MaxDelayMs));
-    }
-
-    private static LogEventMessage? DeserializeMessage(byte[] payload)
-    {
-        if (payload == null || payload.Length == 0)
-        {
-            return null;
-        }
-
-        var jsonString = Encoding.UTF8.GetString(payload);
-        return JsonSerializer.Deserialize<LogEventMessage>(jsonString, new JsonSerializerOptions
-        {
-            PropertyNameCaseInsensitive = true
-        });
     }
 
     private static AutoOffsetReset ParseAutoOffsetReset(string value)

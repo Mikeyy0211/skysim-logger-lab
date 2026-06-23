@@ -1,5 +1,7 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Npgsql;
+using NpgsqlTypes;
 using Skysim.Logger.Api.Domain.Entities;
 
 namespace Skysim.Logger.Api.Infrastructure.Persistence.Repositories;
@@ -40,19 +42,32 @@ public class LogActionDetailRepository : ILogActionDetailRepository
             RETURNING id, action_id, request_payload, response_payload, error_payload, metadata,
                 created_at, updated_at";
 
-        await using var connection = _db.Database.GetDbConnection() as NpgsqlConnection;
-        if (connection == null) throw new InvalidOperationException("Database connection is not a NpgsqlConnection.");
+        var currentTransaction = _db.Database.CurrentTransaction;
+        await using var cmd = new NpgsqlCommand(sql, (NpgsqlConnection)_db.Database.GetDbConnection());
 
-        await connection.OpenAsync(cancellationToken);
-
-        await using var cmd = new NpgsqlCommand(sql, connection);
-        cmd.Parameters.AddWithValue("@id", detail.Id);
-        cmd.Parameters.AddWithValue("@actionId", detail.ActionId);
-        cmd.Parameters.AddWithValue("@requestPayload", (object?)detail.RequestPayload ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("@responsePayload", (object?)detail.ResponsePayload ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("@errorPayload", (object?)detail.ErrorPayload ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("@metadata", (object?)detail.Metadata ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("@now", now);
+        if (currentTransaction != null)
+        {
+            cmd.Transaction = (NpgsqlTransaction)currentTransaction.GetDbTransaction();
+        }
+        cmd.Parameters.Add(new NpgsqlParameter("@id", detail.Id));
+        cmd.Parameters.Add(new NpgsqlParameter("@actionId", detail.ActionId));
+        cmd.Parameters.Add(new NpgsqlParameter("@requestPayload", NpgsqlDbType.Jsonb)
+        {
+            Value = (object?)detail.RequestPayload ?? DBNull.Value
+        });
+        cmd.Parameters.Add(new NpgsqlParameter("@responsePayload", NpgsqlDbType.Jsonb)
+        {
+            Value = (object?)detail.ResponsePayload ?? DBNull.Value
+        });
+        cmd.Parameters.Add(new NpgsqlParameter("@errorPayload", NpgsqlDbType.Jsonb)
+        {
+            Value = (object?)detail.ErrorPayload ?? DBNull.Value
+        });
+        cmd.Parameters.Add(new NpgsqlParameter("@metadata", NpgsqlDbType.Jsonb)
+        {
+            Value = (object?)detail.Metadata ?? DBNull.Value
+        });
+        cmd.Parameters.Add(new NpgsqlParameter("@now", now));
 
         await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
         await reader.ReadAsync(cancellationToken);

@@ -23,6 +23,110 @@ public class LogEventMessageValidatorTests
     }
 
     [Fact]
+    public void Deserialize_UpperSnakeCaseEnums_ShouldParseCorrectly()
+    {
+        var json = @"{
+            ""eventId"": ""550e8400-e29b-41d4-a716-446655440000"",
+            ""flowId"": ""test-flow-001"",
+            ""flowType"": ""CHECKOUT_ESIM"",
+            ""serviceName"": ""OrderService"",
+            ""actionType"": ""ORDER_CREATED"",
+            ""status"": ""SUCCESS"",
+            ""checkoutType"": ""GUEST"",
+            ""createdAt"": ""2026-06-23T10:00:00Z"",
+            ""customerEmail"": ""test@example.com"",
+            ""orderId"": ""ORD-001""
+        }";
+
+        var message = LogEventMessage.Deserialize(System.Text.Encoding.UTF8.GetBytes(json));
+
+        message.Should().NotBeNull();
+        message!.FlowType.Should().Be(FlowType.CheckoutEsim);
+        message.CheckoutType.Should().Be(CheckoutType.Guest);
+        message.Status.Should().Be(Status.Success);
+        message.ActionType.Should().Be(ActionType.OrderCreated);
+    }
+
+    [Fact]
+    public void Deserialize_AuthenticatedCheckout_ShouldParseCorrectly()
+    {
+        var json = @"{
+            ""eventId"": ""550e8400-e29b-41d4-a716-446655440001"",
+            ""flowId"": ""test-flow-002"",
+            ""flowType"": ""CHECKOUT_ESIM"",
+            ""serviceName"": ""PaymentService"",
+            ""actionType"": ""PAYMENT_SUCCESS"",
+            ""status"": ""SUCCESS"",
+            ""checkoutType"": ""AUTHENTICATED"",
+            ""createdAt"": ""2026-06-23T10:00:00Z"",
+            ""userId"": ""user-123""
+        }";
+
+        var message = LogEventMessage.Deserialize(System.Text.Encoding.UTF8.GetBytes(json));
+
+        message.Should().NotBeNull();
+        message!.CheckoutType.Should().Be(CheckoutType.Authenticated);
+        message.ActionType.Should().Be(ActionType.PaymentSuccess);
+    }
+
+    [Fact]
+    public void Deserialize_FailedStatus_ShouldParseCorrectly()
+    {
+        var json = @"{
+            ""eventId"": ""550e8400-e29b-41d4-a716-446655440002"",
+            ""flowId"": ""test-flow-003"",
+            ""flowType"": ""CHECKOUT_ESIM"",
+            ""serviceName"": ""ProviderService"",
+            ""actionType"": ""PROVIDER_FAILED"",
+            ""status"": ""FAILED"",
+            ""createdAt"": ""2026-06-23T10:00:00Z"",
+            ""errorCode"": ""PROVIDER_ERROR"",
+            ""errorMessage"": ""Provider timeout""
+        }";
+
+        var message = LogEventMessage.Deserialize(System.Text.Encoding.UTF8.GetBytes(json));
+
+        message.Should().NotBeNull();
+        message!.Status.Should().Be(Status.Failed);
+        message.ActionType.Should().Be(ActionType.ProviderFailed);
+        message.ErrorCode.Should().Be("PROVIDER_ERROR");
+    }
+
+    [Fact]
+    public void Deserialize_InvalidEnumValue_ShouldThrowJsonException()
+    {
+        var json = @"{
+            ""eventId"": ""550e8400-e29b-41d4-a716-446655440003"",
+            ""flowId"": ""test-flow-004"",
+            ""flowType"": ""INVALID_FLOW_TYPE"",
+            ""serviceName"": ""OrderService"",
+            ""actionType"": ""ORDER_CREATED"",
+            ""status"": ""SUCCESS"",
+            ""createdAt"": ""2026-06-23T10:00:00Z""
+        }";
+
+        var action = () => LogEventMessage.Deserialize(System.Text.Encoding.UTF8.GetBytes(json));
+
+        action.Should().Throw<JsonException>();
+    }
+
+    [Fact]
+    public void Deserialize_NullPayload_ShouldReturnNull()
+    {
+        var message = LogEventMessage.Deserialize(null!);
+
+        message.Should().BeNull();
+    }
+
+    [Fact]
+    public void Deserialize_EmptyPayload_ShouldReturnNull()
+    {
+        var message = LogEventMessage.Deserialize(Array.Empty<byte>());
+
+        message.Should().BeNull();
+    }
+
+    [Fact]
     public void Validate_MissingEventId_ShouldFail()
     {
         var message = CreateValidMessage();
@@ -135,8 +239,8 @@ public class LogEventMessageValidatorTests
     public void Validate_ValidMessageJsonRoundTrip_ShouldWork()
     {
         var message = CreateValidMessage();
-        var json = JsonSerializer.Serialize(message);
-        var deserialized = JsonSerializer.Deserialize<LogEventMessage>(json);
+        var json = JsonSerializer.Serialize(message, LogEventMessage.JsonOptions);
+        var deserialized = LogEventMessage.Deserialize(System.Text.Encoding.UTF8.GetBytes(json));
 
         deserialized.Should().NotBeNull();
         deserialized!.EventId.Should().Be(message.EventId);

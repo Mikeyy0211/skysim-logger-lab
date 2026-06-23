@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Skysim.Logger.Api.Domain.Enums;
@@ -6,6 +7,23 @@ namespace Skysim.Logger.Api.Contracts.DTOs;
 
 public class LogEventMessage
 {
+    public static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true,
+        Converters = { new JsonStringEnumConverter(JsonNamingPolicy.SnakeCaseUpper, allowIntegerValues: false) }
+    };
+
+    public static LogEventMessage? Deserialize(byte[] payload)
+    {
+        if (payload == null || payload.Length == 0)
+        {
+            return null;
+        }
+
+        var jsonString = Encoding.UTF8.GetString(payload);
+        return JsonSerializer.Deserialize<LogEventMessage>(jsonString, JsonOptions);
+    }
+
     [JsonPropertyName("eventId")]
     public Guid EventId { get; set; }
 
@@ -13,25 +31,21 @@ public class LogEventMessage
     public string FlowId { get; set; } = string.Empty;
 
     [JsonPropertyName("flowType")]
-    [JsonConverter(typeof(JsonStringEnumConverter))]
     public FlowType FlowType { get; set; }
 
     [JsonPropertyName("serviceName")]
     public string ServiceName { get; set; } = string.Empty;
 
     [JsonPropertyName("actionType")]
-    [JsonConverter(typeof(JsonStringEnumConverter))]
     public ActionType ActionType { get; set; }
 
     [JsonPropertyName("status")]
-    [JsonConverter(typeof(JsonStringEnumConverter))]
     public Status Status { get; set; }
 
     [JsonPropertyName("createdAt")]
     public DateTime CreatedAt { get; set; }
 
     [JsonPropertyName("checkoutType")]
-    [JsonConverter(typeof(JsonStringEnumConverter))]
     public CheckoutType? CheckoutType { get; set; }
 
     [JsonPropertyName("userId")]

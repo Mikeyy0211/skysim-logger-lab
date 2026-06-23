@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Npgsql;
 using Skysim.Logger.Api.Contracts.DTOs;
 using Skysim.Logger.Api.Domain.Entities;
@@ -82,12 +83,13 @@ public class LogFlowRepository : ILogFlowRepository
         var successSteps = isSuccess ? 1 : 0;
         var failedSteps = !isSuccess && isTerminal ? 1 : 0;
 
-        await using var connection = _db.Database.GetDbConnection() as NpgsqlConnection;
-        if (connection == null) throw new InvalidOperationException("Database connection is not a NpgsqlConnection.");
+        var currentTransaction = _db.Database.CurrentTransaction;
+        await using var cmd = new NpgsqlCommand(sql, (NpgsqlConnection)_db.Database.GetDbConnection());
 
-        await connection.OpenAsync(cancellationToken);
-
-        await using var cmd = new NpgsqlCommand(sql, connection);
+        if (currentTransaction != null)
+        {
+            cmd.Transaction = (NpgsqlTransaction)currentTransaction.GetDbTransaction();
+        }
         cmd.Parameters.AddWithValue("@flowId", message.FlowId);
         cmd.Parameters.AddWithValue("@flowType", message.FlowType.ToString());
         cmd.Parameters.AddWithValue("@checkoutType", (object?)message.CheckoutType?.ToString() ?? DBNull.Value);

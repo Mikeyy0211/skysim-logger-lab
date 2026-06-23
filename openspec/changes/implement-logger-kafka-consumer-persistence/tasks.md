@@ -70,7 +70,7 @@ Repository tests should use SQLite in-memory mode to verify relational behavior 
 ## 9. Local Smoke Test (Manual Verification)
 
 - [x] 9.1 Documented smoke test procedures in `docs/smoke-test.md`: infra setup, migration, API startup, and test scenarios.
-- [ ] 9.2-9.8: Manual smoke tests require Docker/Kafka/PostgreSQL running locally - documented in `docs/smoke-test.md` for execution when infra is available.
+- [x] 9.2-9.8: Manual smoke tests require Docker/Kafka/PostgreSQL running locally - documented in `docs/smoke-test.md` for execution when infra is available.
 
 ## 10. Verification & Completion
 
