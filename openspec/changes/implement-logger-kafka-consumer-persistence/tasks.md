@@ -4,30 +4,30 @@ This change implements Phase 2 of the Skysim Logger module: Kafka Consumer and P
 
 ## 1. Project Setup & NuGet Packages
 
-- [ ] 1.1 Add NuGet packages to `backend/Skysim.Logger.Api/Skysim.Logger.Api.csproj`: `Confluent.Kafka` (latest), `Npgsql.EntityFrameworkCore.PostgreSQL` (latest .NET 8 compatible), `Microsoft.EntityFrameworkCore.Design`, `Polly`, `FluentValidation.AspNetCore`. Run `dotnet restore` and confirm no conflicts.
-- [ ] 1.2 Create the folder structure under `backend/Skysim.Logger.Api/`: `Contracts/DTOs/`, `Domain/Entities/`, `Domain/Enums/`, `Infrastructure/Persistence/Repositories/`, `Infrastructure/Kafka/`, `Common/`. Confirm folders are recognized by the IDE.
-- [ ] 1.3 Add Kafka and PostgreSQL connection config to `backend/Skysim.Logger.Api/appsettings.json` under `Kafka`, `ConnectionStrings`, and `Logger` sections per the design's Kafka Configuration section. **Do not hard-code production passwords.**
+- [x] 1.1 Add NuGet packages to `backend/Skysim.Logger.Api/Skysim.Logger.Api.csproj`: `Confluent.Kafka` (latest), `Npgsql.EntityFrameworkCore.PostgreSQL` (latest .NET 8 compatible), `Microsoft.EntityFrameworkCore.Design`, `Polly`, `FluentValidation.AspNetCore`. Run `dotnet restore` and confirm no conflicts.
+- [x] 1.2 Create the folder structure under `backend/Skysim.Logger.Api/`: `Contracts/DTOs/`, `Domain/Entities/`, `Domain/Enums/`, `Infrastructure/Persistence/Repositories/`, `Infrastructure/Kafka/`, `Common/`. Confirm folders are recognized by the IDE.
+- [x] 1.3 Add Kafka and PostgreSQL connection config to `backend/Skysim.Logger.Api/appsettings.json` under `Kafka`, `ConnectionStrings`, and `Logger` sections per the design's Kafka Configuration section. **Do not hard-code production passwords.**
 
 ## 2. Enums & DTOs (Kafka Contract)
 
-- [ ] 2.1 Create `Domain/Enums/FlowType.cs` with string-value enum members: `CheckoutEsim`. Apply `[JsonStringEnumConverter]`.
-- [ ] 2.2 Create `Domain/Enums/CheckoutType.cs` with string-value enum members: `Guest`, `Authenticated`. Apply `[JsonStringEnumConverter]`.
-- [ ] 2.3 Create `Domain/Enums/Status.cs` with string-value enum members: `Success`, `Failed`, `InProgress`. Apply `[JsonStringEnumConverter]`.
-- [ ] 2.4 Create `Domain/Enums/DetailType.cs` with string-value enum members: `Request`, `Response`, `Error`, `Metadata`. Apply `[JsonStringEnumConverter]`.
-- [ ] 2.5 Create `Contracts/DTOs/LogEventMessage.cs` with all required fields (`eventId`, `flowId`, `flowType`, `serviceName`, `actionType`, `status`, `createdAt`) and all optional fields (`checkoutType`, `userId`, `customerEmail`, `customerPhone`, `orderId`, `paymentId`, `message`, `requestTime`, `responseTime`, `duration`, `requestData`, `responseData`, `errorCode`, `errorMessage`, `exception`, `correlationId`). Use `JsonElement?` for JSON payload fields. Apply `[JsonStringEnumConverter]` on enum properties. Add a `DetailType?` helper if needed.
-- [ ] 2.6 Create `Contracts/DTOs/LogEventMessageValidator.cs` using FluentValidation: required fields non-null/non-empty, `eventId` is a valid GUID, `flowId` is a non-empty string with max length 100, `flowType` and `checkoutType` match enum values, `status` matches enum values, `actionType` is in the canonical list, timestamps are valid ISO-8601. Unit test this validator with at least 5 cases (valid, missing required, invalid enum, invalid GUID, invalid timestamp).
+- [x] 2.1 Create `Domain/Enums/FlowType.cs` with string-value enum members: `CheckoutEsim`. Apply `[JsonStringEnumConverter]`.
+- [x] 2.2 Create `Domain/Enums/CheckoutType.cs` with string-value enum members: `Guest`, `Authenticated`. Apply `[JsonStringEnumConverter]`.
+- [x] 2.3 Create `Domain/Enums/Status.cs` with string-value enum members: `Success`, `Failed`, `InProgress`. Apply `[JsonStringEnumConverter]`.
+- [x] 2.4 Create `Domain/Enums/DetailType.cs` with string-value enum members: `Request`, `Response`, `Error`, `Metadata`. Apply `[JsonStringEnumConverter]`.
+- [x] 2.5 Create `Contracts/DTOs/LogEventMessage.cs` with all required fields (`eventId`, `flowId`, `flowType`, `serviceName`, `actionType`, `status`, `createdAt`) and all optional fields (`checkoutType`, `userId`, `customerEmail`, `customerPhone`, `orderId`, `paymentId`, `message`, `requestTime`, `responseTime`, `duration`, `requestData`, `responseData`, `errorCode`, `errorMessage`, `exception`, `correlationId`). Use `JsonElement?` for JSON payload fields. Apply `[JsonStringEnumConverter]` on enum properties. Add a `DetailType?` helper if needed.
+- [x] 2.6 Create `Contracts/DTOs/LogEventMessageValidator.cs` using FluentValidation: required fields non-null/non-empty, `eventId` is a valid GUID, `flowId` is a non-empty string with max length 100, `flowType` and `checkoutType` match enum values, `status` matches enum values, `actionType` is in the canonical list, timestamps are valid ISO-8601. Unit test this validator with at least 5 cases (valid, missing required, invalid enum, invalid GUID, invalid timestamp).
 
 ## 3. EF Core Entities
 
-- [ ] 3.1 Create `Domain/Entities/LogFlow.cs`: all columns from the design's `log_flows` table, with `[Column("flow_id")]` etc. for snake_case mapping. Add `[Key("id")]` with `gen_random_uuid()` default. Add navigation property `ICollection<LogAction> Actions`. `FlowId` should be mapped as a string / varchar(100), not Guid.
-- [ ] 3.2 Create `Domain/Entities/LogAction.cs`: all columns from the design's `log_actions` table. `event_id` column has UNIQUE constraint. Add `[ForeignKey("flow_id")]` pointing to `LogFlow`. Add navigation property `LogActionDetail? Detail`. `FlowId` should be string / varchar(100) and FK to log_flows.flow_id.
-- [ ] 3.3 Create `Domain/Entities/LogActionDetail.cs`: all columns from the design's `log_action_details` table. `action_id` column has UNIQUE + FK constraint pointing to `LogAction`. Use `[Column(TypeName = "jsonb")]` for payload columns.
+- [x] 3.1 Create `Domain/Entities/LogFlow.cs`: all columns from the design's `log_flows` table, with `[Column("flow_id")]` etc. for snake_case mapping. Add `[Key("id")]` with `gen_random_uuid()` default. Add navigation property `ICollection<LogAction> Actions`. `FlowId` should be mapped as a string / varchar(100), not Guid.
+- [x] 3.2 Create `Domain/Entities/LogAction.cs`: all columns from the design's `log_actions` table. `event_id` column has UNIQUE constraint. Add `[ForeignKey("flow_id")]` pointing to `LogFlow`. Add navigation property `LogActionDetail? Detail`. `FlowId` should be string / varchar(100) and FK to log_flows.flow_id.
+- [x] 3.3 Create `Domain/Entities/LogActionDetail.cs`: all columns from the design's `log_action_details` table. `action_id` column has UNIQUE + FK constraint pointing to `LogAction`. Use `[Column(TypeName = "jsonb")]` for payload columns.
 
 ## 4. DbContext & Migrations
 
-- [ ] 4.1 Create `Infrastructure/Persistence/LoggerDbContext.cs`: `DbSet<LogFlow> LogFlows`, `DbSet<LogAction> LogActions`, `DbSet<LogActionDetail> LogActionDetails`. Configure relationships, column names (snake_case), and JSONB type for payload columns in `OnModelCreating`. Indexes are defined as fluent API here.
-- [ ] 4.2 Run `dotnet ef migrations add InitialCreate --output-dir Infrastructure/Persistence/Migrations --project backend/Skysim.Logger.Api --startup-project backend/Skysim.Logger.Api`. Verify the migration file contains `CreateTable` for all three tables with correct column types, indexes, and constraints.
-- [ ] 4.3 (Verification only — do not run against real DB in this task) Inspect the generated migration SQL: confirm `event_id` has UNIQUE constraint, `flow_id` on `log_actions` has FK, `action_id` on `log_action_details` has UNIQUE FK, and all indexes are present.
+- [x] 4.1 Create `Infrastructure/Persistence/LoggerDbContext.cs`: `DbSet<LogFlow> LogFlows`, `DbSet<LogAction> LogActions`, `DbSet<LogActionDetail> LogActionDetails`. Configure relationships, column names (snake_case), and JSONB type for payload columns in `OnModelCreating`. Indexes are defined as fluent API here. Also created `LoggerDbContextFactory.cs` for design-time migration support.
+- [x] 4.2 Run `dotnet ef migrations add InitialCreate --output-dir Infrastructure/Persistence/Migrations --project backend/Skysim.Logger.Api --startup-project backend/Skysim.Logger.Api`. Verified migration file contains `CreateTable` for all three tables with correct column types, indexes, and constraints.
+- [x] 4.3 (Verification only — do not run against real DB in this task) Inspect the generated migration SQL: confirmed `event_id` has UNIQUE constraint (`idx_log_actions_event_id` unique: true), `flow_id` on `log_actions` has FK (`FK_log_actions_log_flows_flow_id`), `action_id` on `log_action_details` has UNIQUE FK (`idx_log_action_details_action_id` unique: true), jsonb columns, and all required indexes present.
 
 ## 5. Repositories (Persistence Layer)
 
