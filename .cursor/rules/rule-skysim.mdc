@@ -1,0 +1,275 @@
+---
+alwaysApply: true
+---
+
+Project name: skysim-logger-lab
+
+Project context:
+This project is a self-built training/lab project for the Skysim onboarding roadmap. The goal is to build a complete Logger module from Backend to Frontend without relying on the real company source code.
+
+The final evaluation criteria are:
+
+* Backend 70%:
+
+  * Understand Skysim architecture.
+  * Complete Logger Service.
+  * Kafka Consumer works stably.
+  * Shared Middleware Logging.
+  * Log Search APIs.
+  * Clean code and code review quality.
+* Frontend 30%:
+
+  * Complete log lookup website.
+  * Use ReactJS correctly.
+  * Use React Router.
+  * Use Redux Toolkit.
+  * Use TypeScript.
+  * Connect API successfully.
+
+Main architecture:
+
+* Backend: ASP.NET Core / .NET 8 Web API.
+* Frontend: ReactJS + TypeScript + Vite.
+* Database: PostgreSQL.
+* Message broker: Kafka.
+* Local infra: Docker Compose.
+* Logger Service receives action logs from Kafka, saves them to PostgreSQL, exposes REST APIs, and provides data for the ReactJS log viewer.
+
+Business flow to support:
+The main flow is CHECKOUT_ESIM.
+There are two checkout types:
+
+* GUEST: no JWT, no userId, trace by email/phone/orderId/paymentId.
+* AUTHENTICATED: has JWT and userId, but still store email/phone/orderId/paymentId for support and operation lookup.
+
+Main action types:
+
+* ORDER_CREATED
+* PAYMENT_REQUESTED
+* PAYMENT_SUCCESS
+* PROVIDER_REQUESTED
+* ESIM_ACTIVATED
+* EMAIL_SENT
+* ORDER_FAILED
+* PAYMENT_FAILED
+* PROVIDER_FAILED
+* ESIM_ACTIVATION_FAILED
+* EMAIL_FAILED
+
+Kafka design rules:
+
+* Main topic: skysim.action.logs
+* Message key: flowId
+* Message value: JSON
+* Required fields:
+
+  * eventId
+  * flowId
+  * flowType
+  * serviceName
+  * actionType
+  * status
+  * createdAt
+* Consumer must use manual offset commit.
+* Never commit Kafka offset before saving to PostgreSQL successfully.
+* Consumer must be idempotent.
+* Use eventId as the unique idempotency key.
+* Duplicate messages must not create duplicate log actions.
+* Handle invalid messages clearly.
+* Add retry strategy for temporary failures.
+* If dead-letter topic is implemented, use skysim.action.logs.dlq.
+
+Database design rules:
+Use three main tables:
+
+1. log_flows
+
+   * Stores flow summary for fast searching/filtering.
+   * Important fields: flowId, flowType, checkoutType, status, customerEmail, customerPhone, userId, orderId, paymentId, totalSteps, successSteps, failedSteps, lastActionType, lastMessage, startedAt, completedAt, createdAt, updatedAt.
+
+2. log_actions
+
+   * Stores each action/timeline step in a flow.
+   * Important fields: eventId, flowId, stepOrder, serviceName, actionType, status, message, errorCode, errorMessage, createdAt, updatedAt.
+
+3. log_action_details
+
+   * Stores heavy JSON payloads.
+   * Important fields: actionId, requestPayload, responsePayload, errorPayload, metadata, createdAt.
+
+Database performance rules:
+
+* Add indexes for fields used in search/filter:
+
+  * customerEmail
+  * customerPhone
+  * userId
+  * orderId
+  * paymentId
+  * status
+  * createdAt
+  * flowId
+  * serviceName
+  * actionType
+* Do not load heavy payloads in list APIs.
+* Load payloads only in detail APIs.
+* Always implement pagination for list APIs.
+
+Backend coding rules:
+
+* Use clean, readable, production-style C#.
+* Prefer .NET 8 and ASP.NET Core Web API.
+* Use async/await for I/O operations.
+* Use CancellationToken where appropriate.
+* Do not put business logic inside Controllers.
+* Controllers should only validate request shape, call services/use cases, and return response.
+* Use DTOs for request/response.
+* Use entities/models for persistence.
+* Use services/use cases for business logic.
+* Use repositories or data access abstractions where useful.
+* Keep methods small and focused.
+* Avoid duplicated code.
+* Avoid magic strings and magic numbers.
+* Use constants/enums for action types, flow types, statuses, and topic names.
+* Prefer explicit names over short unclear names.
+* Do not use `var` when the type is not obvious.
+* Do not swallow exceptions silently.
+* Log meaningful errors.
+* Return consistent API responses.
+* Validate inputs clearly.
+* Never hard-code secrets, passwords, or connection strings in source code.
+* Use appsettings.json and environment variables.
+
+Backend folder structure guideline:
+Use a clear structure such as:
+
+* Controllers
+* Contracts / DTOs
+* Domain / Entities
+* Infrastructure / Persistence
+* Infrastructure / Kafka
+* Services / UseCases
+* Middlewares
+* Options
+* Common
+
+API design rules:
+Implement these APIs:
+
+* GET /api/log-flows
+* GET /api/log-flows/{flowId}
+* GET /api/log-actions/{actionId}
+
+List API must support:
+
+* customerEmail
+* customerPhone
+* userId
+* orderId
+* paymentId
+* flowType
+* checkoutType
+* status
+* fromDate
+* toDate
+* page
+* pageSize
+* sortBy
+* sortDirection
+
+API response rules:
+
+* Use clear DTOs.
+* Use pagination response:
+
+  * items
+  * page
+  * pageSize
+  * totalItems
+  * totalPages
+* Do not return database entities directly.
+* Return proper HTTP status codes.
+* Return clear validation errors.
+
+Middleware Logging rules:
+
+* Build reusable middleware or action filter for logging.
+* It should collect:
+
+  * service
+  * action
+  * requestTime
+  * responseTime
+  * duration
+  * requestData
+  * responseData
+  * userId
+  * exception
+  * correlationId
+* Middleware log is technical logging.
+* Business action log is different and should be published at important business steps such as ORDER_CREATED or PAYMENT_SUCCESS.
+* Always mask sensitive fields before logging.
+
+Sensitive fields that must be masked:
+
+* password
+* access_token
+* refresh_token
+* authorization
+* otp
+* cardNumber
+* cvv
+* paymentSecret
+* secret
+* token
+
+Frontend coding rules:
+
+* Use ReactJS with TypeScript.
+* Use functional components only.
+* Use React Router for routing.
+* Use Redux Toolkit for auth state and filter state.
+* Use Axios for API calls.
+* Use Axios interceptors for token/error handling if authentication is implemented.
+* Use TailwindCSS for UI.
+* Use reusable components.
+* Avoid `any` unless absolutely necessary.
+* Define interfaces/types for API DTOs.
+* Keep components small.
+* Separate API services from UI components.
+* Do not put API calling logic directly everywhere in components.
+* Use useState, useEffect, useMemo, useCallback correctly.
+* Keep UI simple, clean, responsive, and practical for log lookup.
+
+Frontend pages:
+
+* Login Page
+* Dashboard Page
+* Log List Page
+* Log Detail Page
+* Action Detail section or page
+
+Frontend features:
+
+* Filter logs by email, phone, orderId, paymentId, status, checkoutType, date range.
+* Pagination.
+* Sorting.
+* Show flow timeline.
+* Show action status clearly.
+* Show error message clearly.
+* Load heavy payload only on detail view.
+
+Clean code requirements:
+
+* Code must be easy to read and review.
+* Prefer clarity over cleverness.
+* Every class/function must have one clear responsibility.
+* Avoid over-engineering, but keep structure professional.
+* Keep naming consistent across Backend, Frontend, Kafka messages, and database.
+* Before generating code, explain the intended file changes briefly.
+* When modifying existing code, preserve current structure unless there is a good reason.
+* When adding a feature, include all needed files and mention how to run/test it.
+* If a requirement is unclear, ask a short clarification question instead of guessing.
+* Do not generate unrelated code.
+* Do not add unnecessary libraries.
+* Do not fake implementation with TODOs unless explicitly asked.

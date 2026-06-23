@@ -1,0 +1,231 @@
+schema: spec-driven
+
+context: |
+  Project: Skysim Logger Service
+
+  Domain:
+    Skysim is an eSIM system using a microservices architecture. The main business flow to support in this phase is eSIM checkout and centralized logging for tracing user/order/payment/provider/notification actions.
+
+  Main objective:
+    Build a complete Logger module before moving into full backend implementation. The Logger module must collect logs from services, consume Kafka messages, persist logs into PostgreSQL, expose APIs for searching log flows, and later support a ReactJS log viewer.
+
+  Architecture:
+    - Frontend applications include B2C website, B2B web portal, and CMS.
+    - Frontend traffic goes through Cloudflare/Nginx and KONG Gateway.
+    - Authentication and authorization are handled by Keycloak using JWT/OAuth2/OpenID Connect.
+    - Backend follows microservices architecture.
+    - Services communicate synchronously through REST API and asynchronously through Kafka.
+    - Kafka is used for event streaming, audit logging, retry processing, and background processing.
+    - Redis may be used for cache where needed.
+    - Logger is the centralized logging service for the whole system.
+    - PostgreSQL is used for Logger database storage in this training implementation.
+
+  Backend tech stack:
+    - .NET Core / .NET 8+
+    - ASP.NET Core Web API
+    - BackgroundService / Worker Service for Kafka Consumer
+    - PostgreSQL
+    - Entity Framework Core or Dapper, depending on implementation simplicity
+    - Kafka
+    - Docker Compose for local development
+    - Unit tests for core services, mapping, validation, and consumer behavior
+
+  Frontend tech stack:
+    - ReactJS
+    - TypeScript
+    - React Router
+    - Redux Toolkit
+    - Axios
+    - TailwindCSS
+    - Functional Components and React Hooks
+
+  Logger scope:
+    The Logger module must support:
+    - Receiving log messages from Kafka.
+    - Validating and normalizing log messages.
+    - Handling retry and system errors.
+    - Persisting logs into PostgreSQL.
+    - Supporting pagination, sorting, filtering, and searching.
+    - Exposing APIs that the ReactJS frontend can use directly.
+    - Supporting traceability by flowId, eventId, serviceName, actionType, status, userId, orderId, paymentId, customerEmail, and customerPhone.
+
+  Current Logger design convention:
+    - Kafka topic: skysim.action.logs
+    - Kafka message key: flowId
+    - Main flow type: CHECKOUT_ESIM
+    - Checkout types: GUEST, AUTHENTICATED
+    - Main service names: Order, Payment, Provider/Core, Notification, Logger
+    - Typical action sequence:
+      ORDER_CREATED -> PAYMENT_REQUESTED -> PAYMENT_SUCCESS -> PROVIDER_REQUESTED -> ESIM_ACTIVATED -> EMAIL_SENT
+
+  Logging format:
+    Each log event should include:
+    - eventId
+    - flowId
+    - flowType
+    - checkoutType
+    - serviceName
+    - actionType
+    - status
+    - message
+    - userId
+    - customerEmail
+    - customerPhone
+    - orderId
+    - paymentId
+    - requestTime
+    - responseTime
+    - duration
+    - requestData
+    - responseData
+    - exception
+    - createdAt
+
+  Database design:
+    Use a simple 3-table design for the first implementation:
+    - log_flows:
+      Stores one row per business flow. Used for search, filtering, status summary, and list screen.
+    - log_actions:
+      Stores each action/step inside a flow. Used for timeline and step-level status.
+    - log_action_details:
+      Stores request, response, and error payload for each action.
+
+    Required database behavior:
+    - log_flows should be upserted by flowId.
+    - log_actions should be inserted per action event.
+    - log_action_details should store JSON payloads.
+    - eventId must be used for idempotency to avoid duplicate processing.
+    - Index fields commonly used for search: flowId, serviceName, status, userId, customerEmail, customerPhone, orderId, paymentId, createdAt.
+
+  API requirements:
+    Backend APIs must support:
+    - List log flows
+    - Get log flow detail
+    - Get action detail
+    - Search by time range
+    - Search by serviceName
+    - Search by userId
+    - Search by customerEmail
+    - Search by customerPhone
+    - Search by orderId
+    - Search by paymentId
+    - Search by status
+    - Pagination
+    - Sorting
+    - Filtering
+
+  Security and data protection:
+    - Do not log raw password, access token, refresh token, OTP, credit card data, or sensitive payment data.
+    - Mask or remove secrets before publishing logs to Kafka.
+    - Do not expose internal payload details to unauthorized users.
+    - APIs should be designed to work behind KONG Gateway and JWT authentication.
+    - Internal service-to-service calls should follow trusted service principles.
+
+  Coding conventions:
+    - Keep controllers thin.
+    - Put business logic in application/service layer.
+    - Keep Kafka, database, and external infrastructure code in infrastructure layer.
+    - Use DTOs for request/response.
+    - Use clear mapping between Kafka message DTO, domain model, and database entity.
+    - Use async/await for I/O operations.
+    - Use cancellation tokens where appropriate.
+    - Prefer explicit validation instead of hidden assumptions.
+    - Prefer readable code over premature abstraction.
+    - Do not implement unrelated features outside Logger scope.
+
+  Definition of done:
+    A backend feature is done only when:
+    - It has a clear spec.
+    - Request/response or Kafka contract is defined.
+    - Database impact is defined.
+    - Error handling is defined.
+    - Logging behavior is defined.
+    - Basic tests or verification steps are included.
+    - It can be demonstrated locally.
+
+rules:
+  proposal:
+    - Keep proposals focused on the Skysim Logger module.
+    - Always include: Background, Problem, Goals, Non-goals, Proposed Solution, Risks, Open Questions.
+    - Clearly separate what is required for Week 2 backend implementation from what can wait for frontend or later phases.
+    - Do not propose a large enterprise solution if a smaller implementation satisfies the probation roadmap.
+    - Mention impact on Kafka, PostgreSQL, API, and ReactJS when relevant.
+
+  requirements:
+    - Write requirements in clear, testable language.
+    - Separate Functional Requirements and Non-functional Requirements.
+    - Include acceptance criteria for each requirement.
+    - Always cover idempotency, retry, validation, error handling, and data masking for Logger features.
+    - For API requirements, always include pagination, sorting, filtering, and response DTO expectations.
+    - For Kafka requirements, always define topic, message key, required fields, retry behavior, and duplicate handling.
+    - For database requirements, always define table impact, indexes, relationships, and query use cases.
+
+  design:
+    - Always include Architecture Overview, Data Flow, Database Design, Kafka Contract, API Contract, Error Handling, Security, Observability, and Open Questions.
+    - Use simple diagrams or Mermaid when useful, but keep the design implementable by one developer.
+    - Prefer the 3-table Logger design unless a strong reason exists to add more tables.
+    - Every log must be traceable by flowId and serviceName.
+    - Every Kafka message must support eventId for idempotency.
+    - Every API response should be frontend-friendly and typed for TypeScript DTO mapping.
+    - Avoid hiding important assumptions. Mark uncertain items as assumptions or open questions.
+
+  tasks:
+    - Break tasks into small chunks, preferably max 2 hours each.
+    - Order backend tasks in this sequence:
+      1. Define Kafka log message contract
+      2. Define PostgreSQL schema
+      3. Implement entities and migrations
+      4. Implement Kafka Consumer
+      5. Implement validation and idempotency
+      6. Implement persistence logic
+      7. Implement Middleware/Filter Logging
+      8. Implement Logger query APIs
+      9. Add basic tests
+      10. Prepare local demo flow
+    - Each task must include a concrete output.
+    - Each task must include a verification step.
+    - Do not create frontend tasks before backend API contracts are stable.
+    - Mark dependencies clearly.
+
+  api:
+    - Use RESTful naming.
+    - Use consistent response shape.
+    - Include pageNumber, pageSize, totalItems, totalPages for list APIs.
+    - Use query parameters for filters.
+    - Validate date range, page size, status, and sorting fields.
+    - Never expose sensitive requestData or responseData in list APIs.
+    - Detail APIs may expose payload only after masking sensitive fields.
+
+  database:
+    - Use snake_case table and column names.
+    - Use created_at and updated_at consistently.
+    - Use flow_id for correlation across tables.
+    - Use event_id to prevent duplicate Kafka processing.
+    - Store large request/response/error payloads as JSON/JSONB.
+    - Add indexes for search fields before demo.
+    - Keep schema simple and explain why each field exists.
+
+  kafka:
+    - Use flowId as message key.
+    - Use eventId for idempotency.
+    - Consumer must validate required fields before database transaction.
+    - Commit Kafka offset only after successful database commit.
+    - Failed messages should be logged clearly.
+    - Retry behavior must be explicit.
+    - Poison messages should not block the whole consumer forever.
+
+  frontend:
+    - Use TypeScript interfaces for all API DTOs.
+    - Use Axios for API calls.
+    - Use Redux Toolkit for auth/user/filter state.
+    - Use React Router for Login, Dashboard, Log List, and Log Detail pages.
+    - Keep UI simple, readable, and focused on log tracing.
+    - Always display serviceName in log list and detail views.
+    - Provide filters for serviceName, status, time range, userId, email, phone, orderId, and paymentId when supported by API.
+
+  documentation:
+    - Write documentation in Vietnamese when it is for mentor review or weekly report.
+    - Use English for code identifiers, API fields, database fields, and Kafka message fields.
+    - Keep diagrams aligned with the actual implementation.
+    - Document assumptions and open questions instead of silently deciding unclear business rules.
+```
