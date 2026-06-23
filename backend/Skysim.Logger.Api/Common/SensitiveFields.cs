@@ -1,8 +1,10 @@
 namespace Skysim.Logger.Api.Common;
 
-public static class SensitiveFields
+public sealed class SensitiveFields
 {
-    private static readonly HashSet<string> Fields = new(StringComparer.OrdinalIgnoreCase)
+    private static readonly Lazy<SensitiveFields> _instance = new(() => new SensitiveFields());
+
+    private readonly HashSet<string> _fields = new(StringComparer.OrdinalIgnoreCase)
     {
         "password",
         "access_token",
@@ -16,10 +18,14 @@ public static class SensitiveFields
         "token"
     };
 
-    public static IReadOnlySet<string> DenyList => Fields;
+    private SensitiveFields() { }
 
-    public static bool IsSensitive(string fieldName)
+    public static SensitiveFields Instance { get; } = _instance.Value;
+
+    public IReadOnlySet<string> DenyList => _fields;
+
+    public bool IsSensitive(string fieldName)
     {
-        return Fields.Contains(fieldName);
+        return _fields.Contains(fieldName);
     }
 }

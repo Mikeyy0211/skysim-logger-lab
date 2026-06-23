@@ -1,7 +1,42 @@
+using FluentValidation;
+using Skysim.Logger.Api.Common;
+using Skysim.Logger.Api.Contracts.DTOs;
+using Skysim.Logger.Api.Infrastructure.Kafka;
+using Skysim.Logger.Api.Infrastructure.Persistence;
+using Skysim.Logger.Api.Infrastructure.Persistence.Repositories;
+using Microsoft.EntityFrameworkCore;
+
 var builder = WebApplication.CreateBuilder(args);
 
+// Configure KafkaConsumerOptions
+builder.Services.Configure<KafkaConsumerOptions>(
+    builder.Configuration.GetSection("Kafka"));
+
+// Register DbContext
+builder.Services.AddDbContext<LoggerDbContext>(options =>
+    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+
+// Register repositories
+builder.Services.AddScoped<ILogFlowRepository, LogFlowRepository>();
+builder.Services.AddScoped<ILogActionRepository, LogActionRepository>();
+builder.Services.AddScoped<ILogActionDetailRepository, LogActionDetailRepository>();
+
+// Register FluentValidation validators
+builder.Services.AddScoped<IValidator<LogEventMessage>, LogEventMessageValidator>();
+
+// Register SensitiveDataMasker as singleton
+builder.Services.AddSingleton<SensitiveDataMasker>();
+
+// Register SensitiveFields
+builder.Services.AddSingleton(SensitiveFields.Instance);
+
+// Register DLQ Publisher
+builder.Services.AddSingleton<IDlqPublisher, DlqPublisher>();
+
+// Register Kafka Consumer Background Service
+builder.Services.AddHostedService<KafkaLogConsumerService>();
+
 // Add services to the container.
-// Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddEndpointsApiExplorer();
 
 var app = builder.Build();
@@ -15,28 +50,8 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
-var summaries = new[]
-{
-    "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-};
-
-app.MapGet("/weatherforecast", () =>
-{
-    var forecast =  Enumerable.Range(1, 5).Select(index =>
-        new WeatherForecast
-        (
-            DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
-            Random.Shared.Next(-20, 55),
-            summaries[Random.Shared.Next(summaries.Length)]
-        ))
-        .ToArray();
-    return forecast;
-})
-.WithName("GetWeatherForecast");
+app.MapGet("/health", () => Results.Ok(new { status = "healthy", timestamp = DateTime.UtcNow }))
+   .WithName("HealthCheck")
+   .WithTags("Health");
 
 app.Run();
-
-record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
-{
-    public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
-}

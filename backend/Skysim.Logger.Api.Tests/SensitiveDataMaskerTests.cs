@@ -138,26 +138,26 @@ public class SensitiveDataMaskerTests
     [Fact]
     public void SensitiveFields_DenyList_ShouldContainAllRequiredFields()
     {
-        SensitiveFields.DenyList.Should().HaveCount(10);
-        SensitiveFields.DenyList.Should().Contain("password");
-        SensitiveFields.DenyList.Should().Contain("access_token");
-        SensitiveFields.DenyList.Should().Contain("refresh_token");
-        SensitiveFields.DenyList.Should().Contain("authorization");
-        SensitiveFields.DenyList.Should().Contain("otp");
-        SensitiveFields.DenyList.Should().Contain("cardNumber");
-        SensitiveFields.DenyList.Should().Contain("cvv");
-        SensitiveFields.DenyList.Should().Contain("paymentSecret");
-        SensitiveFields.DenyList.Should().Contain("secret");
-        SensitiveFields.DenyList.Should().Contain("token");
+        SensitiveFields.Instance.DenyList.Should().HaveCount(10);
+        SensitiveFields.Instance.DenyList.Should().Contain("password");
+        SensitiveFields.Instance.DenyList.Should().Contain("access_token");
+        SensitiveFields.Instance.DenyList.Should().Contain("refresh_token");
+        SensitiveFields.Instance.DenyList.Should().Contain("authorization");
+        SensitiveFields.Instance.DenyList.Should().Contain("otp");
+        SensitiveFields.Instance.DenyList.Should().Contain("cardNumber");
+        SensitiveFields.Instance.DenyList.Should().Contain("cvv");
+        SensitiveFields.Instance.DenyList.Should().Contain("paymentSecret");
+        SensitiveFields.Instance.DenyList.Should().Contain("secret");
+        SensitiveFields.Instance.DenyList.Should().Contain("token");
     }
 
     [Fact]
     public void SensitiveFields_IsSensitive_ShouldBeCaseInsensitive()
     {
-        SensitiveFields.IsSensitive("PASSWORD").Should().BeTrue();
-        SensitiveFields.IsSensitive("password").Should().BeTrue();
-        SensitiveFields.IsSensitive("Access_Token").Should().BeTrue();
-        SensitiveFields.IsSensitive("CARDNUMBER").Should().BeTrue();
-        SensitiveFields.IsSensitive("orderId").Should().BeFalse();
+        SensitiveFields.Instance.IsSensitive("PASSWORD").Should().BeTrue();
+        SensitiveFields.Instance.IsSensitive("password").Should().BeTrue();
+        SensitiveFields.Instance.IsSensitive("Access_Token").Should().BeTrue();
+        SensitiveFields.Instance.IsSensitive("CARDNUMBER").Should().BeTrue();
+        SensitiveFields.Instance.IsSensitive("orderId").Should().BeFalse();
     }
 }

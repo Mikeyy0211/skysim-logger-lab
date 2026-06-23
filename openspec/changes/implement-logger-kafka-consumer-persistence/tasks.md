@@ -48,22 +48,22 @@ Repository tests should use SQLite in-memory mode to verify relational behavior 
 
 ## 7. Kafka Consumer (BackgroundService)
 
-- [ ] 7.1 Create `Infrastructure/Kafka/KafkaConsumerOptions.cs`: POCO matching the `Kafka` config section in `appsettings.json`, registered via `IOptions<KafkaConsumerOptions>`.
-- [ ] 7.2 Create `Infrastructure/Kafka/IDlqPublisher.cs` with `PublishAsync(ConsumeResult<byte[], byte[]>, string failureReason, int attempt, CancellationToken)`.
-- [ ] 7.3 Create `Infrastructure/Kafka/DlqPublisher.cs`: implements `IDlqPublisher`. Uses `IProducer<byte[], byte[]>` to produce to `options.DlqTopic`. Preserves original message key. Adds Kafka headers: `failure_reason`, `failed_at` (ISO-8601 UTC), `consumer_attempt`. Produces the masked JSON payload.
-- [ ] 7.4 Create `Infrastructure/Kafka/KafkaLogConsumerService.cs`: `BackgroundService` implementing the 8-step pipeline. Key methods:
+- [x] 7.1 Create `Infrastructure/Kafka/KafkaConsumerOptions.cs`: POCO matching the `Kafka` config section in `appsettings.json`, registered via `IOptions<KafkaConsumerOptions>`.
+- [x] 7.2 Create `Infrastructure/Kafka/IDlqPublisher.cs` with `PublishAsync(ConsumeResult<byte[], byte[]>, string failureReason, int attempt, CancellationToken)`.
+- [x] 7.3 Create `Infrastructure/Kafka/DlqPublisher.cs`: implements `IDlqPublisher`. Uses `IProducer<byte[], byte[]>` to produce to `options.DlqTopic`. Preserves original message key. Adds Kafka headers: `failure_reason`, `failed_at` (ISO-8601 UTC), `consumer_attempt`. Produces the masked JSON payload.
+- [x] 7.4 Create `Infrastructure/Kafka/KafkaLogConsumerService.cs`: `BackgroundService` implementing the 8-step pipeline. Key methods:
   - `ExecuteAsync(ct)`: create `ConsumerBuilder`, build consumer, subscribe to `options.Topic`, loop `consumer.Consume(ct)` with manual commit.
   - `ProcessMessageAsync(ConsumeResult, ct)`: orchestrates the pipeline steps.
   - `TryPersistAsync(message, ct)`: begin transaction → upsert flow → insert action → insert/upsert details → commit → return success flag.
   - `HandleFailure(result, reason, attempt, ct)`: if attempt < maxAttempts → retry with backoff; else → publish to DLQ and return.
   - Use structured logging (`ILogger<KafkaLogConsumerService>`) for every step, retry, idempotent skip, and DLQ publish.
-- [ ] 7.5 Wire everything in `Program.cs`: `builder.Services.AddDbContext<LoggerDbContext>()`, `builder.Services.AddScoped<ILogFlowRepository, LogFlowRepository>`, `builder.Services.AddScoped<ILogActionRepository, LogActionRepository>`, `builder.Services.AddScoped<ILogActionDetailRepository, LogActionDetailRepository>`, `builder.Services.AddSingleton<IDlqPublisher, DlqPublisher>`, `builder.Services.AddHostedService<KafkaLogConsumerService>()`, `builder.Services.Configure<KafkaConsumerOptions>(...)`, `builder.Services.AddSingleton<SensitiveDataMasker>`, register `SensitiveFields` and retry policy factory.
+- [x] 7.5 Wire everything in `Program.cs`: `builder.Services.AddDbContext<LoggerDbContext>()`, `builder.Services.AddScoped<ILogFlowRepository, LogFlowRepository>`, `builder.Services.AddScoped<ILogActionRepository, LogActionRepository>`, `builder.Services.AddScoped<ILogActionDetailRepository, LogActionDetailRepository>`, `builder.Services.AddSingleton<IDlqPublisher, DlqPublisher>`, `builder.Services.AddHostedService<KafkaLogConsumerService>()`, `builder.Services.Configure<KafkaConsumerOptions>(...)`, `builder.Services.AddSingleton<SensitiveDataMasker>`, register `SensitiveFields` and retry policy factory.
 
 ## 8. Basic Tests
 
-- [ ] 8.1 Create `backend/Skysim.Logger.Api.Tests/Skysim.Logger.Api.Tests.csproj` referencing the main project and `Microsoft.EntityFrameworkCore.Sqlite`, `Polly`, `FluentAssertions`, `Moq`. Add `Confluent.Kafka` for consumer tests.
-- [ ] 8.2 Write `LogEventMessageValidatorTests.cs`: test cases — valid message passes; missing `eventId` fails; missing `flowId` fails; invalid `status` ("WEIRD") fails; invalid `actionType` ("FOO_BAR") fails; valid `GUEST` checkout without `userId` passes.
-- [ ] 8.3 Write `SensitiveDataMaskerTests.cs`: top-level password masked, nested `authorization` masked, array of objects with `token` masked, non-sensitive fields unchanged, null and non-container values handled.
+- [x] 8.1 Create `backend/Skysim.Logger.Api.Tests/Skysim.Logger.Api.Tests.csproj` referencing the main project and `Microsoft.EntityFrameworkCore.Sqlite`, `Polly`, `FluentAssertions`, `Moq`. Add `Confluent.Kafka` for consumer tests.
+- [x] 8.2 Write `LogEventMessageValidatorTests.cs`: test cases — valid message passes; missing `eventId` fails; missing `flowId` fails; invalid `status` ("WEIRD") fails; invalid `actionType` ("FOO_BAR") fails; valid `GUEST` checkout without `userId` passes.
+- [x] 8.3 Write `SensitiveDataMaskerTests.cs`: top-level password masked, nested `authorization` masked, array of objects with `token` masked, non-sensitive fields unchanged, null and non-container values handled.
 - [ ] 8.4 Write `KafkaLogConsumerServiceTests.cs` using `Moq` to mock `IConsumer<byte[], byte[]>`, `ILogFlowRepository`, `ILogActionRepository`, `ILogActionDetailRepository`, `IDlqPublisher`. Test: happy path persists and commits; duplicate `eventId` returns idempotent_skip and commits; validation failure publishes to DLQ and commits; transient DB error triggers retry.
 - [ ] 8.5 Run `dotnet test backend/Skysim.Logger.Api.Tests/`. Confirm all tests pass with no warnings as errors.
 

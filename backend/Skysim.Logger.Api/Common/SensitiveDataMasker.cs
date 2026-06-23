@@ -63,7 +63,7 @@ public class SensitiveDataMasker
         {
             writer.WritePropertyName(property.Name);
 
-            if (SensitiveFields.IsSensitive(property.Name))
+            if (SensitiveFields.Instance.IsSensitive(property.Name))
             {
                 writer.WriteStringValue(MaskedValue);
             }
