@@ -23,6 +23,7 @@ public class KafkaLogConsumerService : BackgroundService
     private readonly KafkaConsumerOptions _options;
     private readonly IDlqPublisher _dlqPublisher;
     private readonly ILogger<KafkaLogConsumerService> _logger;
+    private readonly SensitiveDataMasker _masker;
 
     private IConsumer<byte[], byte[]>? _consumer;
 
@@ -30,12 +31,14 @@ public class KafkaLogConsumerService : BackgroundService
         IServiceScopeFactory scopeFactory,
         IOptions<KafkaConsumerOptions> options,
         IDlqPublisher dlqPublisher,
-        ILogger<KafkaLogConsumerService> logger)
+        ILogger<KafkaLogConsumerService> logger,
+        SensitiveDataMasker masker)
     {
         _scopeFactory = scopeFactory;
         _options = options.Value;
         _dlqPublisher = dlqPublisher;
         _logger = logger;
+        _masker = masker;
     }
 
     private ResiliencePipeline CreateDbRetryPolicy()
@@ -162,6 +165,8 @@ public class KafkaLogConsumerService : BackgroundService
             await PublishToDlqAndCommitAsync(result, "VALIDATION_FAILED: " + errors, ct);
             return;
         }
+
+        _masker.Mask(message);
 
         // Step 3-7: Try to persist with retry (transient DB failures may succeed on retry)
         var attempt = 0;
@@ -320,12 +325,12 @@ public class KafkaLogConsumerService : BackgroundService
 
         if (message.RequestData.HasValue)
         {
-            detail.RequestPayload = message.RequestData.Value.GetRawText();
+            detail.RequestPayload = _masker.MaskJson(message.RequestData.Value.GetRawText());
         }
 
         if (message.ResponseData.HasValue)
         {
-            detail.ResponsePayload = message.ResponseData.Value.GetRawText();
+            detail.ResponsePayload = _masker.MaskJson(message.ResponseData.Value.GetRawText());
         }
 
         if (!string.IsNullOrEmpty(message.ErrorCode) || !string.IsNullOrEmpty(message.Exception))
@@ -336,7 +341,8 @@ public class KafkaLogConsumerService : BackgroundService
                 errorMessage = message.ErrorMessage,
                 exception = message.Exception
             };
-            detail.ErrorPayload = JsonSerializer.Serialize(errorObj);
+
+            detail.ErrorPayload = _masker.MaskJson(JsonSerializer.Serialize(errorObj));
         }
 
         await detailRepo.UpsertAsync(detail, ct);
