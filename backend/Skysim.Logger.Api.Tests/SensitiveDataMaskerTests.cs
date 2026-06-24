@@ -160,4 +160,97 @@ public class SensitiveDataMaskerTests
         SensitiveFields.Instance.IsSensitive("CARDNUMBER").Should().BeTrue();
         SensitiveFields.Instance.IsSensitive("orderId").Should().BeFalse();
     }
+
+    [Fact]
+    public void MaskJson_HttpRequestPayloadWithSensitiveFields_ShouldMaskAll()
+    {
+        var json = """
+            {
+                "email": "user@example.com",
+                "password": "mysecret",
+                "access_token": "eyJhbGciOiJIUzI1NiJ9...",
+                "orderId": "ORD-123"
+            }
+            """;
+
+        var result = _masker.MaskJson(json);
+
+        result.Should().Contain("\"password\":\"***\"");
+        result.Should().Contain("\"access_token\":\"***\"");
+        result.Should().Contain("\"email\":\"user@example.com\"");
+        result.Should().Contain("\"orderId\":\"ORD-123\"");
+        result.Should().NotContain("mysecret");
+        result.Should().NotContain("eyJhbGciOiJIUzI1NiJ9");
+    }
+
+    [Fact]
+    public void MaskJson_HttpResponsePayloadWithSensitiveFields_ShouldMaskAll()
+    {
+        var json = """
+            {
+                "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+                "refresh_token": "refresh-token-value",
+                "userId": "user-456"
+            }
+            """;
+
+        var result = _masker.MaskJson(json);
+
+        result.Should().Contain("\"access_token\":\"***\"");
+        result.Should().Contain("\"refresh_token\":\"***\"");
+        result.Should().Contain("\"userId\":\"user-456\"");
+        result.Should().NotContain("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9");
+        result.Should().NotContain("refresh-token-value");
+    }
+
+    [Fact]
+    public void MaskJson_ErrorPayloadWithSensitiveFields_ShouldMaskAll()
+    {
+        var json = """
+            {
+                "error": "unauthorized",
+                "authorization": "Bearer secret-key",
+                "otp": "123456"
+            }
+            """;
+
+        var result = _masker.MaskJson(json);
+
+        result.Should().Contain("\"authorization\":\"***\"");
+        result.Should().Contain("\"otp\":\"***\"");
+        result.Should().Contain("\"error\":\"unauthorized\"");
+        result.Should().NotContain("secret-key");
+        result.Should().NotContain("123456");
+    }
+
+    [Fact]
+    public void MaskJson_LargePayload_OnlySensitiveFieldsMasked()
+    {
+        var json = $$"""
+            {
+                "headers": {
+                    "authorization": "Bearer token-value",
+                    "content-type": "application/json"
+                },
+                "body": {
+                    "orderId": "ORD-999",
+                    "amount": 99.99,
+                    "cardNumber": "4111111111111111",
+                    "cvv": "123"
+                }
+            }
+            """;
+
+        var result = _masker.MaskJson(json);
+
+        result.Should().Contain("\"authorization\":\"***\"");
+        result.Should().Contain("\"cardNumber\":\"***\"");
+        result.Should().Contain("\"cvv\":\"***\"");
+        result.Should().Contain("\"content-type\":\"application/json\"");
+        result.Should().Contain("\"orderId\":\"ORD-999\"");
+        result.Should().Contain("\"amount\":99.99");
+        result.Should().NotContain("token-value");
+        result.Should().NotContain("4111111111111111");
+        result.Should().NotContain("123");
+    }
 }

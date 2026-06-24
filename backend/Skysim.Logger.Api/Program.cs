@@ -1,23 +1,29 @@
 using System.Reflection;
 using System.Text.Json;
 using FluentValidation;
+using Microsoft.AspNetCore.OpenApi;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
+using Microsoft.OpenApi.Models;
 using Skysim.Logger.Api.Common;
 using Skysim.Logger.Api.Contracts.DTOs;
 using Skysim.Logger.Api.Contracts.DTOs.Queries;
 using Skysim.Logger.Api.Infrastructure.Kafka;
 using Skysim.Logger.Api.Infrastructure.Persistence;
 using Skysim.Logger.Api.Infrastructure.Persistence.Repositories;
+using Skysim.Logger.Api.Middlewares;
 using Skysim.Logger.Api.Services.Query;
 using Skysim.Logger.Api.Validators;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.AspNetCore.OpenApi;
-using Microsoft.OpenApi.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Configure KafkaConsumerOptions
 builder.Services.Configure<KafkaConsumerOptions>(
     builder.Configuration.GetSection("Kafka"));
+
+// Configure LoggerOptions
+builder.Services.Configure<LoggerOptions>(
+    builder.Configuration.GetSection("Logger"));
 
 // Register DbContext
 builder.Services.AddDbContext<LoggerDbContext>(options =>
@@ -61,6 +67,10 @@ builder.Services.AddSingleton(SensitiveFields.Instance);
 
 // Register DLQ Publisher
 builder.Services.AddSingleton<IDlqPublisher, DlqPublisher>();
+
+// Register Kafka Log Producer
+builder.Services.AddSingleton<IKafkaLogProducerOptions, KafkaLogProducerOptions>();
+builder.Services.AddSingleton<IKafkaLogProducer, KafkaLogProducer>();
 
 // Register Kafka Consumer Background Service
 builder.Services.AddHostedService<KafkaLogConsumerService>();
@@ -107,6 +117,11 @@ if (app.Environment.IsDevelopment())
 app.MapGet("/health", () => Results.Ok(new { status = "healthy", timestamp = DateTime.UtcNow }))
    .WithName("HealthCheck")
    .WithTags("Health");
+
+// Register HTTP logging middleware pipeline (order matters: buffering must be outermost so
+// EnableBuffering() is called before LoggerMiddleware reads the request body)
+app.UseMiddleware<RequestBodyBufferingMiddleware>();
+app.UseMiddleware<LoggerMiddleware>();
 
 app.MapControllers();
 

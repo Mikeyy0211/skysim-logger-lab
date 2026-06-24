@@ -12,5 +12,6 @@ public enum ActionType
     PaymentFailed,
     ProviderFailed,
     EsimActivationFailed,
-    EmailFailed
+    EmailFailed,
+    HttpRequest
 }

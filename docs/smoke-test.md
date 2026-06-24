@@ -1,175 +1,129 @@
-# Local Smoke Test Guide
+# HTTP Logging Middleware Smoke Test
 
-This guide documents manual smoke tests for the Kafka Consumer and PostgreSQL persistence layer.
+This document describes end-to-end verification steps to confirm the HTTP logging middleware and Kafka producer are working correctly.
 
 ## Prerequisites
 
-- Docker and Docker Compose installed
-- .NET 8 SDK installed
-- PostgreSQL running on port 5432
-- Kafka running on port 9092
+- Docker Compose running (`docker compose up -d`)
+- Kafka broker accessible at `localhost:9092`
+- PostgreSQL accessible at `localhost:5432`
+- `skysim.action.logs` topic exists in Kafka
 
-## Infrastructure Setup
+## Verification Steps
 
-### Start Infrastructure
-
-```bash
-cd infra
-docker compose up -d
-```
-
-### Verify Services
-
-```bash
-# Check PostgreSQL
-docker exec skysim-postgres pg_isready -U skysim
-
-# Check Kafka
-docker exec skysim-kafka kafka-broker-api-versions --bootstrap-server localhost:9092
-```
-
-## Database Setup
-
-### Apply Migrations
+### 1. Start the API
 
 ```bash
 cd backend/Skysim.Logger.Api
-dotnet ef database update --connection "Host=localhost;Port=5432;Database=skysim_logger;Username=skysim;Password=skysim_password"
+dotnet run --urls "http://localhost:5000"
 ```
 
-Expected output: `Applying migration 'InitialCreate'...`
-
-## Application Startup
-
-### Start the API
+### 2. Trigger a simple request with sensitive data
 
 ```bash
-cd backend/Skysim.Logger.Api
-dotnet run
+curl -X POST http://localhost:5000/api/log-flows \
+  -H "Content-Type: application/json" \
+  -H "X-Correlation-ID: smoke-test-001" \
+  -d '{"email":"test@example.com","password":"secret123","orderId":"ORD-SMOKE"}'
 ```
 
-Expected logs within 10 seconds:
-- `Starting KafkaLogConsumerService`
-- `Subscribed to topic: skysim.action.logs`
-
-## Smoke Tests
-
-### 1. Test Valid Message Persistence
-
-Produce a valid message to Kafka:
+### 3. Trigger a health check (no body, with correlation ID)
 
 ```bash
-docker exec skysim-kafka kafka-console-producer \
-  --bootstrap-server localhost:9092 \
-  --topic skysim.action.logs \
-  --property "parse.key=true" \
-  --property "key.separator=:"
+curl -v http://localhost:5000/health \
+  -H "X-Correlation-ID: smoke-test-002"
 ```
 
-Type the following message (press Enter):
+### 4. Verify Kafka consumer processes the messages
 
+Check that the Kafka consumer has picked up the HTTP-action log events and stored them in PostgreSQL.
+
+#### Check log_actions table for HttpRequest records
+
+```sql
+SELECT event_id, flow_id, action_type, status, message, created_at
+FROM log_actions
+WHERE action_type = 'HTTP_REQUEST'
+ORDER BY created_at DESC
+LIMIT 10;
 ```
-test-flow-001:{"eventId":"11111111-1111-1111-1111-111111111111","flowId":"test-flow-001","flowType":"CHECKOUT_ESIM","serviceName":"Order","actionType":"ORDER_CREATED","status":"SUCCESS","createdAt":"2026-06-23T08:00:00.000Z","checkoutType":"GUEST","customerEmail":"test@example.com","orderId":"ORD-001","message":"Order created successfully"}
+
+**Expected:** At least two records — one for the POST to `/api/log-flows` and one for the GET to `/health`. Both should have `flow_type = 'HTTP_ACTION'` and `action_type = 'HTTP_REQUEST'`.
+
+#### Check correlation IDs are preserved
+
+```sql
+SELECT event_id, correlation_id, message
+FROM log_actions
+WHERE correlation_id IN ('smoke-test-001', 'smoke-test-002')
+ORDER BY created_at DESC;
 ```
 
-Press Ctrl+C to exit.
+**Expected:** Both correlation IDs appear in the `correlation_id` column.
 
-### 2. Verify Database Records
+#### Verify sensitive fields are masked in log_action_details
 
-Query PostgreSQL:
+```sql
+SELECT lad.request_payload, lad.response_payload
+FROM log_actions la
+JOIN log_action_details lad ON lad.action_id = la.id
+WHERE la.action_type = 'HTTP_REQUEST'
+  AND la.message LIKE '%POST%api/log-flows%'
+ORDER BY la.created_at DESC
+LIMIT 1;
+```
+
+**Expected:** The `request_payload` JSON contains `"email":"test@example.com"` (unmasked) but `"password":"***"` (masked). It should NOT contain `secret123`.
+
+### 5. Verify X-Correlation-ID response header
 
 ```bash
-docker exec -i skysim-postgres psql -U skysim -d skysim_logger -c "SELECT flow_id, flow_type, status, total_steps FROM log_flows;"
+curl -s -D - http://localhost:5000/health -o /dev/null | grep -i "x-correlation-id"
 ```
 
-Expected: 1 row with `test-flow-001`, `CHECKOUT_ESIM`, `Success`, `1`
+**Expected:** The response includes `X-Correlation-ID` header.
+
+### 6. Verify a new correlation ID is generated when none is provided
 
 ```bash
-docker exec -i skysim-postgres psql -U skysim -d skysim_logger -c "SELECT event_id, flow_id, action_type, status FROM log_actions;"
+curl -s -D - http://localhost:5000/health -o /dev/null | grep -i "x-correlation-id"
 ```
 
-Expected: 1 row with `11111111-1111-1111-1111-111111111111`, `ORDER_CREATED`, `Success`
+**Expected:** A new `Guid` is returned in the `X-Correlation-ID` response header.
 
-### 3. Test Duplicate Message (Idempotency)
-
-Produce the same message again:
-
-```
-test-flow-001:{"eventId":"11111111-1111-1111-1111-111111111111","flowId":"test-flow-001","flowType":"CHECKOUT_ESIM","serviceName":"Order","actionType":"ORDER_CREATED","status":"SUCCESS","createdAt":"2026-06-23T08:00:00.000Z","checkoutType":"GUEST","customerEmail":"test@example.com","orderId":"ORD-001","message":"Order created successfully"}
-```
-
-Verify no duplicate in `log_actions`:
+### 7. Verify 5xx errors produce Failed status
 
 ```bash
-docker exec -i skysim-postgres psql -U skysim -d skysim_logger -c "SELECT COUNT(*) FROM log_actions;"
+# Trigger a deliberate error (non-existent endpoint will return 404, not 500)
+# To test 500, temporarily add a throwing endpoint or check logs for a real error
+curl -s http://localhost:5000/api/nonexistent-endpoint -o /dev/null -w "%{http_code}"
 ```
 
-Expected: 1 (no new row inserted)
+### 8. Verify application logs for publish failures (when Kafka is intentionally down)
 
-### 4. Test Invalid Message (Validation Failure)
-
-Produce a message with invalid status:
+1. Stop Kafka: `docker compose stop kafka`
+2. Make a request: `curl http://localhost:5000/health`
+3. Check application logs — should contain `Warning` entries about failed Kafka publish:
 
 ```
-test-flow-002:{"eventId":"22222222-2222-2222-2222-222222222222","flowId":"test-flow-002","flowType":"CHECKOUT_ESIM","serviceName":"Order","actionType":"ORDER_CREATED","status":"WEIRD_STATUS","createdAt":"2026-06-23T08:00:00.000Z"}
+warn: Skysim.Logger.Api.Middlewares.LoggerMiddleware[0]
+      Kafka publish failed for LogEventMessage. EventId=<guid>, CorrelationId=<id>
 ```
 
-Verify:
-- No rows created in `log_flows` or `log_actions` for `test-flow-002`
-- Consumer logs show validation error
-- Consumer did not crash
+**Expected:** API returns `200 OK` to the client despite Kafka being down. No HTTP error is returned.
 
-### 5. Test Parse Error (Malformed JSON)
+### 9. Tear down
 
 ```bash
-docker exec skysim-kafka kafka-console-producer \
-  --bootstrap-server localhost:9092 \
-  --topic skysim.action.logs
-```
-
-Type invalid JSON:
-
-```
-test-flow-003:not valid json at all
-```
-
-Press Ctrl+C.
-
-Verify:
-- No rows created
-- Consumer logs show deserialization error
-- Consumer did not crash
-
-## Expected Structured Log Output
-
-For persisted messages, expect structured logs with:
-
-```
-{eventId, flowId, actionType, status, durationMs, outcome}
-```
-
-Example:
-```
-Message persisted successfully. EventId=11111111-1111-1111-1111-111111111111, FlowId=test-flow-001, ActionType=ORDER_CREATED, Status=Success
-```
-
-For duplicates:
-```
-Duplicate event detected (idempotent skip). EventId=11111111-1111-1111-1111-111111111111
-```
-
-For DLQ:
-```
-Max retry attempts reached, publishing to DLQ. Reason=VALIDATION_FAILED: ..., MaxAttempts=5
-```
-
-## Cleanup
-
-```bash
-# Stop infrastructure
-cd infra
 docker compose down
-
-# Clean up test data (optional)
-docker exec -i skysim-postgres psql -U skysim -d skysim_logger -c "TRUNCATE log_actions, log_flows, log_action_details CASCADE;"
 ```
+
+## Troubleshooting
+
+| Symptom | Likely Cause | Fix |
+|---|---|---|
+| No HTTP logs in DB | Kafka consumer not running | Check consumer service logs |
+| Correlation ID missing | Middleware not registered | Check `Program.cs` middleware order |
+| Sensitive data not masked | `SensitiveDataMasker` not registered | Check DI registration |
+| API returns 500 | Producer constructor throws | Check Kafka broker is reachable |
+| Messages not in Kafka | Producer config wrong | Check `appsettings.json` `Kafka:Producer` section |

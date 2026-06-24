@@ -17,7 +17,8 @@ public class LogEventMessageValidator : AbstractValidator<LogEventMessage>
         ActionType.PaymentFailed,
         ActionType.ProviderFailed,
         ActionType.EsimActivationFailed,
-        ActionType.EmailFailed
+        ActionType.EmailFailed,
+        ActionType.HttpRequest
     ];
 
     public LogEventMessageValidator()

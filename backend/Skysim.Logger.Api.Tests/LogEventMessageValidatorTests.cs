@@ -251,6 +251,37 @@ public class LogEventMessageValidatorTests
         deserialized.Status.Should().Be(message.Status);
     }
 
+    [Fact]
+    public void Validate_HttpRequestActionType_ShouldPass()
+    {
+        var message = CreateValidMessage();
+        message.ActionType = ActionType.HttpRequest;
+
+        var result = _validator.TestValidate(message);
+
+        result.ShouldNotHaveValidationErrorFor(x => x.ActionType);
+    }
+
+    [Fact]
+    public void Deserialize_HttpRequestActionType_ShouldParseCorrectly()
+    {
+        var json = @"{
+            ""eventId"": ""550e8400-e29b-41d4-a716-446655440099"",
+            ""flowId"": ""test-flow-http"",
+            ""flowType"": ""HTTP_ACTION"",
+            ""serviceName"": ""LoggerService"",
+            ""actionType"": ""HTTP_REQUEST"",
+            ""status"": ""SUCCESS"",
+            ""createdAt"": ""2026-06-23T10:00:00Z""
+        }";
+
+        var message = LogEventMessage.Deserialize(System.Text.Encoding.UTF8.GetBytes(json));
+
+        message.Should().NotBeNull();
+        message!.ActionType.Should().Be(ActionType.HttpRequest);
+        message.FlowType.Should().Be(FlowType.HttpAction);
+    }
+
     private static LogEventMessage CreateValidMessage()
     {
         return new LogEventMessage
