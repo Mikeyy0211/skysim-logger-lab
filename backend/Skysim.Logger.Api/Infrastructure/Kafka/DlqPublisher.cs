@@ -33,12 +33,22 @@ public class KafkaProducerFactory : IKafkaProducerFactory
     }
 }
 
+public interface IDlqPublisher
+{
+    Task PublishAsync(
+        ConsumeResult<byte[], byte[]> originalResult,
+        string failureReason,
+        int attempt,
+        CancellationToken cancellationToken = default);
+}
+
 public class DlqPublisher : IDlqPublisher, IDisposable
 {
     private readonly IKafkaProducerFactory _producerFactory;
     private readonly string _dlqTopic;
     private readonly SensitiveDataMasker _masker;
     private readonly ILogger<DlqPublisher> _logger;
+    private readonly RetryOptions _retryOptions;
 
     private IProducer<byte[], byte[]>? _lazyProducer;
 
@@ -52,6 +62,7 @@ public class DlqPublisher : IDlqPublisher, IDisposable
         _dlqTopic = options.Value.DlqTopic;
         _masker = masker;
         _logger = logger;
+        _retryOptions = options.Value.Retry;
     }
 
     private IProducer<byte[], byte[]> Producer
@@ -89,28 +100,51 @@ public class DlqPublisher : IDlqPublisher, IDisposable
             Headers = headers
         };
 
-        try
-        {
-            var result = await Producer.ProduceAsync(_dlqTopic, message, cancellationToken);
+        var success = false;
+        var currentAttempt = 0;
 
-            _logger.LogWarning(
-                "Message published to DLQ. Topic={DlqTopic}, Partition={Partition}, Offset={Offset}, "
-                + "FailureReason={FailureReason}, Attempt={Attempt}",
-                _dlqTopic,
-                result.Partition.Value,
-                result.Offset.Value,
-                failureReason,
-                attempt);
-        }
-        catch (ProduceException<byte[], byte[]> ex)
+        while (!success && currentAttempt < _retryOptions.MaxAttempts)
         {
-            _logger.LogError(
-                ex,
-                "Failed to publish message to DLQ. Topic={DlqTopic}, FailureReason={FailureReason}, Attempt={Attempt}",
-                _dlqTopic,
-                failureReason,
-                attempt);
-            throw;
+            currentAttempt++;
+            try
+            {
+                var result = await Producer.ProduceAsync(_dlqTopic, message, cancellationToken);
+
+                _logger.LogWarning(
+                    "Message published to DLQ. Topic={DlqTopic}, Partition={Partition}, Offset={Offset}, "
+                    + "FailureReason={FailureReason}, Attempt={Attempt}",
+                    _dlqTopic,
+                    result.Partition.Value,
+                    result.Offset.Value,
+                    failureReason,
+                    currentAttempt);
+                success = true;
+            }
+            catch (ProduceException<byte[], byte[]> ex) when (currentAttempt < _retryOptions.MaxAttempts)
+            {
+                var delay = KafkaCommon.CalculateDelay(currentAttempt, _retryOptions);
+                _logger.LogWarning(
+                    ex,
+                    "DLQ publish failed. Topic={DlqTopic}, FailureReason={FailureReason}, Attempt={Attempt}, DelayMs={DelayMs}",
+                    _dlqTopic,
+                    failureReason,
+                    currentAttempt,
+                    (int)delay.TotalMilliseconds);
+
+                await Task.Delay(delay, cancellationToken);
+            }
+            catch (ProduceException<byte[], byte[]> ex)
+            {
+                _logger.LogError(
+                    ex,
+                    "DLQ publish failed after all retries. Topic={DlqTopic}, FailureReason={FailureReason}, "
+                    + "OriginalTopic={OriginalTopic}, OriginalOffset={OriginalOffset}",
+                    _dlqTopic,
+                    failureReason,
+                    originalResult.Topic,
+                    originalResult.Offset.Value);
+                throw;
+            }
         }
     }
 

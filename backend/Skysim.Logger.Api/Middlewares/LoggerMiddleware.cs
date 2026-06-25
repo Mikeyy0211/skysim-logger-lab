@@ -54,9 +54,7 @@ public class LoggerMiddleware
         var requestTime = DateTime.UtcNow;
         var flowId = GetOrCreateFlowId(context);
         var requestBody = await ReadRequestBodyAsync(context.Request);
-        var selectedHeaders = SelectedRequestHeaders
-            .Select(header => new { Header = header, Value = context.Request.Headers[header].ToString() })
-            .ToArray();
+        var selectedHeaders = CaptureSelectedHeaders(context.Request);
 
         // Replace response body with a buffering wrapper so we can read it back
         var originalResponseBody = context.Response.Body;
@@ -84,21 +82,31 @@ public class LoggerMiddleware
             var duration = (int)(responseTime - requestTime).TotalMilliseconds;
             var responseBody = bufferingStream.GetBuffer();
 
-            var message = BuildLogEventMessage(
-                context,
-                flowId,
-                requestTime,
-                responseTime,
-                statusCode,
-                duration,
-                requestBody,
-                responseBody,
-                caughtException,
-                selectedHeaders);
+            try
+            {
+                var message = BuildLogEventMessage(
+                    context,
+                    flowId,
+                    requestTime,
+                    responseTime,
+                    statusCode,
+                    duration,
+                    requestBody,
+                    responseBody,
+                    caughtException,
+                    selectedHeaders);
 
-            message = _masker.Mask(message);
+                message = _masker.Mask(message);
 
-            _ = FireAndForgetPublishAsync(message);
+                _ = FireAndForgetPublishAsync(message);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(
+                    ex,
+                    "Failed to build log event message. FlowId={FlowId}",
+                    flowId);
+            }
         }
     }
 
@@ -116,34 +124,29 @@ public class LoggerMiddleware
 
     private static string GetOrCreateFlowId(HttpContext context)
     {
-        // 1. X-Flow-Id header
         if (context.Request.Headers.TryGetValue("X-Flow-Id", out var flowIdHeader)
             && !string.IsNullOrWhiteSpace(flowIdHeader))
         {
             return flowIdHeader.ToString();
         }
 
-        // 2. X-Correlation-Id header
         if (context.Request.Headers.TryGetValue("X-Correlation-Id", out var correlationIdHeader)
             && !string.IsNullOrWhiteSpace(correlationIdHeader))
         {
             return correlationIdHeader.ToString();
         }
 
-        // 3. X-Request-ID header
         if (context.Request.Headers.TryGetValue("X-Request-ID", out var requestIdHeader)
             && !string.IsNullOrWhiteSpace(requestIdHeader))
         {
             return requestIdHeader.ToString();
         }
 
-        // 4. HttpContext.TraceIdentifier
         if (!string.IsNullOrWhiteSpace(context.TraceIdentifier))
         {
             return context.TraceIdentifier;
         }
 
-        // 5. Fallback to new Guid (format "N" = 32 hex chars without dashes)
         var generated = Guid.NewGuid().ToString("N");
         context.Response.Headers["X-Correlation-ID"] = generated;
         return generated;
@@ -151,21 +154,35 @@ public class LoggerMiddleware
 
     private static async Task<byte[]?> ReadRequestBodyAsync(HttpRequest request)
     {
-        request.Body.Position = 0;
         if (!request.Body.CanSeek)
         {
             return null;
         }
 
+        request.Body.Position = 0;
         using var memoryStream = new MemoryStream();
         await request.Body.CopyToAsync(memoryStream);
-        request.Body.Position = 0; // reset so downstream handlers can read it
+        request.Body.Position = 0;
 
         if (memoryStream.Length == 0)
         {
             return null;
         }
         return memoryStream.ToArray();
+    }
+
+    private static Dictionary<string, string> CaptureSelectedHeaders(HttpRequest request)
+    {
+        var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var headerName in SelectedRequestHeaders)
+        {
+            if (request.Headers.TryGetValue(headerName, out var value)
+                && !string.IsNullOrWhiteSpace(value))
+            {
+                headers[headerName] = value.ToString();
+            }
+        }
+        return headers;
     }
 
     private LogEventMessage BuildLogEventMessage(
@@ -178,7 +195,7 @@ public class LoggerMiddleware
         byte[]? requestBody,
         byte[] responseBody,
         Exception? exception,
-        object selectedHeaders)
+        Dictionary<string, string> selectedHeaders)
     {
         var requestPath = context.Request.Path.ToString();
         var queryString = context.Request.QueryString.HasValue
@@ -196,18 +213,17 @@ public class LoggerMiddleware
             ? requestPath
             : $"{requestPath}{queryString}";
 
-        var actionType = ActionType.HttpRequest;
         var status = MapStatus(statusCode, exception);
         var errorCode = exception != null ? statusCode.ToString() : null;
         var errorMessage = exception?.Message;
         var exceptionText = exception != null ? exception.ToString() : null;
 
-        var message = new LogEventMessage
+        return new LogEventMessage
         {
             EventId = Guid.NewGuid(),
             FlowId = flowId,
             FlowType = FlowType.HttpAction,
-            ActionType = actionType,
+            ActionType = ActionType.HttpRequest,
             Status = status,
             CreatedAt = requestTime,
             RequestTime = requestTime,
@@ -221,8 +237,6 @@ public class LoggerMiddleware
             RequestData = requestData,
             ResponseData = BuildResponseData(statusCode, responseBody, context.Response.ContentType)
         };
-
-        return message;
     }
 
     private static JsonElement? BuildRequestData(
@@ -231,7 +245,7 @@ public class LoggerMiddleware
         string queryString,
         byte[]? body,
         string? contentType,
-        object selectedHeaders)
+        Dictionary<string, string> selectedHeaders)
     {
         using var stream = new MemoryStream();
         using var writer = new Utf8JsonWriter(stream);
@@ -246,7 +260,8 @@ public class LoggerMiddleware
             WriteMaskedQueryString(writer, queryString);
         }
 
-        WriteHeaders(writer, "selectedHeaders", selectedHeaders);
+        writer.WritePropertyName("selectedHeaders");
+        WriteHeaders(writer, selectedHeaders);
 
         if (body != null && body.Length > 0 && IsJsonContentType(contentType))
         {
@@ -327,17 +342,13 @@ public class LoggerMiddleware
         writer.WriteEndObject();
     }
 
-    private static void WriteHeaders(Utf8JsonWriter writer, string propertyName, object selectedHeaders)
+    private static void WriteHeaders(Utf8JsonWriter writer, Dictionary<string, string> headers)
     {
-        writer.WriteStartObject(propertyName);
+        writer.WriteStartObject();
 
-        foreach (var header in (System.Collections.IEnumerable)selectedHeaders)
+        foreach (var kvp in headers)
         {
-            var headerType = header.GetType();
-            var headerName = headerType.GetProperty("Header")!.GetValue(header)!.ToString();
-            var headerValue = headerType.GetProperty("Value")!.GetValue(header)!.ToString();
-
-            writer.WriteString(headerName!, headerValue);
+            writer.WriteString(kvp.Key, kvp.Value);
         }
 
         writer.WriteEndObject();
@@ -369,19 +380,6 @@ public class LoggerMiddleware
             && contentType.Contains("application/octet-stream", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static JsonElement? ParseJsonElement(byte[] data)
-    {
-        try
-        {
-            using var doc = JsonDocument.Parse(data);
-            return doc.RootElement.Clone();
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
     private static Status MapStatus(int statusCode, Exception? exception)
     {
         if (exception != null || statusCode >= 500)
@@ -405,5 +403,60 @@ public class LoggerMiddleware
                 message.EventId,
                 message.FlowId);
         }
+    }
+}
+
+/// <summary>
+/// A stream wrapper that buffers the response body in memory for later reading,
+/// while also writing to the underlying stream for actual response delivery.
+/// </summary>
+internal sealed class ResponseBodyBufferingStream : Stream
+{
+    private readonly Stream _innerStream;
+    private readonly MemoryStream _buffer = new();
+
+    public ResponseBodyBufferingStream(Stream innerStream)
+    {
+        _innerStream = innerStream;
+    }
+
+    public byte[] GetBuffer() => _buffer.ToArray();
+
+    public override bool CanRead => false;
+    public override bool CanSeek => false;
+    public override bool CanWrite => true;
+    public override long Length => _buffer.Length;
+    public override long Position
+    {
+        get => _buffer.Position;
+        set => _buffer.Position = value;
+    }
+
+    public override void Flush() => _innerStream.Flush();
+
+    public override int Read(byte[] buffer, int offset, int count) =>
+        throw new NotSupportedException();
+
+    public override long Seek(long offset, SeekOrigin origin) =>
+        throw new NotSupportedException();
+
+    public override void SetLength(long value) =>
+        throw new NotSupportedException();
+
+    public override void Write(byte[] buffer, int offset, int count)
+    {
+        _buffer.Write(buffer, offset, count);
+        _innerStream.Write(buffer, offset, count);
+    }
+
+    public override async Task FlushAsync(CancellationToken cancellationToken)
+    {
+        await _innerStream.FlushAsync(cancellationToken);
+    }
+
+    public override async Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+    {
+        await _buffer.WriteAsync(buffer, offset, count, cancellationToken);
+        await _innerStream.WriteAsync(buffer, offset, count, cancellationToken);
     }
 }

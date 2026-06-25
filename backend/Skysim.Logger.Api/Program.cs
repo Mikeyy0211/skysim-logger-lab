@@ -17,15 +17,12 @@ using Skysim.Logger.Api.Validators;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Configure KafkaConsumerOptions
 builder.Services.Configure<KafkaConsumerOptions>(
     builder.Configuration.GetSection("Kafka"));
 
-// Configure LoggerOptions
 builder.Services.Configure<LoggerOptions>(
     builder.Configuration.GetSection("Logger"));
 
-// Register DbContextFactory for both write (repositories) and read-only query services
 builder.Services.AddDbContextFactory<LoggerDbContext>(options =>
 {
     options.UseNpgsql(
@@ -36,47 +33,34 @@ builder.Services.AddDbContextFactory<LoggerDbContext>(options =>
         });
 });
 
-// Register repositories
 builder.Services.AddScoped<ILogFlowRepository, LogFlowRepository>();
 builder.Services.AddScoped<ILogActionRepository, LogActionRepository>();
 builder.Services.AddScoped<ILogActionDetailRepository, LogActionDetailRepository>();
 
-// Register FluentValidation validators
 builder.Services.AddScoped<IValidator<LogEventMessage>, LogEventMessageValidator>();
 builder.Services.AddScoped<IValidator<LogFlowListQuery>, LogFlowListQueryValidator>();
 builder.Services.AddScoped<IValidator<LogActionListQuery>, LogActionListQueryValidator>();
 
-// Register SensitiveDataMasker as singleton
 builder.Services.AddSingleton<SensitiveDataMasker>();
-
-// Register SensitiveFields
 builder.Services.AddSingleton(SensitiveFields.Instance);
 
-// Register Kafka Producer Factory (used by DlqPublisher)
 builder.Services.AddSingleton<IKafkaProducerFactory, KafkaProducerFactory>();
-
-// Register DLQ Publisher
 builder.Services.AddSingleton<IDlqPublisher, DlqPublisher>();
 
-// Register Kafka Log Producer
 builder.Services.AddSingleton<IKafkaLogProducerOptions, KafkaLogProducerOptions>();
 builder.Services.AddSingleton<IKafkaLogProducer, KafkaLogProducer>();
 
-// Register Kafka Consumer Background Service
 builder.Services.AddHostedService<KafkaLogConsumerService>();
 
-// Register query services
 builder.Services.AddScoped<ILogFlowQueryService, LogFlowQueryService>();
 builder.Services.AddScoped<ILogActionQueryService, LogActionQueryService>();
 
-// Add controllers with camelCase JSON naming
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
     {
         options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
     });
 
-// Add Swagger/OpenAPI
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
 {
@@ -97,7 +81,6 @@ builder.Services.AddSwaggerGen(options =>
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -108,8 +91,6 @@ app.MapGet("/health", () => Results.Ok(new { status = "healthy", timestamp = Dat
    .WithName("HealthCheck")
    .WithTags("Health");
 
-// Register HTTP logging middleware pipeline (order matters: buffering must be outermost so
-// EnableBuffering() is called before LoggerMiddleware reads the request body)
 app.UseMiddleware<RequestBodyBufferingMiddleware>();
 app.UseMiddleware<LoggerMiddleware>();
 

@@ -1,4 +1,6 @@
 using Skysim.Logger.Api.Domain.Enums;
+using ActionType = Skysim.Logger.Api.Domain.Enums.ActionType;
+using Status = Skysim.Logger.Api.Domain.Enums.Status;
 
 namespace Skysim.Logger.Api.Domain.Services;
 

@@ -47,11 +47,6 @@ public class KafkaLogConsumerService : BackgroundService
         return RetryPolicyFactory.CreateDbRetryPolicy(Options.Create(_options));
     }
 
-    private ResiliencePipeline CreateBrokerRetryPolicy()
-    {
-        return RetryPolicyFactory.CreateBrokerRetryPolicy(Options.Create(_options));
-    }
-
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         _logger.LogInformation(
@@ -65,7 +60,7 @@ public class KafkaLogConsumerService : BackgroundService
             BootstrapServers = _options.Consumer.BootstrapServers,
             GroupId = _options.Consumer.ConsumerGroup,
             AutoOffsetReset = ParseAutoOffsetReset(_options.Consumer.AutoOffsetReset),
-            EnableAutoCommit = _options.Consumer.EnableAutoCommit,
+            EnableAutoCommit = false,
             MaxPollIntervalMs = _options.Consumer.MaxPollIntervalMs,
             SessionTimeoutMs = _options.Consumer.SessionTimeoutMs
         };
@@ -75,16 +70,16 @@ public class KafkaLogConsumerService : BackgroundService
 
         _logger.LogInformation("Subscribed to topic: {Topic}", _options.Consumer.Topic);
 
-        // Yield control to allow host startup to complete before entering blocking consume loop
         await Task.Yield();
 
         try
         {
             while (!stoppingToken.IsCancellationRequested)
             {
+                ConsumeResult<byte[], byte[]>? consumeResult = null;
                 try
                 {
-                    var consumeResult = _consumer.Consume(stoppingToken);
+                    consumeResult = _consumer.Consume(stoppingToken);
 
                     if (consumeResult == null)
                     {
@@ -95,17 +90,29 @@ public class KafkaLogConsumerService : BackgroundService
 
                     _consumer.Commit(consumeResult);
                 }
-                catch (ConsumeException ex)
+                catch (ConsumeException ex) when (!stoppingToken.IsCancellationRequested)
                 {
                     _logger.LogError(ex, "Kafka consume error. ErrorCode={ErrorCode}", ex.Error.Code);
+
+                    if (consumeResult != null)
+                    {
+                        await PublishToDlqSafelyAsync(consumeResult, $"CONSUME_ERROR: {ex.Error.Code}", 0, stoppingToken);
+                        _consumer.Commit(consumeResult);
+                    }
                 }
                 catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
                 {
-                    throw;
+                    break;
                 }
-                catch (Exception ex)
+                catch (Exception ex) when (!stoppingToken.IsCancellationRequested)
                 {
-                    _logger.LogError(ex, "Unexpected error during message processing. Continuing consumption.");
+                    _logger.LogError(ex, "Unexpected error during message processing.");
+
+                    if (consumeResult != null)
+                    {
+                        await PublishToDlqSafelyAsync(consumeResult, $"PROCESSING_ERROR: {ex.Message}", 0, stoppingToken);
+                        _consumer.Commit(consumeResult);
+                    }
                 }
             }
         }
@@ -126,7 +133,6 @@ public class KafkaLogConsumerService : BackgroundService
         var rawPayload = result.Message.Value;
         LogEventMessage? message = null;
 
-        // Step 1: Deserialize (non-retryable - bad payload will never succeed)
         try
         {
             message = LogEventMessage.Deserialize(rawPayload);
@@ -150,10 +156,10 @@ public class KafkaLogConsumerService : BackgroundService
             return;
         }
 
-        // Step 2: Validate (non-retryable - invalid payload will never succeed)
         using var validationScope = _scopeFactory.CreateScope();
         var validator = validationScope.ServiceProvider.GetRequiredService<IValidator<LogEventMessage>>();
         var validationResult = await validator.ValidateAsync(message, ct);
+
         if (!validationResult.IsValid)
         {
             var errors = string.Join("; ", validationResult.Errors.Select(e => e.ErrorMessage));
@@ -169,7 +175,6 @@ public class KafkaLogConsumerService : BackgroundService
 
         message = _masker.Mask(message);
 
-        // Step 3-7: Try to persist with retry (transient DB failures may succeed on retry)
         var attempt = 0;
         var dbRetryPolicy = CreateDbRetryPolicy();
         var success = await TryPersistWithRetryAsync(message, ct, () => attempt++, dbRetryPolicy);
@@ -193,17 +198,28 @@ public class KafkaLogConsumerService : BackgroundService
     {
         try
         {
-            var brokerRetryPolicy = CreateBrokerRetryPolicy();
-            await brokerRetryPolicy.ExecuteAsync(async token =>
-            {
-                await _dlqPublisher.PublishAsync(result, reason, 0, token);
-            }, ct);
+            await _dlqPublisher.PublishAsync(result, reason, 0, ct);
         }
         catch (Exception ex)
         {
             _logger.LogError(
                 ex,
                 "Failed to publish to DLQ. Reason={Reason}",
+                reason);
+        }
+    }
+
+    private async Task PublishToDlqSafelyAsync(ConsumeResult<byte[], byte[]> result, string reason, int attempt, CancellationToken ct)
+    {
+        try
+        {
+            await _dlqPublisher.PublishAsync(result, reason, attempt, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(
+                ex,
+                "Failed to publish to DLQ safely. Reason={Reason}",
                 reason);
         }
     }
@@ -236,23 +252,18 @@ public class KafkaLogConsumerService : BackgroundService
 
         try
         {
-            // Step 5: Upsert flow
             var flow = await flowRepo.UpsertAsync(message, ct);
 
-            // Step 6: Insert action (may throw DuplicateEventException)
             var action = LogActionFactory.CreateFromMessage(message, flow.Id);
             action = await actionRepo.InsertAsync(action, ct);
 
-            // Step 7: Insert/upsert details
             await TryUpsertDetailAsync(detailRepo, action.Id, message, ct);
 
-            // Commit transaction
             await transaction.CommitAsync(ct);
             return true;
         }
         catch (DuplicateEventException dex)
         {
-            // Duplicate event detected - idempotent skip, transaction will be disposed without explicit rollback
             _logger.LogInformation(
                 "Duplicate event detected (idempotent skip). EventId={EventId}",
                 dex.EventId);
