@@ -1,26 +1,9 @@
 using FluentValidation;
-using Skysim.Logger.Api.Domain.Enums;
 
 namespace Skysim.Logger.Api.Contracts.DTOs;
 
 public class LogEventMessageValidator : AbstractValidator<LogEventMessage>
 {
-    private static readonly ActionType[] CanonicalActionTypes =
-    [
-        ActionType.OrderCreated,
-        ActionType.PaymentRequested,
-        ActionType.PaymentSuccess,
-        ActionType.ProviderRequested,
-        ActionType.EsimActivated,
-        ActionType.EmailSent,
-        ActionType.OrderFailed,
-        ActionType.PaymentFailed,
-        ActionType.ProviderFailed,
-        ActionType.EsimActivationFailed,
-        ActionType.EmailFailed,
-        ActionType.HttpRequest
-    ];
-
     public LogEventMessageValidator()
     {
         RuleFor(x => x.EventId)
@@ -36,10 +19,6 @@ public class LogEventMessageValidator : AbstractValidator<LogEventMessage>
         RuleFor(x => x.ServiceName)
             .NotEmpty()
             .WithMessage("serviceName is required");
-
-        RuleFor(x => x.ActionType)
-            .Must(BeAValidActionType)
-            .WithMessage(x => $"actionType '{x.ActionType}' is not in the canonical list");
 
         RuleFor(x => x.Status)
             .IsInEnum()
@@ -61,19 +40,14 @@ public class LogEventMessageValidator : AbstractValidator<LogEventMessage>
             .WithMessage("checkoutType must be one of: GUEST, AUTHENTICATED");
 
         RuleFor(x => x.RequestTime)
-            .Must(dt => dt.HasValue == false || BeValidIso8601Utc(dt.Value))
+            .Must(dt => !dt.HasValue || BeValidIso8601Utc(dt.Value))
             .When(x => x.RequestTime.HasValue)
             .WithMessage("requestTime must be a valid ISO-8601 UTC timestamp");
 
         RuleFor(x => x.ResponseTime)
-            .Must(dt => dt.HasValue == false || BeValidIso8601Utc(dt.Value))
+            .Must(dt => !dt.HasValue || BeValidIso8601Utc(dt.Value))
             .When(x => x.ResponseTime.HasValue)
             .WithMessage("responseTime must be a valid ISO-8601 UTC timestamp");
-    }
-
-    private static bool BeAValidActionType(ActionType actionType)
-    {
-        return CanonicalActionTypes.Contains(actionType);
     }
 
     private static bool BeValidIso8601Utc(DateTime dt)

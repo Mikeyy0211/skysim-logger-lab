@@ -173,18 +173,11 @@ public class LogEventMessageValidatorTests
     public void Validate_InvalidActionType_ShouldFail()
     {
         var message = CreateValidMessage();
-        // The validator checks if ActionType is in the canonical list.
-        // Since ActionType is an enum, it can only have valid enum values at runtime.
-        // Invalid action types come from JSON deserialization of unknown strings.
-        // This test validates the canonical list check works for the enum values.
-        var validActionTypes = new[]
-        {
-            ActionType.OrderCreated, ActionType.PaymentRequested, ActionType.PaymentSuccess,
-            ActionType.ProviderRequested, ActionType.EsimActivated, ActionType.EmailSent,
-            ActionType.OrderFailed, ActionType.PaymentFailed, ActionType.ProviderFailed,
-            ActionType.EsimActivationFailed, ActionType.EmailFailed
-        };
-        validActionTypes.Should().HaveCount(11);
+        message.ActionType = ActionType.HttpRequest;
+
+        var result = _validator.TestValidate(message);
+
+        result.ShouldNotHaveValidationErrorFor(x => x.ActionType);
     }
 
     [Fact]

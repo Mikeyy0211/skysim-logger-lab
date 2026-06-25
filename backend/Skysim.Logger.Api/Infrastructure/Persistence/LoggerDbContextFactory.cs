@@ -9,7 +9,9 @@ public class LoggerDbContextFactory : IDesignTimeDbContextFactory<LoggerDbContex
     {
         var optionsBuilder = new DbContextOptionsBuilder<LoggerDbContext>();
 
-        var connectionString = "Host=localhost;Port=5432;Database=skysim_logger;Username=skysim;Password=skysim_password";
+        var connectionString = Environment.GetEnvironmentVariable("SKYSIM_LOGGER_CONNECTION_STRING")
+            ?? "Host=localhost;Port=5432;Database=skysim_logger";
+
         optionsBuilder.UseNpgsql(connectionString);
 
         return new LoggerDbContext(optionsBuilder.Options);

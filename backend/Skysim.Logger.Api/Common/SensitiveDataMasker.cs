@@ -9,47 +9,78 @@ public class SensitiveDataMasker
 
     public LogEventMessage Mask(LogEventMessage message)
     {
+        ArgumentNullException.ThrowIfNull(message);
+
+        var masked = new LogEventMessage
+        {
+            EventId = message.EventId,
+            FlowId = message.FlowId,
+            FlowType = message.FlowType,
+            CheckoutType = message.CheckoutType,
+            UserId = message.UserId,
+            CustomerEmail = message.CustomerEmail,
+            CustomerPhone = message.CustomerPhone,
+            OrderId = message.OrderId,
+            PaymentId = message.PaymentId,
+            ServiceName = message.ServiceName,
+            ActionType = message.ActionType,
+            Status = message.Status,
+            Message = message.Message,
+            ErrorCode = message.ErrorCode,
+            ErrorMessage = message.ErrorMessage,
+            CorrelationId = message.CorrelationId,
+            RequestTime = message.RequestTime,
+            ResponseTime = message.ResponseTime,
+            Duration = message.Duration,
+            CreatedAt = message.CreatedAt,
+            Exception = message.Exception
+        };
+
         if (message.RequestData.HasValue)
         {
-            message.RequestData = MaskJsonElement(message.RequestData.Value);
+            masked.RequestData = MaskJsonElement(message.RequestData.Value);
         }
 
         if (message.ResponseData.HasValue)
         {
-            message.ResponseData = MaskJsonElement(message.ResponseData.Value);
+            masked.ResponseData = MaskJsonElement(message.ResponseData.Value);
         }
 
-        return message;
+        return masked;
     }
 
     public string MaskJson(string json)
     {
-        if (string.IsNullOrEmpty(json)) return json;
+        if (string.IsNullOrEmpty(json))
+        {
+            return json;
+        }
 
-        using var doc = JsonDocument.Parse(json);
-        var masked = MaskElement(doc.RootElement);
-        return masked.GetRawText();
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            var masked = MaskElement(doc.RootElement);
+            return masked.GetRawText();
+        }
+        catch (JsonException)
+        {
+            return json;
+        }
     }
 
     private static JsonElement MaskJsonElement(JsonElement element)
     {
-        var masked = MaskElement(element);
-        return masked;
+        return MaskElement(element);
     }
 
     private static JsonElement MaskElement(JsonElement element)
     {
-        switch (element.ValueKind)
+        return element.ValueKind switch
         {
-            case JsonValueKind.Object:
-                return MaskObject(element);
-
-            case JsonValueKind.Array:
-                return MaskArray(element);
-
-            default:
-                return element;
-        }
+            JsonValueKind.Object => MaskObject(element),
+            JsonValueKind.Array => MaskArray(element),
+            _ => element
+        };
     }
 
     private static JsonElement MaskObject(JsonElement element)
@@ -69,8 +100,7 @@ public class SensitiveDataMasker
             }
             else
             {
-                var masked = MaskElement(property.Value);
-                masked.WriteTo(writer);
+                MaskElement(property.Value).WriteTo(writer);
             }
         }
 
@@ -91,8 +121,7 @@ public class SensitiveDataMasker
 
         foreach (var item in element.EnumerateArray())
         {
-            var masked = MaskElement(item);
-            masked.WriteTo(writer);
+            MaskElement(item).WriteTo(writer);
         }
 
         writer.WriteEndArray();

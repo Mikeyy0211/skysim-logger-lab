@@ -19,7 +19,7 @@ public static class RetryPolicyFactory
                 MaxRetryAttempts = retryOptions.MaxAttempts,
                 DelayGenerator = args =>
                 {
-                    var delay = CalculateDelay(args.AttemptNumber + 1, retryOptions);
+                    var delay = KafkaCommon.CalculateDelay(args.AttemptNumber + 1, retryOptions);
                     return new ValueTask<TimeSpan?>(delay);
                 },
                 ShouldHandle = new PredicateBuilder().Handle<NpgsqlException>()
@@ -37,7 +37,7 @@ public static class RetryPolicyFactory
                 MaxRetryAttempts = retryOptions.MaxAttempts,
                 DelayGenerator = args =>
                 {
-                    var delay = CalculateDelay(args.AttemptNumber + 1, retryOptions);
+                    var delay = KafkaCommon.CalculateDelay(args.AttemptNumber + 1, retryOptions);
                     return new ValueTask<TimeSpan?>(delay);
                 },
                 ShouldHandle = new PredicateBuilder()
@@ -45,11 +45,5 @@ public static class RetryPolicyFactory
                     .Handle<ProduceException<byte[], byte[]>>()
             })
             .Build();
-    }
-
-    private static TimeSpan CalculateDelay(int attempt, RetryOptions options)
-    {
-        var delay = options.InitialDelayMs * Math.Pow(options.BackoffMultiplier, attempt - 1);
-        return TimeSpan.FromMilliseconds(Math.Min(delay, options.MaxDelayMs));
     }
 }

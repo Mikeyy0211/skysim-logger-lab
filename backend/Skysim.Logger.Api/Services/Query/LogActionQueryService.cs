@@ -38,15 +38,11 @@ public class LogActionQueryService : ILogActionQueryService
             q = q.Where(a => a.ServiceName == query.ServiceName);
         }
 
-        var isDesc = query.SortDirection?.Equals("desc", StringComparison.OrdinalIgnoreCase) ?? false;
-        q = isDesc
-            ? q.OrderByDescending(a => a.StepOrder)
-            : q.OrderBy(a => a.StepOrder);
-
         var totalItems = await q.CountAsync(ct);
         var totalPages = (int)Math.Ceiling(totalItems / (double)pageSize);
 
         var items = await q
+            .OrderBy(a => a.StepOrder)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .Select(a => new LogActionDto(

@@ -12,4 +12,8 @@ public interface ILogFlowQueryService
     Task<LogFlowDetailDto?> GetByFlowIdAsync(
         string flowId,
         CancellationToken ct = default);
+
+    Task<bool> FlowExistsAsync(
+        string flowId,
+        CancellationToken ct = default);
 }

@@ -96,7 +96,7 @@ public class LoggerMiddleware
                 caughtException,
                 selectedHeaders);
 
-            _masker.Mask(message);
+            message = _masker.Mask(message);
 
             _ = FireAndForgetPublishAsync(message);
         }

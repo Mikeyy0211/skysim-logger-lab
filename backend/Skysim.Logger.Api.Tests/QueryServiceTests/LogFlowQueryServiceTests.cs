@@ -207,6 +207,26 @@ public class LogFlowQueryServiceTests : IDisposable
         result.Timeline[2].StepOrder.Should().Be(3);
     }
 
+    [Fact]
+    public async Task FlowExistsAsync_ExistingFlowId_ReturnsTrue()
+    {
+        var flow = CreateFlow("existing-flow");
+        await _db.LogFlows.AddAsync(flow);
+        await _db.SaveChangesAsync();
+
+        var result = await _service.FlowExistsAsync("existing-flow");
+
+        result.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task FlowExistsAsync_NonExistingFlowId_ReturnsFalse()
+    {
+        var result = await _service.FlowExistsAsync("non-existent-flow");
+
+        result.Should().BeFalse();
+    }
+
     private async Task SeedFlowsAsync(int count)
     {
         var flows = Enumerable.Range(1, count)

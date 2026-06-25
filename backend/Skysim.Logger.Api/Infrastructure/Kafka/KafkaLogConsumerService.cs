@@ -11,6 +11,7 @@ using Polly;
 using Skysim.Logger.Api.Common;
 using Skysim.Logger.Api.Contracts.DTOs;
 using Skysim.Logger.Api.Domain.Entities;
+using Skysim.Logger.Api.Domain.Factories;
 using Skysim.Logger.Api.Infrastructure.Persistence;
 using Skysim.Logger.Api.Infrastructure.Persistence.Exceptions;
 using Skysim.Logger.Api.Infrastructure.Persistence.Repositories;
@@ -166,7 +167,7 @@ public class KafkaLogConsumerService : BackgroundService
             return;
         }
 
-        _masker.Mask(message);
+        message = _masker.Mask(message);
 
         // Step 3-7: Try to persist with retry (transient DB failures may succeed on retry)
         var attempt = 0;
@@ -239,7 +240,7 @@ public class KafkaLogConsumerService : BackgroundService
             var flow = await flowRepo.UpsertAsync(message, ct);
 
             // Step 6: Insert action (may throw DuplicateEventException)
-            var action = await BuildLogActionAsync(message, flow.Id, ct);
+            var action = LogActionFactory.CreateFromMessage(message, flow.Id);
             action = await actionRepo.InsertAsync(action, ct);
 
             // Step 7: Insert/upsert details
@@ -266,37 +267,6 @@ public class KafkaLogConsumerService : BackgroundService
                 message.FlowId);
             throw;
         }
-    }
-
-    private Task<LogAction> BuildLogActionAsync(LogEventMessage message, Guid flowId, CancellationToken ct)
-    {
-        var durationMs = message.Duration;
-        if (!durationMs.HasValue && message.RequestTime.HasValue && message.ResponseTime.HasValue)
-        {
-            durationMs = (int)(message.ResponseTime.Value - message.RequestTime.Value).TotalMilliseconds;
-        }
-
-        var action = new LogAction
-        {
-            Id = Guid.NewGuid(),
-            EventId = message.EventId,
-            FlowId = message.FlowId,
-            StepOrder = 0, // Will be set by repository
-            ServiceName = message.ServiceName,
-            ActionType = message.ActionType.ToString(),
-            Status = message.Status.ToString(),
-            Message = message.Message,
-            ErrorCode = message.ErrorCode,
-            ErrorMessage = message.ErrorMessage,
-            RequestTime = message.RequestTime,
-            ResponseTime = message.ResponseTime,
-            DurationMs = durationMs,
-            CorrelationId = message.CorrelationId,
-            CreatedAt = message.CreatedAt,
-            UpdatedAt = DateTime.UtcNow
-        };
-
-        return Task.FromResult(action);
     }
 
     private async Task TryUpsertDetailAsync(

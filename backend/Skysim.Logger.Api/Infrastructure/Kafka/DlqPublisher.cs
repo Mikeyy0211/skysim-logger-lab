@@ -7,29 +7,60 @@ using Skysim.Logger.Api.Contracts.DTOs;
 
 namespace Skysim.Logger.Api.Infrastructure.Kafka;
 
+public interface IKafkaProducerFactory
+{
+    IProducer<byte[], byte[]> CreateProducer();
+}
+
+public class KafkaProducerFactory : IKafkaProducerFactory
+{
+    private readonly KafkaConsumerOptions _options;
+
+    public KafkaProducerFactory(IOptions<KafkaConsumerOptions> options)
+    {
+        _options = options.Value;
+    }
+
+    public IProducer<byte[], byte[]> CreateProducer()
+    {
+        var config = new ProducerConfig
+        {
+            BootstrapServers = _options.Producer.BootstrapServers,
+            Acks = KafkaCommon.ParseAcks(_options.Producer.Acks)
+        };
+
+        return new ProducerBuilder<byte[], byte[]>(config).Build();
+    }
+}
+
 public class DlqPublisher : IDlqPublisher, IDisposable
 {
-    private readonly IProducer<byte[], byte[]> _producer;
-    private readonly KafkaConsumerOptions _options;
+    private readonly IKafkaProducerFactory _producerFactory;
+    private readonly string _dlqTopic;
     private readonly SensitiveDataMasker _masker;
     private readonly ILogger<DlqPublisher> _logger;
 
+    private IProducer<byte[], byte[]>? _lazyProducer;
+
     public DlqPublisher(
         IOptions<KafkaConsumerOptions> options,
+        IKafkaProducerFactory producerFactory,
         SensitiveDataMasker masker,
         ILogger<DlqPublisher> logger)
     {
-        _options = options.Value;
+        _producerFactory = producerFactory;
+        _dlqTopic = options.Value.DlqTopic;
         _masker = masker;
         _logger = logger;
+    }
 
-        var producerConfig = new ProducerConfig
+    private IProducer<byte[], byte[]> Producer
+    {
+        get
         {
-            BootstrapServers = _options.Producer.BootstrapServers,
-            Acks = ParseAcks(_options.Producer.Acks)
-        };
-
-        _producer = new ProducerBuilder<byte[], byte[]>(producerConfig).Build();
+            _lazyProducer ??= _producerFactory.CreateProducer();
+            return _lazyProducer;
+        }
     }
 
     public async Task PublishAsync(
@@ -38,39 +69,34 @@ public class DlqPublisher : IDlqPublisher, IDisposable
         int attempt,
         CancellationToken cancellationToken = default)
     {
-        var originalKey = originalResult.Message.Key;
         var originalPayload = originalResult.Message.Value;
-
-        // Parse and mask the payload
         var maskedPayload = MaskPayload(originalPayload);
 
         var headers = new Headers
         {
             { "failure_reason", Encoding.UTF8.GetBytes(failureReason) },
             { "failed_at", Encoding.UTF8.GetBytes(DateTime.UtcNow.ToString("O")) },
-            { "consumer_attempt", Encoding.UTF8.GetBytes(attempt.ToString()) }
+            { "consumer_attempt", Encoding.UTF8.GetBytes(attempt.ToString()) },
+            { "original_topic", Encoding.UTF8.GetBytes(originalResult.Topic) },
+            { "original_partition", Encoding.UTF8.GetBytes(originalResult.Partition.Value.ToString()) },
+            { "original_offset", Encoding.UTF8.GetBytes(originalResult.Offset.Value.ToString()) }
         };
-
-        // Preserve original topic/partition/offset info
-        headers.Add("original_topic", Encoding.UTF8.GetBytes(originalResult.Topic));
-        headers.Add("original_partition", Encoding.UTF8.GetBytes(originalResult.Partition.Value.ToString()));
-        headers.Add("original_offset", Encoding.UTF8.GetBytes(originalResult.Offset.Value.ToString()));
 
         var message = new Message<byte[], byte[]>
         {
-            Key = originalKey,
+            Key = originalResult.Message.Key,
             Value = maskedPayload,
             Headers = headers
         };
 
         try
         {
-            var result = await _producer.ProduceAsync(_options.DlqTopic, message, cancellationToken);
+            var result = await Producer.ProduceAsync(_dlqTopic, message, cancellationToken);
 
             _logger.LogWarning(
-                "Message published to DLQ. Topic={DlqTopic}, Partition={Partition}, Offset={Offset}, " +
-                "FailureReason={FailureReason}, Attempt={Attempt}",
-                _options.DlqTopic,
+                "Message published to DLQ. Topic={DlqTopic}, Partition={Partition}, Offset={Offset}, "
+                + "FailureReason={FailureReason}, Attempt={Attempt}",
+                _dlqTopic,
                 result.Partition.Value,
                 result.Offset.Value,
                 failureReason,
@@ -81,7 +107,7 @@ public class DlqPublisher : IDlqPublisher, IDisposable
             _logger.LogError(
                 ex,
                 "Failed to publish message to DLQ. Topic={DlqTopic}, FailureReason={FailureReason}, Attempt={Attempt}",
-                _options.DlqTopic,
+                _dlqTopic,
                 failureReason,
                 attempt);
             throw;
@@ -110,18 +136,10 @@ public class DlqPublisher : IDlqPublisher, IDisposable
 
     public void Dispose()
     {
-        _producer?.Flush(TimeSpan.FromSeconds(5));
-        _producer?.Dispose();
-    }
-
-    private static Acks ParseAcks(string value)
-    {
-        return value.ToLowerInvariant() switch
+        if (_lazyProducer != null)
         {
-            "all" or "-1" => Acks.All,
-            "none" or "0" => Acks.None,
-            "leader" or "1" => Acks.Leader,
-            _ => Acks.All
-        };
+            _lazyProducer.Flush(TimeSpan.FromSeconds(5));
+            _lazyProducer.Dispose();
+        }
     }
 }

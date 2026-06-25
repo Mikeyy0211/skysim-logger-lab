@@ -100,8 +100,8 @@ public class LogFlowsController : ControllerBase
                 new ApiErrorDetail("validation_error", "Invalid query parameters.", errors)));
         }
 
-        var flowExists = await _flowQueryService.GetByFlowIdAsync(flowId, cancellationToken);
-        if (flowExists == null)
+        var flowExists = await _flowQueryService.FlowExistsAsync(flowId, cancellationToken);
+        if (!flowExists)
         {
             return NotFound(new ApiErrorResponse(
                 new ApiErrorDetail("flow_not_found", $"Flow with id '{flowId}' was not found.", null)));

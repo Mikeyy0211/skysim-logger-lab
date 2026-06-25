@@ -4,6 +4,7 @@ using Npgsql;
 using Skysim.Logger.Api.Contracts.DTOs;
 using Skysim.Logger.Api.Domain.Entities;
 using Skysim.Logger.Api.Domain.Enums;
+using Skysim.Logger.Api.Domain.Services;
 using Status = Skysim.Logger.Api.Domain.Enums.Status;
 
 namespace Skysim.Logger.Api.Infrastructure.Persistence.Repositories;
@@ -11,16 +12,6 @@ namespace Skysim.Logger.Api.Infrastructure.Persistence.Repositories;
 public class LogFlowRepository : ILogFlowRepository
 {
     private readonly LoggerDbContext _db;
-
-    private static readonly HashSet<ActionType> TerminalActionTypes =
-    [
-        ActionType.OrderFailed,
-        ActionType.PaymentFailed,
-        ActionType.ProviderFailed,
-        ActionType.EsimActivationFailed,
-        ActionType.EmailFailed,
-        ActionType.EsimActivated
-    ];
 
     public LogFlowRepository(LoggerDbContext db)
     {
@@ -32,7 +23,7 @@ public class LogFlowRepository : ILogFlowRepository
         CancellationToken cancellationToken = default)
     {
         var now = DateTime.UtcNow;
-        var isTerminal = IsTerminalAction(message.ActionType, message.Status);
+        var isTerminal = FlowDomainService.IsTerminalAction(message.ActionType, message.Status);
         var isSuccess = message.Status == Status.Success;
 
         // Upsert log_flows using raw SQL for efficiency
@@ -135,10 +126,4 @@ public class LogFlowRepository : ILogFlowRepository
         };
     }
 
-    private static bool IsTerminalAction(ActionType actionType, Status status)
-    {
-        return TerminalActionTypes.Contains(actionType)
-            || (status == Status.Failed)
-            || (status == Status.Success && actionType == ActionType.EsimActivated);
-    }
 }

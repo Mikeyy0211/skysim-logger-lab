@@ -184,6 +184,17 @@ public class LogFlowQueryService : ILogFlowQueryService
         return new LogFlowDetailDto(summary, actions);
     }
 
+    public async Task<bool> FlowExistsAsync(
+        string flowId,
+        CancellationToken ct = default)
+    {
+        await using var db = await _dbContextFactory.CreateDbContextAsync(ct);
+
+        return await db.LogFlows
+            .AsNoTracking()
+            .AnyAsync(f => f.FlowId == flowId, ct);
+    }
+
     private static IQueryable<LogFlow> ApplySorting(
         IQueryable<LogFlow> query,
         string? sortBy,

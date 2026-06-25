@@ -20,10 +20,38 @@ public class LoggerDbContext : DbContext
         // log_flows
         modelBuilder.Entity<LogFlow>(entity =>
         {
-            entity.HasKey(e => e.Id);
+            entity.ToTable("log_flows");
+
+            entity.Property(e => e.Id).HasColumnName("id");
+            entity.Property(e => e.FlowId).HasColumnName("flow_id");
+            entity.Property(e => e.FlowType).HasColumnName("flow_type");
+            entity.Property(e => e.CheckoutType).HasColumnName("checkout_type");
+            entity.Property(e => e.Status).HasColumnName("status");
+            entity.Property(e => e.CustomerEmail).HasColumnName("customer_email");
+            entity.Property(e => e.CustomerPhone).HasColumnName("customer_phone");
+            entity.Property(e => e.UserId).HasColumnName("user_id");
+            entity.Property(e => e.OrderId).HasColumnName("order_id");
+            entity.Property(e => e.PaymentId).HasColumnName("payment_id");
+            entity.Property(e => e.TotalSteps).HasColumnName("total_steps");
+            entity.Property(e => e.SuccessSteps).HasColumnName("success_steps");
+            entity.Property(e => e.FailedSteps).HasColumnName("failed_steps");
+            entity.Property(e => e.LastActionType).HasColumnName("last_action_type");
+            entity.Property(e => e.LastMessage).HasColumnName("last_message");
+            entity.Property(e => e.StartedAt).HasColumnName("started_at");
+            entity.Property(e => e.CompletedAt).HasColumnName("completed_at");
+            entity.Property(e => e.CreatedAt).HasColumnName("created_at");
+            entity.Property(e => e.UpdatedAt).HasColumnName("updated_at");
 
             entity.Property(e => e.Id)
                 .HasDefaultValueSql("gen_random_uuid()");
+
+            entity.Property(e => e.CreatedAt)
+                .HasDefaultValueSql("now()");
+
+            entity.Property(e => e.UpdatedAt)
+                .HasDefaultValueSql("now()");
+
+            entity.HasKey(e => e.Id);
 
             entity.HasIndex(e => e.FlowId)
                 .IsUnique()
@@ -59,12 +87,6 @@ public class LoggerDbContext : DbContext
             entity.HasIndex(e => e.CompletedAt)
                 .HasDatabaseName("idx_log_flows_completed_at");
 
-            entity.Property(e => e.CreatedAt)
-                .HasDefaultValueSql("now()");
-
-            entity.Property(e => e.UpdatedAt)
-                .HasDefaultValueSql("now()");
-
             entity.HasMany(e => e.Actions)
                 .WithOne(a => a.Flow)
                 .HasForeignKey(a => a.FlowId)
@@ -74,10 +96,35 @@ public class LoggerDbContext : DbContext
         // log_actions
         modelBuilder.Entity<LogAction>(entity =>
         {
-            entity.HasKey(e => e.Id);
+            entity.ToTable("log_actions");
+
+            entity.Property(e => e.Id).HasColumnName("id");
+            entity.Property(e => e.EventId).HasColumnName("event_id");
+            entity.Property(e => e.FlowId).HasColumnName("flow_id");
+            entity.Property(e => e.StepOrder).HasColumnName("step_order");
+            entity.Property(e => e.ServiceName).HasColumnName("service_name");
+            entity.Property(e => e.ActionType).HasColumnName("action_type");
+            entity.Property(e => e.Status).HasColumnName("status");
+            entity.Property(e => e.Message).HasColumnName("message");
+            entity.Property(e => e.ErrorCode).HasColumnName("error_code");
+            entity.Property(e => e.ErrorMessage).HasColumnName("error_message");
+            entity.Property(e => e.RequestTime).HasColumnName("request_time");
+            entity.Property(e => e.ResponseTime).HasColumnName("response_time");
+            entity.Property(e => e.DurationMs).HasColumnName("duration_ms");
+            entity.Property(e => e.CorrelationId).HasColumnName("correlation_id");
+            entity.Property(e => e.CreatedAt).HasColumnName("created_at");
+            entity.Property(e => e.UpdatedAt).HasColumnName("updated_at");
 
             entity.Property(e => e.Id)
                 .HasDefaultValueSql("gen_random_uuid()");
+
+            entity.Property(e => e.CreatedAt)
+                .HasDefaultValueSql("now()");
+
+            entity.Property(e => e.UpdatedAt)
+                .HasDefaultValueSql("now()");
+
+            entity.HasKey(e => e.Id);
 
             entity.HasIndex(e => e.EventId)
                 .IsUnique()
@@ -98,12 +145,6 @@ public class LoggerDbContext : DbContext
             entity.HasIndex(e => e.CreatedAt)
                 .HasDatabaseName("idx_log_actions_created_at");
 
-            entity.Property(e => e.CreatedAt)
-                .HasDefaultValueSql("now()");
-
-            entity.Property(e => e.UpdatedAt)
-                .HasDefaultValueSql("now()");
-
             entity.HasOne(e => e.Detail)
                 .WithOne(d => d.Action)
                 .HasForeignKey<LogActionDetail>(d => d.ActionId)
@@ -113,20 +154,31 @@ public class LoggerDbContext : DbContext
         // log_action_details
         modelBuilder.Entity<LogActionDetail>(entity =>
         {
-            entity.HasKey(e => e.Id);
+            entity.ToTable("log_action_details");
+
+            entity.Property(e => e.Id).HasColumnName("id");
+            entity.Property(e => e.ActionId).HasColumnName("action_id");
+            entity.Property(e => e.RequestPayload).HasColumnName("request_payload").HasColumnType("jsonb");
+            entity.Property(e => e.ResponsePayload).HasColumnName("response_payload").HasColumnType("jsonb");
+            entity.Property(e => e.ErrorPayload).HasColumnName("error_payload").HasColumnType("jsonb");
+            entity.Property(e => e.Metadata).HasColumnName("metadata").HasColumnType("jsonb");
+            entity.Property(e => e.CreatedAt).HasColumnName("created_at");
+            entity.Property(e => e.UpdatedAt).HasColumnName("updated_at");
 
             entity.Property(e => e.Id)
                 .HasDefaultValueSql("gen_random_uuid()");
-
-            entity.HasIndex(e => e.ActionId)
-                .IsUnique()
-                .HasDatabaseName("idx_log_action_details_action_id");
 
             entity.Property(e => e.CreatedAt)
                 .HasDefaultValueSql("now()");
 
             entity.Property(e => e.UpdatedAt)
                 .HasDefaultValueSql("now()");
+
+            entity.HasKey(e => e.Id);
+
+            entity.HasIndex(e => e.ActionId)
+                .IsUnique()
+                .HasDatabaseName("idx_log_action_details_action_id");
         });
     }
 }

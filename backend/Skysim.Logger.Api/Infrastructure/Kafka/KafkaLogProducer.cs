@@ -1,8 +1,6 @@
 using System.Text;
 using Confluent.Kafka;
 using Microsoft.Extensions.Logging;
-using Polly;
-using Polly.Retry;
 using Skysim.Logger.Api.Common;
 using Skysim.Logger.Api.Contracts.DTOs;
 
@@ -13,33 +11,50 @@ public class KafkaLogProducer : IKafkaLogProducer, IDisposable
     private const string Topic = "skysim.action.logs";
     private const int FlushTimeoutSeconds = 5;
 
-    private readonly IKafkaProducerWrapper _wrapper;
-    private readonly IProducer<string, byte[]> _producer;
+    private readonly IKafkaLogProducerOptions _options;
     private readonly ILogger<KafkaLogProducer> _logger;
-    private readonly ResiliencePipeline _retryPipeline;
-    private readonly string _serviceName;
+    private readonly RetryOptions _retryOptions;
+
+    private IProducer<string, byte[]>? _producer;
 
     public KafkaLogProducer(
         IKafkaLogProducerOptions options,
-        ILogger<KafkaLogProducer> logger,
-        IKafkaProducerWrapper? wrapper = null)
+        ILogger<KafkaLogProducer> logger)
     {
-        _producer = BuildProducer(options);
-        _wrapper = wrapper ?? new KafkaProducerWrapper(_producer);
+        _options = options;
         _logger = logger;
-        _serviceName = options.ServiceName;
-        _retryPipeline = BuildRetryPipeline(options.Retry);
+        _retryOptions = options.Retry;
+    }
+
+    internal KafkaLogProducer(
+        IKafkaLogProducerOptions options,
+        ILogger<KafkaLogProducer> logger,
+        IProducer<string, byte[]> producer)
+    {
+        _options = options;
+        _logger = logger;
+        _retryOptions = options.Retry;
+        _producer = producer;
+    }
+
+    private IProducer<string, byte[]> Producer
+    {
+        get
+        {
+            _producer ??= BuildProducer();
+            return _producer;
+        }
     }
 
     public async Task PublishAsync(LogEventMessage message, CancellationToken cancellationToken = default)
     {
-        message.ServiceName = _serviceName;
+        message.ServiceName = _options.ServiceName;
 
         byte[] payload;
         try
         {
-            var json = System.Text.Json.JsonSerializer.Serialize(message, LogEventMessage.JsonOptions);
-            payload = Encoding.UTF8.GetBytes(json);
+            payload = Encoding.UTF8.GetBytes(
+                System.Text.Json.JsonSerializer.Serialize(message, LogEventMessage.JsonOptions));
         }
         catch (Exception ex)
         {
@@ -47,36 +62,61 @@ public class KafkaLogProducer : IKafkaLogProducer, IDisposable
             return;
         }
 
-        var key = !string.IsNullOrEmpty(message.FlowId)
-            ? message.FlowId
-            : message.EventId.ToString();
-
         var kafkaMessage = new Message<string, byte[]>
         {
-            Key = key,
+            Key = string.IsNullOrEmpty(message.FlowId) ? message.EventId.ToString() : message.FlowId,
             Value = payload
         };
 
-        try
+        var success = false;
+        var attempt = 0;
+
+        while (!success && attempt < _retryOptions.MaxAttempts)
         {
-            await _retryPipeline.ExecuteAsync(
-                async ct =>
-                {
-                    var result = await _wrapper.ProduceAsync(Topic, kafkaMessage, ct);
-                    _logger.LogDebug(
-                        "LogEventMessage delivered. Topic={Topic}, Partition={Partition}, Offset={Offset}, EventId={EventId}",
-                        result.Topic,
-                        result.PartitionValue,
-                        result.OffsetValue,
-                        message.EventId);
-                },
-                cancellationToken);
+            attempt++;
+            try
+            {
+                var result = await Producer.ProduceAsync(Topic, kafkaMessage, cancellationToken);
+                _logger.LogDebug(
+                    "LogEventMessage delivered. Topic={Topic}, Partition={Partition}, "
+                    + "Offset={Offset}, EventId={EventId}",
+                    result.Topic,
+                    result.Partition.Value,
+                    result.Offset.Value,
+                    message.EventId);
+                success = true;
+            }
+            catch (ProduceException<string, byte[]> ex) when (attempt < _retryOptions.MaxAttempts)
+            {
+                var delay = KafkaCommon.CalculateDelay(attempt, _retryOptions);
+                _logger.LogWarning(
+                    ex,
+                    "Kafka produce failed. EventId={EventId}, Attempt={Attempt}, "
+                    + "DelayMs={DelayMs}",
+                    message.EventId,
+                    attempt,
+                    (int)delay.TotalMilliseconds);
+
+                await Task.Delay(delay, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(
+                    ex,
+                    "Kafka produce failed after all retries. EventId={EventId}, "
+                    + "FlowId={FlowId}, Topic={Topic}",
+                    message.EventId,
+                    message.FlowId,
+                    Topic);
+                return;
+            }
         }
-        catch (Exception ex)
+
+        if (!success)
         {
             _logger.LogWarning(
-                ex,
-                "Failed to publish LogEventMessage after all retries. EventId={EventId}, FlowId={FlowId}, Topic={Topic}",
+                "Kafka produce failed after all retries. EventId={EventId}, "
+                + "FlowId={FlowId}, Topic={Topic}",
                 message.EventId,
                 message.FlowId,
                 Topic);
@@ -85,52 +125,21 @@ public class KafkaLogProducer : IKafkaLogProducer, IDisposable
 
     public void Dispose()
     {
-        _producer.Flush(TimeSpan.FromSeconds(FlushTimeoutSeconds));
-        _producer.Dispose();
+        if (_producer != null)
+        {
+            _producer.Flush(TimeSpan.FromSeconds(FlushTimeoutSeconds));
+            _producer.Dispose();
+        }
     }
 
-    private static IProducer<string, byte[]> BuildProducer(IKafkaLogProducerOptions options)
+    private IProducer<string, byte[]> BuildProducer()
     {
         var config = new ProducerConfig
         {
-            BootstrapServers = options.BootstrapServers,
-            Acks = ParseAcks(options.Acks)
+            BootstrapServers = _options.BootstrapServers,
+            Acks = KafkaCommon.ParseAcks(_options.Acks)
         };
 
         return new ProducerBuilder<string, byte[]>(config).Build();
-    }
-
-    private static ResiliencePipeline BuildRetryPipeline(RetryOptions retryOptions)
-    {
-        return new ResiliencePipelineBuilder()
-            .AddRetry(new RetryStrategyOptions
-            {
-                MaxRetryAttempts = retryOptions.MaxAttempts,
-                DelayGenerator = args =>
-                {
-                    var delay = CalculateDelay(args.AttemptNumber + 1, retryOptions);
-                    return new ValueTask<TimeSpan?>(delay);
-                },
-                ShouldHandle = new PredicateBuilder()
-                    .Handle<ProduceException<string, byte[]>>()
-            })
-            .Build();
-    }
-
-    private static TimeSpan CalculateDelay(int attempt, RetryOptions options)
-    {
-        var delay = options.InitialDelayMs * Math.Pow(options.BackoffMultiplier, attempt - 1);
-        return TimeSpan.FromMilliseconds(Math.Min(delay, options.MaxDelayMs));
-    }
-
-    private static Acks ParseAcks(string value)
-    {
-        return value.ToLowerInvariant() switch
-        {
-            "all" or "-1" => Acks.All,
-            "none" or "0" => Acks.None,
-            "leader" or "1" => Acks.Leader,
-            _ => Acks.All
-        };
     }
 }

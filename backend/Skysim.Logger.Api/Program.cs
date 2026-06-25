@@ -25,8 +25,8 @@ builder.Services.Configure<KafkaConsumerOptions>(
 builder.Services.Configure<LoggerOptions>(
     builder.Configuration.GetSection("Logger"));
 
-// Register DbContext
-builder.Services.AddDbContext<LoggerDbContext>(options =>
+// Register DbContextFactory for both write (repositories) and read-only query services
+builder.Services.AddDbContextFactory<LoggerDbContext>(options =>
 {
     options.UseNpgsql(
         builder.Configuration.GetConnectionString("DefaultConnection"),
@@ -35,19 +35,6 @@ builder.Services.AddDbContext<LoggerDbContext>(options =>
             npgsqlOptions.ExecutionStrategy(_ => new NoRetryExecutionStrategy());
         });
 });
-
-// Register DbContextFactory for read-only query services
-builder.Services.AddDbContextFactory<LoggerDbContext>(
-    options =>
-    {
-        options.UseNpgsql(
-            builder.Configuration.GetConnectionString("DefaultConnection"),
-            npgsqlOptions =>
-            {
-                npgsqlOptions.ExecutionStrategy(_ => new NoRetryExecutionStrategy());
-            });
-    },
-    ServiceLifetime.Scoped);
 
 // Register repositories
 builder.Services.AddScoped<ILogFlowRepository, LogFlowRepository>();
@@ -64,6 +51,9 @@ builder.Services.AddSingleton<SensitiveDataMasker>();
 
 // Register SensitiveFields
 builder.Services.AddSingleton(SensitiveFields.Instance);
+
+// Register Kafka Producer Factory (used by DlqPublisher)
+builder.Services.AddSingleton<IKafkaProducerFactory, KafkaProducerFactory>();
 
 // Register DLQ Publisher
 builder.Services.AddSingleton<IDlqPublisher, DlqPublisher>();
