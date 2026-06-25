@@ -3,12 +3,14 @@ using Microsoft.EntityFrameworkCore;
 using Skysim.Logger.Api.Common;
 using Skysim.Logger.Api.Contracts.DTOs;
 using Skysim.Logger.Api.Contracts.DTOs.Queries;
-using Skysim.Logger.Api.Domain.Entities;
-using Skysim.Logger.Api.Domain.Enums;
-using Skysim.Logger.Api.Infrastructure.Persistence;
 using Skysim.Logger.Api.Services.Query;
+using Skysim.Logger.Infrastructure.Data;
+using Skysim.Logger.Infrastructure.Entities;
 using Xunit;
 using Status = Skysim.Logger.Api.Domain.Enums.Status;
+using CheckoutType = Skysim.Logger.Api.Domain.Enums.CheckoutType;
+using FlowType = Skysim.Logger.Api.Domain.Enums.FlowType;
+using ActionType = Skysim.Logger.Api.Domain.Enums.ActionType;
 
 namespace Skysim.Logger.Api.Tests.QueryServiceTests;
 

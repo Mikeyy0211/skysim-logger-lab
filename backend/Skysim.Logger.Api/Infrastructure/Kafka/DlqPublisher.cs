@@ -2,8 +2,9 @@ using System.Text;
 using Confluent.Kafka;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Skysim.Logger.Api.Common;
 using Skysim.Logger.Api.Contracts.DTOs;
+using Skysim.Logger.Common.Kafka;
+using Skysim.Logger.Common.Masking;
 
 namespace Skysim.Logger.Api.Infrastructure.Kafka;
 
@@ -46,7 +47,7 @@ public class DlqPublisher : IDlqPublisher, IDisposable
 {
     private readonly IKafkaProducerFactory _producerFactory;
     private readonly string _dlqTopic;
-    private readonly SensitiveDataMasker _masker;
+    private readonly ISensitiveDataMasker _masker;
     private readonly ILogger<DlqPublisher> _logger;
     private readonly RetryOptions _retryOptions;
 
@@ -55,7 +56,7 @@ public class DlqPublisher : IDlqPublisher, IDisposable
     public DlqPublisher(
         IOptions<KafkaConsumerOptions> options,
         IKafkaProducerFactory producerFactory,
-        SensitiveDataMasker masker,
+        ISensitiveDataMasker masker,
         ILogger<DlqPublisher> logger)
     {
         _producerFactory = producerFactory;

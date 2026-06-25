@@ -6,11 +6,13 @@ using Microsoft.Extensions.Logging;
 using Moq;
 using Skysim.Logger.Api.Common;
 using Skysim.Logger.Api.Contracts.DTOs;
-using Skysim.Logger.Api.Domain.Entities;
-using Skysim.Logger.Api.Domain.Enums;
 using Skysim.Logger.Api.Infrastructure.Kafka;
-using Skysim.Logger.Api.Infrastructure.Persistence.Repositories;
+using Skysim.Logger.Infrastructure.Entities;
+using Skysim.Logger.Infrastructure.Repositories;
 using Xunit;
+using Status = Skysim.Logger.Api.Domain.Enums.Status;
+using FlowType = Skysim.Logger.Api.Domain.Enums.FlowType;
+using ActionType = Skysim.Logger.Api.Domain.Enums.ActionType;
 
 namespace Skysim.Logger.Api.Tests;
 

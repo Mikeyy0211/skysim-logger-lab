@@ -1,4 +1,4 @@
-using Polly;
+using Skysim.Logger.Common.Kafka;
 
 namespace Skysim.Logger.Api.Infrastructure.Kafka;
 
@@ -26,12 +26,4 @@ public class ProducerOptions
 {
     public string BootstrapServers { get; set; } = "localhost:9092";
     public string Acks { get; set; } = "all";
-}
-
-public class RetryOptions
-{
-    public int MaxAttempts { get; set; } = 5;
-    public int InitialDelayMs { get; set; } = 200;
-    public double BackoffMultiplier { get; set; } = 2.0;
-    public int MaxDelayMs { get; set; } = 3200;
 }

@@ -1,8 +1,7 @@
-namespace Skysim.Logger.Api.Domain.Entities;
+namespace Skysim.Logger.Infrastructure.Entities;
 
-public class LogAction
+public class LogAction : BaseEntity
 {
-    public Guid Id { get; set; }
     public Guid EventId { get; set; }
     public string FlowId { get; set; } = string.Empty;
     public int StepOrder { get; set; }
@@ -16,8 +15,6 @@ public class LogAction
     public DateTime? ResponseTime { get; set; }
     public int? DurationMs { get; set; }
     public string? CorrelationId { get; set; }
-    public DateTime CreatedAt { get; set; }
-    public DateTime UpdatedAt { get; set; }
     public LogFlow? Flow { get; set; }
     public LogActionDetail? Detail { get; set; }
 }

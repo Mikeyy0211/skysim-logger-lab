@@ -3,17 +3,19 @@ using System.Text.Json;
 using FluentValidation;
 using Microsoft.AspNetCore.OpenApi;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Options;
 using Microsoft.OpenApi.Models;
-using Skysim.Logger.Api.Common;
-using Skysim.Logger.Api.Contracts.DTOs;
-using Skysim.Logger.Api.Contracts.DTOs.Queries;
 using Skysim.Logger.Api.Infrastructure.Kafka;
-using Skysim.Logger.Api.Infrastructure.Persistence;
-using Skysim.Logger.Api.Infrastructure.Persistence.Repositories;
 using Skysim.Logger.Api.Middlewares;
 using Skysim.Logger.Api.Services.Query;
 using Skysim.Logger.Api.Validators;
+using Skysim.Logger.Common.Kafka;
+using Skysim.Logger.Common.Masking;
+using Skysim.Logger.Infrastructure.Data;
+using Skysim.Logger.Infrastructure.Repositories;
+using LogEventMessage = Skysim.Logger.Api.Contracts.DTOs.LogEventMessage;
+using LoggerOptions = Skysim.Logger.Api.Infrastructure.Kafka.LoggerOptions;
+using LogFlowListQuery = Skysim.Logger.Api.Contracts.DTOs.Queries.LogFlowListQuery;
+using LogActionListQuery = Skysim.Logger.Api.Contracts.DTOs.Queries.LogActionListQuery;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -37,11 +39,11 @@ builder.Services.AddScoped<ILogFlowRepository, LogFlowRepository>();
 builder.Services.AddScoped<ILogActionRepository, LogActionRepository>();
 builder.Services.AddScoped<ILogActionDetailRepository, LogActionDetailRepository>();
 
-builder.Services.AddScoped<IValidator<LogEventMessage>, LogEventMessageValidator>();
+builder.Services.AddScoped<IValidator<LogEventMessage>, Skysim.Logger.Api.Contracts.DTOs.LogEventMessageValidator>();
 builder.Services.AddScoped<IValidator<LogFlowListQuery>, LogFlowListQueryValidator>();
 builder.Services.AddScoped<IValidator<LogActionListQuery>, LogActionListQueryValidator>();
 
-builder.Services.AddSingleton<SensitiveDataMasker>();
+builder.Services.AddSingleton<ISensitiveDataMasker, SensitiveDataMasker>();
 builder.Services.AddSingleton(SensitiveFields.Instance);
 
 builder.Services.AddSingleton<IKafkaProducerFactory, KafkaProducerFactory>();

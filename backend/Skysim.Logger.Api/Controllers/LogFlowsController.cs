@@ -1,18 +1,15 @@
-using FluentValidation;
 using Microsoft.AspNetCore.Mvc;
+using Skysim.Logger.Api.Base;
 using Skysim.Logger.Api.Contracts.DTOs;
 using Skysim.Logger.Api.Contracts.DTOs.Queries;
 using Skysim.Logger.Api.Services.Query;
+using FluentValidation;
 
 namespace Skysim.Logger.Api.Controllers;
 
-/// <summary>
-/// Read-only API for querying log flows and their action timelines.
-/// </summary>
-[ApiController]
 [Route("api/log-flows")]
 [Produces("application/json")]
-public class LogFlowsController : ControllerBase
+public class LogFlowsController : ApiControllerBase
 {
     private readonly ILogFlowQueryService _flowQueryService;
     private readonly ILogActionQueryService _actionQueryService;
@@ -31,9 +28,6 @@ public class LogFlowsController : ControllerBase
         _actionListValidator = actionListValidator;
     }
 
-    /// <summary>
-    /// Returns a paginated, filterable list of log flow summaries.
-    /// </summary>
     [HttpGet]
     [ProducesResponseType(typeof(PagedResponse<LogFlowSummaryDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status400BadRequest)]
@@ -41,23 +35,13 @@ public class LogFlowsController : ControllerBase
         [FromQuery] LogFlowListQuery query,
         CancellationToken cancellationToken)
     {
-        var validationResult = await _listValidator.ValidateAsync(query, cancellationToken);
-        if (!validationResult.IsValid)
-        {
-            var errors = validationResult.Errors
-                .Select(e => new ApiFieldError(e.PropertyName, e.ErrorMessage))
-                .ToList();
-            return BadRequest(new ApiErrorResponse(
-                new ApiErrorDetail("validation_error", "Invalid query parameters.", errors)));
-        }
-
-        var result = await _flowQueryService.GetListAsync(query, cancellationToken);
-        return Ok(result);
+        return await ValidateAndQueryAsync(
+            _listValidator,
+            query,
+            ct => _flowQueryService.GetListAsync(query, ct),
+            cancellationToken);
     }
 
-    /// <summary>
-    /// Returns a single log flow with its ordered action timeline.
-    /// </summary>
     [HttpGet("{flowId}")]
     [ProducesResponseType(typeof(LogFlowDetailDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
@@ -66,19 +50,9 @@ public class LogFlowsController : ControllerBase
         CancellationToken cancellationToken)
     {
         var result = await _flowQueryService.GetByFlowIdAsync(flowId, cancellationToken);
-
-        if (result == null)
-        {
-            return NotFound(new ApiErrorResponse(
-                new ApiErrorDetail("flow_not_found", $"Flow with id '{flowId}' was not found.", null)));
-        }
-
-        return Ok(result);
+        return NotFoundIfNull(result, "Flow", flowId);
     }
 
-    /// <summary>
-    /// Returns a paginated list of actions for a specific log flow.
-    /// </summary>
     [HttpGet("{flowId}/actions")]
     [ProducesResponseType(typeof(PagedResponse<LogActionDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status400BadRequest)]
@@ -90,16 +64,6 @@ public class LogFlowsController : ControllerBase
     {
         query.FlowId = flowId;
 
-        var validationResult = await _actionListValidator.ValidateAsync(query, cancellationToken);
-        if (!validationResult.IsValid)
-        {
-            var errors = validationResult.Errors
-                .Select(e => new ApiFieldError(e.PropertyName, e.ErrorMessage))
-                .ToList();
-            return BadRequest(new ApiErrorResponse(
-                new ApiErrorDetail("validation_error", "Invalid query parameters.", errors)));
-        }
-
         var flowExists = await _flowQueryService.FlowExistsAsync(flowId, cancellationToken);
         if (!flowExists)
         {
@@ -107,7 +71,10 @@ public class LogFlowsController : ControllerBase
                 new ApiErrorDetail("flow_not_found", $"Flow with id '{flowId}' was not found.", null)));
         }
 
-        var result = await _actionQueryService.GetByFlowIdAsync(query, cancellationToken);
-        return Ok(result);
+        return await ValidateAndQueryAsync(
+            _actionListValidator,
+            query,
+            ct => _actionQueryService.GetByFlowIdAsync(query, ct),
+            cancellationToken);
     }
 }

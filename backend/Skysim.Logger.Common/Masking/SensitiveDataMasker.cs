@@ -1,54 +1,15 @@
 using System.Text.Json;
-using Skysim.Logger.Common.Masking;
-using LogEventMessage = Skysim.Logger.Api.Contracts.DTOs.LogEventMessage;
 
-namespace Skysim.Logger.Api.Common;
+namespace Skysim.Logger.Common.Masking;
 
-public partial class SensitiveDataMasker : ISensitiveDataMasker
+public interface ISensitiveDataMasker
 {
-    private const string MaskedValueConst = "***";
+    string MaskJson(string json);
+}
 
-    public LogEventMessage Mask(LogEventMessage message)
-    {
-        ArgumentNullException.ThrowIfNull(message);
-
-        var masked = new LogEventMessage
-        {
-            EventId = message.EventId,
-            FlowId = message.FlowId,
-            FlowType = message.FlowType,
-            CheckoutType = message.CheckoutType,
-            UserId = message.UserId,
-            CustomerEmail = message.CustomerEmail,
-            CustomerPhone = message.CustomerPhone,
-            OrderId = message.OrderId,
-            PaymentId = message.PaymentId,
-            ServiceName = message.ServiceName,
-            ActionType = message.ActionType,
-            Status = message.Status,
-            Message = message.Message,
-            ErrorCode = message.ErrorCode,
-            ErrorMessage = message.ErrorMessage,
-            CorrelationId = message.CorrelationId,
-            RequestTime = message.RequestTime,
-            ResponseTime = message.ResponseTime,
-            Duration = message.Duration,
-            CreatedAt = message.CreatedAt,
-            Exception = message.Exception
-        };
-
-        if (message.RequestData.HasValue)
-        {
-            masked.RequestData = MaskJsonElement(message.RequestData.Value);
-        }
-
-        if (message.ResponseData.HasValue)
-        {
-            masked.ResponseData = MaskJsonElement(message.ResponseData.Value);
-        }
-
-        return masked;
-    }
+public class SensitiveDataMasker : ISensitiveDataMasker
+{
+    private const string MaskedValue = "***";
 
     public string MaskJson(string json)
     {
@@ -67,11 +28,6 @@ public partial class SensitiveDataMasker : ISensitiveDataMasker
         {
             return json;
         }
-    }
-
-    private static JsonElement MaskJsonElement(JsonElement element)
-    {
-        return MaskElement(element);
     }
 
     private static JsonElement MaskElement(JsonElement element)
@@ -97,7 +53,7 @@ public partial class SensitiveDataMasker : ISensitiveDataMasker
 
             if (SensitiveFields.Instance.IsSensitive(property.Name))
             {
-                writer.WriteStringValue(MaskedValueConst);
+                writer.WriteStringValue(MaskedValue);
             }
             else
             {

@@ -3,23 +3,20 @@ using Microsoft.Extensions.Options;
 using Npgsql;
 using Polly;
 using Polly.Retry;
-using Skysim.Logger.Api.Infrastructure.Kafka;
 
-namespace Skysim.Logger.Api.Common;
+namespace Skysim.Logger.Common.Kafka;
 
 public static class RetryPolicyFactory
 {
-    public static ResiliencePipeline CreateDbRetryPolicy(IOptions<KafkaConsumerOptions> options)
+    public static ResiliencePipeline CreateDbRetryPolicy(RetryOptions options)
     {
-        var retryOptions = options.Value.Retry;
-
         return new ResiliencePipelineBuilder()
             .AddRetry(new RetryStrategyOptions
             {
-                MaxRetryAttempts = retryOptions.MaxAttempts,
+                MaxRetryAttempts = options.MaxAttempts,
                 DelayGenerator = args =>
                 {
-                    var delay = KafkaCommon.CalculateDelay(args.AttemptNumber + 1, retryOptions);
+                    var delay = KafkaCommon.CalculateDelay(args.AttemptNumber + 1, options);
                     return new ValueTask<TimeSpan?>(delay);
                 },
                 ShouldHandle = new PredicateBuilder().Handle<NpgsqlException>()
@@ -27,17 +24,15 @@ public static class RetryPolicyFactory
             .Build();
     }
 
-    public static ResiliencePipeline CreateBrokerRetryPolicy(IOptions<KafkaConsumerOptions> options)
+    public static ResiliencePipeline CreateBrokerRetryPolicy(RetryOptions options)
     {
-        var retryOptions = options.Value.Retry;
-
         return new ResiliencePipelineBuilder()
             .AddRetry(new RetryStrategyOptions
             {
-                MaxRetryAttempts = retryOptions.MaxAttempts,
+                MaxRetryAttempts = options.MaxAttempts,
                 DelayGenerator = args =>
                 {
-                    var delay = KafkaCommon.CalculateDelay(args.AttemptNumber + 1, retryOptions);
+                    var delay = KafkaCommon.CalculateDelay(args.AttemptNumber + 1, options);
                     return new ValueTask<TimeSpan?>(delay);
                 },
                 ShouldHandle = new PredicateBuilder()

@@ -302,42 +302,55 @@ Notification Service   → EMAIL_SENT
 
 ```mermaid
 flowchart TB
-    KAFKA[(Kafka Topic<br/>skysim.action.logs)]
-    CONSUME[Consume Message]
-    VALIDATE[Parse JSON<br/>Validate Required Fields]
-    IDEMPOTENT[Check Idempotency<br/>by eventId]
-    DBTX[Begin DB Transaction]
-    SAVE1[Upsert log_flows]
-    SAVE2[Insert log_actions]
-    SAVE3[Insert log_action_details]
-    COMMITDB[Commit DB Transaction]
-    COMMITOFFSET[Commit Kafka Offset]
+    K[(Kafka Topic<br/>skysim.action.logs)]
 
-    KAFKA --> CONSUME
-    CONSUME --> VALIDATE
-    VALIDATE --> IDEMPOTENT
-    IDEMPOTENT --> DBTX
-    DBTX --> SAVE1
-    SAVE1 --> SAVE2
-    SAVE2 --> SAVE3
-    SAVE3 --> COMMITDB
-    COMMITDB --> COMMITOFFSET
+    K --> C[Consume Message]
+    C --> P[Parse JSON to LogEventMessage]
+    P --> V[Validate Fields & Enum]
+    V --> M[Mask Sensitive Data]
+    M --> PERSIST[TryPersist with Retry<br/>(Polly)]
+
+    PERSIST --> TX[Begin DB Transaction]
+    TX --> FLOW[Upsert log_flows]
+    FLOW --> ACTION[Insert log_actions]
+    ACTION --> DETAIL[Upsert log_action_details]
+    DETAIL --> COMDB[Commit DB Transaction]
+    COMDB --> CO[Commit Kafka Offset]
+
+    P -.-> DLQ_P[→ Publish DLQ<br/>→ Commit Offset]
+    V -.-> DLQ_V[→ Publish DLQ<br/>→ Commit Offset]
+    PERSIST -.-> DLQ_R[→ Publish DLQ<br/>→ Commit Offset]
+    COMDB -.-> DUP[Duplicate eventId?<br/>→ Skip → Commit]
 ```
+
+**Kafka Topic Design:**
+- Topic: `skysim.action.logs`
+- Message key: `flowId`
+- Message value: JSON payload
+- Idempotency key: `eventId`
+- Required fields: `eventId`, `flowId`, `flowType`, `serviceName`, `actionType`, `status`, `createdAt`
+
+**Error Handling:**
+- Invalid JSON / Validation Failed → Publish to DLQ → Commit Offset
+- Retry Exhausted → Publish to DLQ → Commit Offset
+- Duplicate `eventId` → Skip → Commit Offset
 
 ```mermaid
 flowchart TB
-    REQ[HTTP Request] --> MIDDLEWARE[Logging Middleware]
-
-    MIDDLEWARE --> MASK[Mask Sensitive Data]
-    MASK --> NEXT[Call Next Middleware / Controller]
-
-    NEXT --> RESPONSE[HTTP Response]
-    NEXT --> EXCEPTION[Exception]
-
-    RESPONSE --> LOG[Create Technical Log]
-    EXCEPTION --> LOG
-
-    LOG --> STORE[Store / Publish Log]
+    REQ[HTTP Request] --> MID[Logging Middleware]
+    
+    MID --> CAPTURE_REQ[Capture Request Body<br/>CorrelationId]
+    CAPTURE_REQ --> NEXT[Call Next Middleware<br/>/ Controller]
+    
+    NEXT --> RESP[HTTP Response]
+    NEXT --> EXC[Exception]
+    
+    RESP --> CAPTURE_RESP[Capture Response]
+    EXC --> CAPTURE_RESP
+    
+    CAPTURE_RESP --> BUILD[Create LogEventMessage]
+    BUILD --> MASK[Mask Sensitive Data]
+    MASK --> PUBLISH[Publish to Kafka]
 ```
 
 ## 8. Ghi chú về phạm vi local development

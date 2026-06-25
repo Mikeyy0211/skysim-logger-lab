@@ -1,6 +1,6 @@
-namespace Skysim.Logger.Api.Common;
+namespace Skysim.Logger.Common.Masking;
 
-public sealed class SensitiveFields
+public class SensitiveFields
 {
     private static readonly Lazy<SensitiveFields> _instance = new(() => new SensitiveFields());
 

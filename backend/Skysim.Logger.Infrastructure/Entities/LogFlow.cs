@@ -1,8 +1,7 @@
-namespace Skysim.Logger.Api.Domain.Entities;
+namespace Skysim.Logger.Infrastructure.Entities;
 
-public class LogFlow
+public class LogFlow : BaseEntity
 {
-    public Guid Id { get; set; }
     public string FlowId { get; set; } = string.Empty;
     public string FlowType { get; set; } = string.Empty;
     public string? CheckoutType { get; set; }
@@ -19,7 +18,5 @@ public class LogFlow
     public string? LastMessage { get; set; }
     public DateTime StartedAt { get; set; }
     public DateTime? CompletedAt { get; set; }
-    public DateTime CreatedAt { get; set; }
-    public DateTime UpdatedAt { get; set; }
     public ICollection<LogAction> Actions { get; set; } = new List<LogAction>();
 }

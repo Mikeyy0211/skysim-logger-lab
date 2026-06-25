@@ -3,9 +3,12 @@ using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Moq;
 using Skysim.Logger.Api.Contracts.DTOs;
-using Skysim.Logger.Api.Domain.Enums;
 using Skysim.Logger.Api.Infrastructure.Kafka;
+using Skysim.Logger.Common.Kafka;
 using Xunit;
+using Status = Skysim.Logger.Api.Domain.Enums.Status;
+using FlowType = Skysim.Logger.Api.Domain.Enums.FlowType;
+using ActionType = Skysim.Logger.Api.Domain.Enums.ActionType;
 
 namespace Skysim.Logger.Api.Tests.KafkaProducerTests;
 

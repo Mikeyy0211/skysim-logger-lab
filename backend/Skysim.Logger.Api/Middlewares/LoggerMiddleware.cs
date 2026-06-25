@@ -6,6 +6,8 @@ using Skysim.Logger.Api.Common;
 using Skysim.Logger.Api.Contracts.DTOs;
 using Skysim.Logger.Api.Domain.Enums;
 using Skysim.Logger.Api.Infrastructure.Kafka;
+using Skysim.Logger.Common.Masking;
+using SensitiveFields = Skysim.Logger.Common.Masking.SensitiveFields;
 
 namespace Skysim.Logger.Api.Middlewares;
 
@@ -17,7 +19,7 @@ public class LoggerMiddleware
 
     private readonly RequestDelegate _next;
     private readonly IKafkaLogProducer _producer;
-    private readonly SensitiveDataMasker _masker;
+    private readonly ISensitiveDataMasker _masker;
     private readonly ILogger<LoggerMiddleware> _logger;
 
     private static readonly string[] ExcludedPathPrefixes =
@@ -32,7 +34,7 @@ public class LoggerMiddleware
     public LoggerMiddleware(
         RequestDelegate next,
         IKafkaLogProducer producer,
-        SensitiveDataMasker masker,
+        ISensitiveDataMasker masker,
         ILogger<LoggerMiddleware> logger)
     {
         _next = next;
@@ -96,9 +98,19 @@ public class LoggerMiddleware
                     caughtException,
                     selectedHeaders);
 
-                message = _masker.Mask(message);
+                var maskedJson = _masker.MaskJson(JsonSerializer.Serialize(message, new JsonSerializerOptions
+                {
+                    PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+                }));
+                var maskedMessage = JsonSerializer.Deserialize<LogEventMessage>(maskedJson, new JsonSerializerOptions
+                {
+                    PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+                });
 
-                _ = FireAndForgetPublishAsync(message);
+                if (maskedMessage != null)
+                {
+                    _ = FireAndForgetPublishAsync(maskedMessage);
+                }
             }
             catch (Exception ex)
             {

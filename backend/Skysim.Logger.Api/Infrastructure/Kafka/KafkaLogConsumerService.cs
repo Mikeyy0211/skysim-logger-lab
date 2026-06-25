@@ -8,13 +8,13 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Polly;
-using Skysim.Logger.Api.Common;
 using Skysim.Logger.Api.Contracts.DTOs;
-using Skysim.Logger.Api.Domain.Entities;
-using Skysim.Logger.Api.Domain.Factories;
-using Skysim.Logger.Api.Infrastructure.Persistence;
 using Skysim.Logger.Api.Infrastructure.Persistence.Exceptions;
-using Skysim.Logger.Api.Infrastructure.Persistence.Repositories;
+using Skysim.Logger.Common.Kafka;
+using Skysim.Logger.Common.Masking;
+using Skysim.Logger.Infrastructure.Data;
+using Skysim.Logger.Infrastructure.Entities;
+using Skysim.Logger.Infrastructure.Repositories;
 
 namespace Skysim.Logger.Api.Infrastructure.Kafka;
 
@@ -24,7 +24,7 @@ public class KafkaLogConsumerService : BackgroundService
     private readonly KafkaConsumerOptions _options;
     private readonly IDlqPublisher _dlqPublisher;
     private readonly ILogger<KafkaLogConsumerService> _logger;
-    private readonly SensitiveDataMasker _masker;
+    private readonly ISensitiveDataMasker _masker;
 
     private IConsumer<byte[], byte[]>? _consumer;
 
@@ -33,7 +33,7 @@ public class KafkaLogConsumerService : BackgroundService
         IOptions<KafkaConsumerOptions> options,
         IDlqPublisher dlqPublisher,
         ILogger<KafkaLogConsumerService> logger,
-        SensitiveDataMasker masker)
+        ISensitiveDataMasker masker)
     {
         _scopeFactory = scopeFactory;
         _options = options.Value;
@@ -44,7 +44,7 @@ public class KafkaLogConsumerService : BackgroundService
 
     private ResiliencePipeline CreateDbRetryPolicy()
     {
-        return RetryPolicyFactory.CreateDbRetryPolicy(Options.Create(_options));
+        return RetryPolicyFactory.CreateDbRetryPolicy(_options.Retry);
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -173,8 +173,6 @@ public class KafkaLogConsumerService : BackgroundService
             return;
         }
 
-        message = _masker.Mask(message);
-
         var attempt = 0;
         var dbRetryPolicy = CreateDbRetryPolicy();
         var success = await TryPersistWithRetryAsync(message, ct, () => attempt++, dbRetryPolicy);
@@ -229,13 +227,11 @@ public class KafkaLogConsumerService : BackgroundService
         return await retryPolicy.ExecuteAsync(async token =>
         {
             onAttempt();
-
             var success = await TryPersistAsync(message, token);
             if (!success)
             {
                 throw new InvalidOperationException("Persistence returned false, triggering retry");
             }
-
             return true;
         }, ct);
     }
@@ -252,9 +248,9 @@ public class KafkaLogConsumerService : BackgroundService
 
         try
         {
-            var flow = await flowRepo.UpsertAsync(message, ct);
+            var flow = await flowRepo.UpsertAsync(message.FlowId, f => MapFlowFromMessage(f, message), ct);
 
-            var action = LogActionFactory.CreateFromMessage(message, flow.Id);
+            var action = CreateLogAction(message, flow.Id);
             action = await actionRepo.InsertAsync(action, ct);
 
             await TryUpsertDetailAsync(detailRepo, action.Id, message, ct);
@@ -280,6 +276,59 @@ public class KafkaLogConsumerService : BackgroundService
         }
     }
 
+    private static void MapFlowFromMessage(LogFlow flow, LogEventMessage message)
+    {
+        flow.FlowType = message.FlowType.ToString();
+        flow.CheckoutType = message.CheckoutType?.ToString();
+        flow.Status = message.Status.ToString();
+        flow.CustomerEmail = message.CustomerEmail;
+        flow.CustomerPhone = message.CustomerPhone;
+        flow.UserId = message.UserId;
+        flow.OrderId = message.OrderId;
+        flow.PaymentId = message.PaymentId;
+        flow.LastActionType = message.ActionType.ToString();
+        flow.LastMessage = message.Message;
+        flow.StartedAt = message.CreatedAt;
+
+        if (message.Status == Domain.Enums.Status.Success)
+        {
+            flow.SuccessSteps++;
+            flow.CompletedAt = DateTime.UtcNow;
+        }
+        else if (message.Status == Domain.Enums.Status.Failed)
+        {
+            flow.FailedSteps++;
+            flow.CompletedAt = DateTime.UtcNow;
+        }
+        flow.TotalSteps++;
+    }
+
+    private static LogAction CreateLogAction(LogEventMessage message, Guid flowId)
+    {
+        var durationMs = message.Duration;
+        if (!durationMs.HasValue && message.RequestTime.HasValue && message.ResponseTime.HasValue)
+        {
+            durationMs = (int)(message.ResponseTime.Value - message.RequestTime.Value).TotalMilliseconds;
+        }
+
+        return new LogAction
+        {
+            EventId = message.EventId,
+            FlowId = message.FlowId,
+            StepOrder = 0,
+            ServiceName = message.ServiceName,
+            ActionType = message.ActionType.ToString(),
+            Status = message.Status.ToString(),
+            Message = message.Message,
+            ErrorCode = message.ErrorCode,
+            ErrorMessage = message.ErrorMessage,
+            RequestTime = message.RequestTime,
+            ResponseTime = message.ResponseTime,
+            DurationMs = durationMs,
+            CorrelationId = message.CorrelationId
+        };
+    }
+
     private async Task TryUpsertDetailAsync(
         ILogActionDetailRepository detailRepo,
         Guid actionId,
@@ -298,10 +347,7 @@ public class KafkaLogConsumerService : BackgroundService
 
         var detail = new LogActionDetail
         {
-            Id = Guid.NewGuid(),
-            ActionId = actionId,
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
+            ActionId = actionId
         };
 
         if (message.RequestData.HasValue)

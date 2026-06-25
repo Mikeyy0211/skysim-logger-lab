@@ -1,5 +1,5 @@
 using FluentAssertions;
-using Skysim.Logger.Api.Common;
+using Skysim.Logger.Common.Masking;
 using Xunit;
 
 namespace Skysim.Logger.Api.Tests;

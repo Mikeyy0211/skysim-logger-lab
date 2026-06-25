@@ -1,12 +1,12 @@
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
-using Skysim.Logger.Api.Domain.Entities;
-using Skysim.Logger.Api.Domain.Enums;
-using Skysim.Logger.Api.Infrastructure.Persistence;
 using Skysim.Logger.Api.Infrastructure.Persistence.Exceptions;
-using Skysim.Logger.Api.Infrastructure.Persistence.Repositories;
+using Skysim.Logger.Infrastructure.Data;
+using Skysim.Logger.Infrastructure.Entities;
+using Skysim.Logger.Infrastructure.Repositories;
 using Xunit;
 using Status = Skysim.Logger.Api.Domain.Enums.Status;
+using ActionType = Skysim.Logger.Api.Domain.Enums.ActionType;
 
 namespace Skysim.Logger.Api.Tests.RepositoryTests;
 
