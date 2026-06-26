@@ -7,6 +7,10 @@ using FluentValidation;
 
 namespace Skysim.Logger.Api.Controllers;
 
+/// <summary>
+/// API controller for querying log flows and their associated actions.
+/// Provides endpoints for listing, filtering, and retrieving detailed flow information.
+/// </summary>
 [Route("api/log-flows")]
 [Produces("application/json")]
 public class LogFlowsController : ApiControllerBase
@@ -16,6 +20,13 @@ public class LogFlowsController : ApiControllerBase
     private readonly IValidator<LogFlowListQuery> _listValidator;
     private readonly IValidator<LogActionListQuery> _actionListValidator;
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="LogFlowsController"/> class.
+    /// </summary>
+    /// <param name="flowQueryService">Service for querying log flow data.</param>
+    /// <param name="actionQueryService">Service for querying log action data.</param>
+    /// <param name="listValidator">Validator for log flow list query parameters.</param>
+    /// <param name="actionListValidator">Validator for log action list query parameters.</param>
     public LogFlowsController(
         ILogFlowQueryService flowQueryService,
         ILogActionQueryService actionQueryService,
@@ -28,6 +39,14 @@ public class LogFlowsController : ApiControllerBase
         _actionListValidator = actionListValidator;
     }
 
+    /// <summary>
+    /// Retrieves a paginated list of log flows with optional filtering.
+    /// </summary>
+    /// <param name="query">Query parameters for filtering, sorting, and pagination.</param>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation.</param>
+    /// <returns>Paginated list of log flow summaries.</returns>
+    /// <response code="200">Returns the paginated list of log flows.</response>
+    /// <response code="400">If the query parameters are invalid.</response>
     [HttpGet]
     [ProducesResponseType(typeof(PagedResponse<LogFlowSummaryDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status400BadRequest)]
@@ -42,6 +61,14 @@ public class LogFlowsController : ApiControllerBase
             cancellationToken);
     }
 
+    /// <summary>
+    /// Retrieves detailed information for a specific log flow by its flow ID.
+    /// </summary>
+    /// <param name="flowId">The unique identifier of the flow.</param>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation.</param>
+    /// <returns>Detailed log flow information including associated actions.</returns>
+    /// <response code="200">Returns the log flow details.</response>
+    /// <response code="404">If the flow with the specified ID is not found.</response>
     [HttpGet("{flowId}")]
     [ProducesResponseType(typeof(LogFlowDetailDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
@@ -53,6 +80,16 @@ public class LogFlowsController : ApiControllerBase
         return NotFoundIfNull(result, "Flow", flowId);
     }
 
+    /// <summary>
+    /// Retrieves a paginated list of actions for a specific flow.
+    /// </summary>
+    /// <param name="flowId">The unique identifier of the flow.</param>
+    /// <param name="query">Query parameters for filtering and pagination.</param>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation.</param>
+    /// <returns>Paginated list of log actions for the specified flow.</returns>
+    /// <response code="200">Returns the paginated list of log actions.</response>
+    /// <response code="400">If the query parameters are invalid.</response>
+    /// <response code="404">If the flow with the specified ID is not found.</response>
     [HttpGet("{flowId}/actions")]
     [ProducesResponseType(typeof(PagedResponse<LogActionDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status400BadRequest)]

@@ -6,11 +6,19 @@ using Skysim.Logger.Infrastructure.Data;
 
 namespace Skysim.Logger.Api.Services.Query;
 
+/// <summary>
+/// Implementation of <see cref="ILogActionQueryService"/> for querying log action data.
+/// </summary>
 public class LogActionQueryService : ILogActionQueryService
 {
     private readonly IDbContextFactory<LoggerDbContext> _dbContextFactory;
     private readonly ISensitiveDataMasker _masker;
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="LogActionQueryService"/> class.
+    /// </summary>
+    /// <param name="dbContextFactory">Factory for creating database contexts.</param>
+    /// <param name="masker">Service for masking sensitive data in payloads.</param>
     public LogActionQueryService(
         IDbContextFactory<LoggerDbContext> dbContextFactory,
         ISensitiveDataMasker masker)
@@ -19,6 +27,7 @@ public class LogActionQueryService : ILogActionQueryService
         _masker = masker;
     }
 
+    /// <inheritdoc />
     public async Task<PagedResponse<LogActionDto>> GetByFlowIdAsync(
         LogActionListQuery query,
         CancellationToken ct = default)
@@ -65,6 +74,7 @@ public class LogActionQueryService : ILogActionQueryService
         return new PagedResponse<LogActionDto>(items, page, pageSize, totalItems, totalPages);
     }
 
+    /// <inheritdoc />
     public async Task<LogActionDetailsDto?> GetDetailsAsync(
         Guid actionId,
         CancellationToken ct = default)

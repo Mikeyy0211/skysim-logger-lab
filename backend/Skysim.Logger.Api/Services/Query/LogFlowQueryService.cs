@@ -6,15 +6,23 @@ using Skysim.Logger.Infrastructure.Entities;
 
 namespace Skysim.Logger.Api.Services.Query;
 
+/// <summary>
+/// Implementation of <see cref="ILogFlowQueryService"/> for querying log flow data.
+/// </summary>
 public class LogFlowQueryService : ILogFlowQueryService
 {
     private readonly IDbContextFactory<LoggerDbContext> _dbContextFactory;
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="LogFlowQueryService"/> class.
+    /// </summary>
+    /// <param name="dbContextFactory">Factory for creating database contexts.</param>
     public LogFlowQueryService(IDbContextFactory<LoggerDbContext> dbContextFactory)
     {
         _dbContextFactory = dbContextFactory;
     }
 
+    /// <inheritdoc />
     public async Task<PagedResponse<LogFlowSummaryDto>> GetListAsync(
         LogFlowListQuery query,
         CancellationToken ct = default)
@@ -123,6 +131,7 @@ public class LogFlowQueryService : ILogFlowQueryService
         return new PagedResponse<LogFlowSummaryDto>(items, page, pageSize, totalItems, totalPages);
     }
 
+    /// <inheritdoc />
     public async Task<LogFlowDetailDto?> GetByFlowIdAsync(
         string flowId,
         CancellationToken ct = default)
@@ -183,6 +192,7 @@ public class LogFlowQueryService : ILogFlowQueryService
         return new LogFlowDetailDto(summary, actions);
     }
 
+    /// <inheritdoc />
     public async Task<bool> FlowExistsAsync(
         string flowId,
         CancellationToken ct = default)
@@ -194,6 +204,13 @@ public class LogFlowQueryService : ILogFlowQueryService
             .AnyAsync(f => f.FlowId == flowId, ct);
     }
 
+    /// <summary>
+    /// Applies sorting to the log flows query based on the specified sort field and direction.
+    /// </summary>
+    /// <param name="query">The query to apply sorting to.</param>
+    /// <param name="sortBy">The field to sort by (createdAt, updatedAt, completedAt, status).</param>
+    /// <param name="sortDirection">The sort direction (asc or desc).</param>
+    /// <returns>The sorted query.</returns>
     private static IQueryable<LogFlow> ApplySorting(
         IQueryable<LogFlow> query,
         string? sortBy,
