@@ -2,7 +2,6 @@ namespace Skysim.Logger.Common.Middleware;
 
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Skysim.Logger.Common.Masking;
 
 public class MiddlewareLogEntry
 {

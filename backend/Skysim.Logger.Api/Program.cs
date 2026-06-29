@@ -5,11 +5,9 @@ using Microsoft.AspNetCore.OpenApi;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
 using Skysim.Logger.Api.Infrastructure.Kafka;
-using Skysim.Logger.Api.Middlewares;
 using Skysim.Logger.Api.Services.Query;
 using Skysim.Logger.Api.Validators;
-using Skysim.Logger.Common.Kafka;
-using Skysim.Logger.Common.Masking;
+using Skysim.Logger.Client.Middlewares;
 using Skysim.Logger.Infrastructure.Data;
 using Skysim.Logger.Infrastructure.Repositories;
 using LogEventMessage = Skysim.Logger.Contracts.Events.LogEventMessage;
@@ -43,14 +41,24 @@ builder.Services.AddScoped<IValidator<LogEventMessage>, Skysim.Logger.Api.Contra
 builder.Services.AddScoped<IValidator<LogFlowListQuery>, LogFlowListQueryValidator>();
 builder.Services.AddScoped<IValidator<LogActionListQuery>, LogActionListQueryValidator>();
 
-builder.Services.AddSingleton<ISensitiveDataMasker, SensitiveDataMasker>();
-builder.Services.AddSingleton(SensitiveFields.Instance);
+builder.Services.AddSingleton<Skysim.Logger.Client.Masking.ISensitiveDataMasker, Skysim.Logger.Client.Masking.SensitiveDataMasker>();
 
 builder.Services.AddSingleton<IKafkaProducerFactory, KafkaProducerFactory>();
 builder.Services.AddSingleton<IDlqPublisher, DlqPublisher>();
 
-builder.Services.AddSingleton<IKafkaLogProducerOptions, KafkaLogProducerOptions>();
-builder.Services.AddSingleton<IKafkaLogProducer, KafkaLogProducer>();
+builder.Services.AddSingleton<Skysim.Logger.Client.Producers.IKafkaLogProducer>(sp =>
+{
+    var kafkaOptions = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<KafkaConsumerOptions>>().Value;
+    var loggerOptions = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<LoggerOptions>>().Value;
+    var logger = sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<Skysim.Logger.Client.Producers.KafkaLogProducer>>();
+    return new Skysim.Logger.Client.Producers.KafkaLogProducer(
+        kafkaOptions.Producer.BootstrapServers,
+        kafkaOptions.Producer.Acks,
+        kafkaOptions.Retry.MaxAttempts,
+        kafkaOptions.Retry.InitialDelayMs,
+        loggerOptions.ServiceName,
+        logger);
+});
 
 builder.Services.AddHostedService<KafkaLogConsumerService>();
 
@@ -93,7 +101,6 @@ app.MapGet("/health", () => Results.Ok(new { status = "healthy", timestamp = Dat
    .WithName("HealthCheck")
    .WithTags("Health");
 
-app.UseMiddleware<RequestBodyBufferingMiddleware>();
 app.UseMiddleware<LoggerMiddleware>();
 
 app.MapControllers();

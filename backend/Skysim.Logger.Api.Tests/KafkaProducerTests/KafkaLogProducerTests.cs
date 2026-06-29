@@ -2,7 +2,7 @@ using Confluent.Kafka;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Moq;
-using Skysim.Logger.Api.Infrastructure.Kafka;
+using Skysim.Logger.Client.Producers;
 using Skysim.Logger.Common.Kafka;
 using Xunit;
 using LogEventMessage = Skysim.Logger.Contracts.Events.LogEventMessage;
@@ -34,10 +34,16 @@ public class KafkaLogProducerTests
     public async Task PublishAsync_ValidMessage_ShouldSetServiceName()
     {
         var producer = CreateMockProducer();
-        var options = new FakeKafkaLogProducerOptions();
         var logger = new Mock<ILogger<KafkaLogProducer>>();
 
-        using var sut = new KafkaLogProducer(options, logger.Object, producer.Object);
+        using var sut = new KafkaLogProducer(
+            "localhost:9092",
+            "all",
+            5,
+            200,
+            "TestService",
+            logger.Object,
+            producer.Object);
 
         var message = CreateMessage();
         await sut.PublishAsync(message);
@@ -53,10 +59,16 @@ public class KafkaLogProducerTests
     public async Task PublishAsync_WithFlowId_ShouldUseFlowIdAsKey()
     {
         var producer = CreateMockProducer();
-        var options = new FakeKafkaLogProducerOptions();
         var logger = new Mock<ILogger<KafkaLogProducer>>();
 
-        using var sut = new KafkaLogProducer(options, logger.Object, producer.Object);
+        using var sut = new KafkaLogProducer(
+            "localhost:9092",
+            "all",
+            5,
+            200,
+            "TestService",
+            logger.Object,
+            producer.Object);
 
         var message = CreateMessage("my-flow-id");
         await sut.PublishAsync(message);
@@ -71,10 +83,16 @@ public class KafkaLogProducerTests
     public async Task PublishAsync_WithoutFlowId_ShouldUseEventIdAsKey()
     {
         var producer = CreateMockProducer();
-        var options = new FakeKafkaLogProducerOptions();
         var logger = new Mock<ILogger<KafkaLogProducer>>();
 
-        using var sut = new KafkaLogProducer(options, logger.Object, producer.Object);
+        using var sut = new KafkaLogProducer(
+            "localhost:9092",
+            "all",
+            5,
+            200,
+            "TestService",
+            logger.Object,
+            producer.Object);
 
         var message = CreateMessage(string.Empty);
         await sut.PublishAsync(message);
@@ -89,10 +107,16 @@ public class KafkaLogProducerTests
     public async Task PublishAsync_ProduceFailure_ShouldRetryAndLogWarning()
     {
         var producer = CreateMockFailingProducer();
-        var options = new FakeKafkaLogProducerOptions { Retry = new RetryOptions { MaxAttempts = 2 } };
         var logger = new Mock<ILogger<KafkaLogProducer>>();
 
-        using var sut = new KafkaLogProducer(options, logger.Object, producer.Object);
+        using var sut = new KafkaLogProducer(
+            "localhost:9092",
+            "all",
+            2,
+            50,
+            "TestService",
+            logger.Object,
+            producer.Object);
 
         var message = CreateMessage();
         await sut.PublishAsync(message);
@@ -113,10 +137,16 @@ public class KafkaLogProducerTests
     public async Task PublishAsync_ProduceFailure_ShouldNotPropagateException()
     {
         var producer = CreateMockFailingProducer();
-        var options = new FakeKafkaLogProducerOptions();
         var logger = new Mock<ILogger<KafkaLogProducer>>();
 
-        using var sut = new KafkaLogProducer(options, logger.Object, producer.Object);
+        using var sut = new KafkaLogProducer(
+            "localhost:9092",
+            "all",
+            5,
+            200,
+            "TestService",
+            logger.Object,
+            producer.Object);
 
         var message = CreateMessage();
         var act = async () => await sut.PublishAsync(message);
@@ -128,13 +158,16 @@ public class KafkaLogProducerTests
     public void Dispose_ShouldFlushAndNotThrow()
     {
         var producer = CreateMockProducer();
-        var options = new FakeKafkaLogProducerOptions();
         var logger = new Mock<ILogger<KafkaLogProducer>>();
 
-        using var sut = new KafkaLogProducer(options, logger.Object, producer.Object)
-        {
-            /* resource tracking not needed for this test */
-        };
+        using var sut = new KafkaLogProducer(
+            "localhost:9092",
+            "all",
+            5,
+            200,
+            "TestService",
+            logger.Object,
+            producer.Object);
 
         var act = () => sut.Dispose();
 
@@ -171,18 +204,4 @@ public class KafkaLogProducerTests
                 deliveryResult: null));
         return mock;
     }
-}
-
-internal class FakeKafkaLogProducerOptions : IKafkaLogProducerOptions
-{
-    public string BootstrapServers { get; set; } = "localhost:9092";
-    public string Acks { get; set; } = "all";
-    public RetryOptions Retry { get; set; } = new RetryOptions
-    {
-        MaxAttempts = 2,
-        InitialDelayMs = 50,
-        BackoffMultiplier = 1.0,
-        MaxDelayMs = 100
-    };
-    public string ServiceName { get; set; } = "TestService";
 }

@@ -1,12 +1,27 @@
 using System.Text.Json;
-using Skysim.Logger.Common.Masking;
+using Skysim.Logger.Contracts.Constants;
+
 using LogEventMessage = Skysim.Logger.Contracts.Events.LogEventMessage;
 
-namespace Skysim.Logger.Api.Common;
+namespace Skysim.Logger.Client.Masking;
 
-public partial class SensitiveDataMasker : ISensitiveDataMasker
+public class SensitiveDataMasker : ISensitiveDataMasker
 {
-    private const string MaskedValueConst = "***";
+    private const string MaskedValue = "***";
+
+    private static readonly HashSet<string> SensitiveFields = new(StringComparer.OrdinalIgnoreCase)
+    {
+        SensitiveFieldNames.Password,
+        SensitiveFieldNames.AccessToken,
+        SensitiveFieldNames.RefreshToken,
+        SensitiveFieldNames.Authorization,
+        SensitiveFieldNames.Otp,
+        SensitiveFieldNames.CardNumber,
+        SensitiveFieldNames.Cvv,
+        SensitiveFieldNames.PaymentSecret,
+        SensitiveFieldNames.Secret,
+        SensitiveFieldNames.Token
+    };
 
     public LogEventMessage Mask(LogEventMessage message)
     {
@@ -95,9 +110,9 @@ public partial class SensitiveDataMasker : ISensitiveDataMasker
         {
             writer.WritePropertyName(property.Name);
 
-            if (SensitiveFields.Instance.IsSensitive(property.Name))
+            if (IsSensitive(property.Name))
             {
-                writer.WriteStringValue(MaskedValueConst);
+                writer.WriteStringValue(MaskedValue);
             }
             else
             {
@@ -131,5 +146,10 @@ public partial class SensitiveDataMasker : ISensitiveDataMasker
         stream.Position = 0;
         using var doc = JsonDocument.Parse(stream);
         return doc.RootElement.Clone();
+    }
+
+    private static bool IsSensitive(string fieldName)
+    {
+        return SensitiveFields.Contains(fieldName);
     }
 }

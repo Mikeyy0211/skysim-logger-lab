@@ -4,7 +4,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Skysim.Logger.Contracts.DTOs;
 using Skysim.Logger.Common.Kafka;
-using Skysim.Logger.Common.Masking;
+using Skysim.Logger.Client.Masking;
 
 namespace Skysim.Logger.Api.Infrastructure.Kafka;
 

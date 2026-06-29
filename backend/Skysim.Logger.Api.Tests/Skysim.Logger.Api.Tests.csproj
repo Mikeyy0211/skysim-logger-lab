@@ -28,6 +28,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Skysim.Logger.Api\Skysim.Logger.Api.csproj" />
+    <ProjectReference Include="..\Skysim.Logger.Client\Skysim.Logger.Client.csproj" />
     <ProjectReference Include="..\Skysim.Logger.Contracts\Skysim.Logger.Contracts.csproj" />
     <ProjectReference Include="..\Skysim.Logger.Infrastructure\Skysim.Logger.Infrastructure.csproj" />
   </ItemGroup>

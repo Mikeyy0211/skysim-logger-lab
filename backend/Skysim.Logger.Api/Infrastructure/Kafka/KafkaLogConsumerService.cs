@@ -11,7 +11,7 @@ using Polly;
 using Skysim.Logger.Contracts.Events;
 using Skysim.Logger.Api.Infrastructure.Persistence.Exceptions;
 using Skysim.Logger.Common.Kafka;
-using Skysim.Logger.Common.Masking;
+using Skysim.Logger.Client.Masking;
 using Skysim.Logger.Infrastructure.Data;
 using Skysim.Logger.Infrastructure.Entities;
 using Skysim.Logger.Infrastructure.Repositories;

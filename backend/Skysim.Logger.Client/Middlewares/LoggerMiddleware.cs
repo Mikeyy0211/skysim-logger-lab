@@ -2,17 +2,17 @@ using System.Security.Claims;
 using System.Text;
 using System.Text.Json;
 using System.Web;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Extensions;
-using Skysim.Logger.Api.Common;
-using Skysim.Logger.Api.Infrastructure.Kafka;
-using Skysim.Logger.Common.Masking;
+using Microsoft.Extensions.Logging;
+using Skysim.Logger.Client.Masking;
+using Skysim.Logger.Client.Producers;
 using LogEventMessage = Skysim.Logger.Contracts.Events.LogEventMessage;
 using StatusTypes = Skysim.Logger.Contracts.Constants.StatusTypes;
 using FlowTypes = Skysim.Logger.Contracts.Constants.FlowTypes;
 using ActionTypes = Skysim.Logger.Contracts.Constants.ActionTypes;
-using SensitiveFields = Skysim.Logger.Common.Masking.SensitiveFields;
 
-namespace Skysim.Logger.Api.Middlewares;
+namespace Skysim.Logger.Client.Middlewares;
 
 public class LoggerMiddleware
 {
@@ -20,12 +20,7 @@ public class LoggerMiddleware
     private static readonly string[] LargeResponseContentTypes = ["application/octet-stream"];
     private const int ResponseBodySizeLimit = 64 * 1024;
 
-    private readonly RequestDelegate _next;
-    private readonly IKafkaLogProducer _producer;
-    private readonly ISensitiveDataMasker _masker;
-    private readonly ILogger<LoggerMiddleware> _logger;
-
-    private static readonly string[] ExcludedPathPrefixes =
+    private static readonly string[] DefaultExcludedPathPrefixes =
     [
         "/swagger",
         "/api/log-flows",
@@ -34,16 +29,38 @@ public class LoggerMiddleware
         "/health"
     ];
 
+    private readonly RequestDelegate _next;
+    private readonly IKafkaLogProducer _producer;
+    private readonly ISensitiveDataMasker _masker;
+    private readonly ILogger<LoggerMiddleware> _logger;
+    private readonly IReadOnlyList<string> _excludedPathPrefixes;
+
+    private static readonly HashSet<string> SensitiveFields = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "password",
+        "access_token",
+        "refresh_token",
+        "authorization",
+        "otp",
+        "cardNumber",
+        "cvv",
+        "paymentSecret",
+        "secret",
+        "token"
+    };
+
     public LoggerMiddleware(
         RequestDelegate next,
         IKafkaLogProducer producer,
         ISensitiveDataMasker masker,
-        ILogger<LoggerMiddleware> logger)
+        ILogger<LoggerMiddleware> logger,
+        IReadOnlyList<string>? excludedPathPrefixes = null)
     {
         _next = next;
         _producer = producer;
         _masker = masker;
         _logger = logger;
+        _excludedPathPrefixes = excludedPathPrefixes ?? DefaultExcludedPathPrefixes;
     }
 
     public async Task InvokeAsync(HttpContext context)
@@ -55,6 +72,8 @@ public class LoggerMiddleware
             await _next(context);
             return;
         }
+
+        context.Request.EnableBuffering();
 
         var requestTime = DateTime.UtcNow;
         var flowId = GetOrCreateFlowId(context);
@@ -125,9 +144,9 @@ public class LoggerMiddleware
         }
     }
 
-    private static bool IsExcludedPath(string path)
+    private bool IsExcludedPath(string path)
     {
-        foreach (var prefix in ExcludedPathPrefixes)
+        foreach (var prefix in _excludedPathPrefixes)
         {
             if (path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
             {
@@ -364,7 +383,7 @@ public class LoggerMiddleware
 
             var values = query.GetValues(key);
             var value = values is { Length: > 0 } ? values[0] : string.Empty;
-            var maskedValue = SensitiveFields.Instance.IsSensitive(key) ? "***" : value;
+            var maskedValue = SensitiveFields.Contains(key) ? "***" : value;
 
             writer.WriteString(key, maskedValue);
         }

@@ -1,5 +1,5 @@
 using FluentAssertions;
-using Skysim.Logger.Common.Masking;
+using Skysim.Logger.Client.Masking;
 using Xunit;
 
 namespace Skysim.Logger.Api.Tests;
@@ -136,29 +136,71 @@ public class SensitiveDataMaskerTests
     }
 
     [Fact]
-    public void SensitiveFields_DenyList_ShouldContainAllRequiredFields()
+    public void MaskJson_AllStandardSensitiveFields_ShouldBeMasked()
     {
-        SensitiveFields.Instance.DenyList.Should().HaveCount(10);
-        SensitiveFields.Instance.DenyList.Should().Contain("password");
-        SensitiveFields.Instance.DenyList.Should().Contain("access_token");
-        SensitiveFields.Instance.DenyList.Should().Contain("refresh_token");
-        SensitiveFields.Instance.DenyList.Should().Contain("authorization");
-        SensitiveFields.Instance.DenyList.Should().Contain("otp");
-        SensitiveFields.Instance.DenyList.Should().Contain("cardNumber");
-        SensitiveFields.Instance.DenyList.Should().Contain("cvv");
-        SensitiveFields.Instance.DenyList.Should().Contain("paymentSecret");
-        SensitiveFields.Instance.DenyList.Should().Contain("secret");
-        SensitiveFields.Instance.DenyList.Should().Contain("token");
+        var json = """
+            {
+                "password":"secret1",
+                "access_token":"token1",
+                "refresh_token":"token2",
+                "authorization":"auth1",
+                "otp":"123456",
+                "cardNumber":"4111111111111111",
+                "cvv":"123",
+                "paymentSecret":"paysec",
+                "secret":"mysecret",
+                "token":"bearer-token"
+            }
+            """;
+
+        var result = _masker.MaskJson(json);
+
+        result.Should().Contain("\"password\":\"***\"");
+        result.Should().Contain("\"access_token\":\"***\"");
+        result.Should().Contain("\"refresh_token\":\"***\"");
+        result.Should().Contain("\"authorization\":\"***\"");
+        result.Should().Contain("\"otp\":\"***\"");
+        result.Should().Contain("\"cardNumber\":\"***\"");
+        result.Should().Contain("\"cvv\":\"***\"");
+        result.Should().Contain("\"paymentSecret\":\"***\"");
+        result.Should().Contain("\"secret\":\"***\"");
+        result.Should().Contain("\"token\":\"***\"");
+        result.Should().NotContain("secret1");
+        result.Should().NotContain("token1");
+        result.Should().NotContain("token2");
+        result.Should().NotContain("auth1");
+        result.Should().NotContain("123456");
+        result.Should().NotContain("4111111111111111");
+        result.Should().NotContain("paysec");
+        result.Should().NotContain("mysecret");
+        result.Should().NotContain("bearer-token");
     }
 
     [Fact]
-    public void SensitiveFields_IsSensitive_ShouldBeCaseInsensitive()
+    public void MaskJson_CaseInsensitiveSensitiveFieldNames_ShouldBeMasked()
     {
-        SensitiveFields.Instance.IsSensitive("PASSWORD").Should().BeTrue();
-        SensitiveFields.Instance.IsSensitive("password").Should().BeTrue();
-        SensitiveFields.Instance.IsSensitive("Access_Token").Should().BeTrue();
-        SensitiveFields.Instance.IsSensitive("CARDNUMBER").Should().BeTrue();
-        SensitiveFields.Instance.IsSensitive("orderId").Should().BeFalse();
+        var json = """
+            {
+                "PASSWORD":"secret1",
+                "Access_Token":"token1",
+                "CARDNUMBER":"4111111111111111",
+                "OtP":"123456",
+                "TOKEN":"abc123"
+            }
+            """;
+
+        var result = _masker.MaskJson(json);
+
+        result.Should().Contain("\"PASSWORD\":\"***\"");
+        result.Should().Contain("\"Access_Token\":\"***\"");
+        result.Should().Contain("\"CARDNUMBER\":\"***\"");
+        result.Should().Contain("\"OtP\":\"***\"");
+        result.Should().Contain("\"TOKEN\":\"***\"");
+        result.Should().NotContain("secret1");
+        result.Should().NotContain("token1");
+        result.Should().NotContain("4111111111111111");
+        result.Should().NotContain("123456");
+        result.Should().NotContain("abc123");
     }
 
     [Fact]

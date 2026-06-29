@@ -1,77 +1,52 @@
 using System.Text;
 using Confluent.Kafka;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
-using Skysim.Logger.Contracts.Events;
-using Skysim.Logger.Common.Kafka;
+using LogEventMessage = Skysim.Logger.Contracts.Events.LogEventMessage;
 
-namespace Skysim.Logger.Api.Infrastructure.Kafka;
-
-public interface IKafkaLogProducer
-{
-    Task PublishAsync(LogEventMessage message, CancellationToken cancellationToken = default);
-}
-
-public interface IKafkaLogProducerOptions
-{
-    string BootstrapServers { get; }
-    string Acks { get; }
-    RetryOptions Retry { get; }
-    string ServiceName { get; }
-}
-
-public class KafkaLogProducerOptions : IKafkaLogProducerOptions
-{
-    private readonly KafkaConsumerOptions _kafkaOptions;
-    private readonly string _serviceName;
-
-    public KafkaLogProducerOptions(
-        IOptions<KafkaConsumerOptions> kafkaOptions,
-        IOptions<LoggerOptions> loggerOptions)
-    {
-        _kafkaOptions = kafkaOptions.Value;
-        _serviceName = loggerOptions.Value.ServiceName;
-    }
-
-    public string BootstrapServers => _kafkaOptions.Producer.BootstrapServers;
-    public string Acks => _kafkaOptions.Producer.Acks;
-    public RetryOptions Retry => _kafkaOptions.Retry;
-    public string ServiceName => _serviceName;
-}
-
-public class LoggerOptions
-{
-    public string ServiceName { get; set; } = "Skysim.Logger.Api";
-}
+namespace Skysim.Logger.Client.Producers;
 
 public class KafkaLogProducer : IKafkaLogProducer, IDisposable
 {
     private const string Topic = "skysim.action.logs";
     private const int FlushTimeoutSeconds = 5;
 
-    private readonly IKafkaLogProducerOptions _options;
+    private readonly string _bootstrapServers;
+    private readonly Acks _acks;
+    private readonly int _retryMaxAttempts;
+    private readonly int _retryBaseDelayMs;
+    private readonly double _backoffMultiplier = 2.0;
+    private readonly int _maxDelayMs = 3200;
+    private readonly string _serviceName;
     private readonly ILogger<KafkaLogProducer> _logger;
-    private readonly RetryOptions _retryOptions;
 
     private IProducer<string, byte[]>? _producer;
 
     public KafkaLogProducer(
-        IKafkaLogProducerOptions options,
+        string bootstrapServers,
+        string acks,
+        int retryMaxAttempts,
+        int retryBaseDelayMs,
+        string serviceName,
         ILogger<KafkaLogProducer> logger)
     {
-        _options = options;
+        _bootstrapServers = bootstrapServers;
+        _acks = ParseAcks(acks);
+        _retryMaxAttempts = retryMaxAttempts;
+        _retryBaseDelayMs = retryBaseDelayMs;
+        _serviceName = serviceName;
         _logger = logger;
-        _retryOptions = options.Retry;
     }
 
     internal KafkaLogProducer(
-        IKafkaLogProducerOptions options,
+        string bootstrapServers,
+        string acks,
+        int retryMaxAttempts,
+        int retryBaseDelayMs,
+        string serviceName,
         ILogger<KafkaLogProducer> logger,
         IProducer<string, byte[]> producer)
+        : this(bootstrapServers, acks, retryMaxAttempts, retryBaseDelayMs, serviceName, logger)
     {
-        _options = options;
-        _logger = logger;
-        _retryOptions = options.Retry;
         _producer = producer;
     }
 
@@ -86,7 +61,7 @@ public class KafkaLogProducer : IKafkaLogProducer, IDisposable
 
     public async Task PublishAsync(LogEventMessage message, CancellationToken cancellationToken = default)
     {
-        message.ServiceName = _options.ServiceName;
+        message.ServiceName = _serviceName;
 
         byte[] payload;
         try
@@ -109,7 +84,7 @@ public class KafkaLogProducer : IKafkaLogProducer, IDisposable
         var success = false;
         var attempt = 0;
 
-        while (!success && attempt < _retryOptions.MaxAttempts)
+        while (!success && attempt < _retryMaxAttempts)
         {
             attempt++;
             try
@@ -124,9 +99,9 @@ public class KafkaLogProducer : IKafkaLogProducer, IDisposable
                     message.EventId);
                 success = true;
             }
-            catch (ProduceException<string, byte[]> ex) when (attempt < _retryOptions.MaxAttempts)
+            catch (ProduceException<string, byte[]> ex) when (attempt < _retryMaxAttempts)
             {
-                var delay = KafkaCommon.CalculateDelay(attempt, _retryOptions);
+                var delay = CalculateDelay(attempt);
                 _logger.LogWarning(
                     ex,
                     "Kafka produce failed. EventId={EventId}, Attempt={Attempt}, "
@@ -174,10 +149,27 @@ public class KafkaLogProducer : IKafkaLogProducer, IDisposable
     {
         var config = new ProducerConfig
         {
-            BootstrapServers = _options.BootstrapServers,
-            Acks = KafkaCommon.ParseAcks(_options.Acks)
+            BootstrapServers = _bootstrapServers,
+            Acks = _acks
         };
 
         return new ProducerBuilder<string, byte[]>(config).Build();
+    }
+
+    private static Acks ParseAcks(string value)
+    {
+        return value.ToLowerInvariant() switch
+        {
+            "all" or "-1" => Acks.All,
+            "none" or "0" => Acks.None,
+            "leader" or "1" => Acks.Leader,
+            _ => Acks.All
+        };
+    }
+
+    private TimeSpan CalculateDelay(int attempt)
+    {
+        var delay = _retryBaseDelayMs * Math.Pow(_backoffMultiplier, attempt - 1);
+        return TimeSpan.FromMilliseconds(Math.Min(delay, _maxDelayMs));
     }
 }

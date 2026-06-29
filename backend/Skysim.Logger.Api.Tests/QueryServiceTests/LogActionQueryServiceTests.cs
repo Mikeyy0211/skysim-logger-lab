@@ -1,8 +1,8 @@
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
-using Skysim.Logger.Api.Common;
 using Skysim.Logger.Api.Contracts.DTOs.Queries;
 using Skysim.Logger.Api.Services.Query;
+using Skysim.Logger.Client.Masking;
 using Skysim.Logger.Infrastructure.Data;
 using Skysim.Logger.Infrastructure.Entities;
 using Xunit;

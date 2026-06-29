@@ -2,7 +2,6 @@ using System.Text;
 using System.Text.Json;
 using FluentAssertions;
 using FluentValidation;
-using Skysim.Logger.Api.Common;
 using Skysim.Logger.Api.Contracts.DTOs;
 using Skysim.Logger.Api.Infrastructure.Kafka;
 using Skysim.Logger.Api.Infrastructure.Persistence.Exceptions;
