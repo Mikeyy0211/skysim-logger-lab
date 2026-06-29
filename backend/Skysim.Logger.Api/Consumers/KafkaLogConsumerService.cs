@@ -10,14 +10,14 @@ using Microsoft.Extensions.Options;
 using Polly;
 using Skysim.Logger.Contracts.Events;
 using Skysim.Logger.Api.Infrastructure.Persistence.Exceptions;
-using Skysim.Logger.Common.Kafka;
+using Skysim.Logger.Api.Kafka;
 using Skysim.Logger.Client.Masking;
 using Skysim.Logger.Infrastructure.Data;
 using Skysim.Logger.Infrastructure.Entities;
 using Skysim.Logger.Infrastructure.Repositories;
 using StatusTypes = Skysim.Logger.Contracts.Constants.StatusTypes;
 
-namespace Skysim.Logger.Api.Infrastructure.Kafka;
+namespace Skysim.Logger.Api.Consumers;
 
 public class KafkaLogConsumerService : BackgroundService
 {

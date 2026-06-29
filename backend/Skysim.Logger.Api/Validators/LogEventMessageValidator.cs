@@ -5,7 +5,7 @@ using StatusTypes = Skysim.Logger.Contracts.Constants.StatusTypes;
 using FlowTypes = Skysim.Logger.Contracts.Constants.FlowTypes;
 using CheckoutTypes = Skysim.Logger.Contracts.Constants.CheckoutTypes;
 
-namespace Skysim.Logger.Api.Contracts.DTOs;
+namespace Skysim.Logger.Api.Validators;
 
 public class LogEventMessageValidator : AbstractValidator<LogEventMessage>
 {

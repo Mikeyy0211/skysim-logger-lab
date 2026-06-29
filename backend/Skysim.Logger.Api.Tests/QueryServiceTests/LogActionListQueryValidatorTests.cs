@@ -1,5 +1,5 @@
 using FluentAssertions;
-using Skysim.Logger.Api.Contracts.DTOs.Queries;
+using Skysim.Logger.Api.Contracts.Queries;
 using Skysim.Logger.Api.Validators;
 using Xunit;
 

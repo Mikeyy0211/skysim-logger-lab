@@ -1,6 +1,6 @@
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
-using Skysim.Logger.Api.Contracts.DTOs.Queries;
+using Skysim.Logger.Api.Contracts.Queries;
 using Skysim.Logger.Api.Services.Query;
 using Skysim.Logger.Infrastructure.Data;
 using Skysim.Logger.Infrastructure.Entities;

@@ -4,16 +4,17 @@ using FluentValidation;
 using Microsoft.AspNetCore.OpenApi;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
-using Skysim.Logger.Api.Infrastructure.Kafka;
+using Skysim.Logger.Api.Consumers;
+using Skysim.Logger.Api.Kafka;
 using Skysim.Logger.Api.Services.Query;
 using Skysim.Logger.Api.Validators;
 using Skysim.Logger.Client.Middlewares;
 using Skysim.Logger.Infrastructure.Data;
 using Skysim.Logger.Infrastructure.Repositories;
 using LogEventMessage = Skysim.Logger.Contracts.Events.LogEventMessage;
-using LoggerOptions = Skysim.Logger.Api.Infrastructure.Kafka.LoggerOptions;
-using LogFlowListQuery = Skysim.Logger.Api.Contracts.DTOs.Queries.LogFlowListQuery;
-using LogActionListQuery = Skysim.Logger.Api.Contracts.DTOs.Queries.LogActionListQuery;
+using LoggerOptions = Skysim.Logger.Api.Kafka.LoggerOptions;
+using LogFlowListQuery = Skysim.Logger.Api.Contracts.Queries.LogFlowListQuery;
+using LogActionListQuery = Skysim.Logger.Api.Contracts.Queries.LogActionListQuery;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -37,7 +38,7 @@ builder.Services.AddScoped<ILogFlowRepository, LogFlowRepository>();
 builder.Services.AddScoped<ILogActionRepository, LogActionRepository>();
 builder.Services.AddScoped<ILogActionDetailRepository, LogActionDetailRepository>();
 
-builder.Services.AddScoped<IValidator<LogEventMessage>, Skysim.Logger.Api.Contracts.DTOs.LogEventMessageValidator>();
+builder.Services.AddScoped<IValidator<LogEventMessage>, Skysim.Logger.Api.Validators.LogEventMessageValidator>();
 builder.Services.AddScoped<IValidator<LogFlowListQuery>, LogFlowListQueryValidator>();
 builder.Services.AddScoped<IValidator<LogActionListQuery>, LogActionListQueryValidator>();
 

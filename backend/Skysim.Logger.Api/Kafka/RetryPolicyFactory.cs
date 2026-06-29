@@ -4,7 +4,7 @@ using Npgsql;
 using Polly;
 using Polly.Retry;
 
-namespace Skysim.Logger.Common.Kafka;
+namespace Skysim.Logger.Api.Kafka;
 
 public static class RetryPolicyFactory
 {

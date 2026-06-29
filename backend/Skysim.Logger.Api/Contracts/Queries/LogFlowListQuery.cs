@@ -1,4 +1,4 @@
-namespace Skysim.Logger.Api.Contracts.DTOs.Queries;
+namespace Skysim.Logger.Api.Contracts.Queries;
 
 public class LogFlowListQuery
 {

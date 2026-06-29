@@ -3,10 +3,10 @@ using Confluent.Kafka;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Skysim.Logger.Contracts.DTOs;
-using Skysim.Logger.Common.Kafka;
+using Skysim.Logger.Api.Kafka;
 using Skysim.Logger.Client.Masking;
 
-namespace Skysim.Logger.Api.Infrastructure.Kafka;
+namespace Skysim.Logger.Api.Kafka;
 
 public interface IKafkaProducerFactory
 {

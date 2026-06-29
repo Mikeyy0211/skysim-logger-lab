@@ -1,6 +1,6 @@
 using Confluent.Kafka;
 
-namespace Skysim.Logger.Common.Kafka;
+namespace Skysim.Logger.Api.Kafka;
 
 public static class KafkaCommon
 {

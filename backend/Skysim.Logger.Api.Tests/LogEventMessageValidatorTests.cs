@@ -1,7 +1,7 @@
 using System.Text.Json;
 using FluentAssertions;
 using FluentValidation.TestHelper;
-using Skysim.Logger.Api.Contracts.DTOs;
+using Skysim.Logger.Api.Validators;
 using Xunit;
 using LogEventMessage = Skysim.Logger.Contracts.Events.LogEventMessage;
 using StatusTypes = Skysim.Logger.Contracts.Constants.StatusTypes;

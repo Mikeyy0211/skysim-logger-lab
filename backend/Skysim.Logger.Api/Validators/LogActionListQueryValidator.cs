@@ -1,5 +1,5 @@
 using FluentValidation;
-using Skysim.Logger.Api.Contracts.DTOs.Queries;
+using Skysim.Logger.Api.Contracts.Queries;
 
 namespace Skysim.Logger.Api.Validators;
 

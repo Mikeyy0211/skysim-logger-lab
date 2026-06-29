@@ -3,7 +3,7 @@ using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Moq;
 using Skysim.Logger.Client.Producers;
-using Skysim.Logger.Common.Kafka;
+using Skysim.Logger.Api.Kafka;
 using Xunit;
 using LogEventMessage = Skysim.Logger.Contracts.Events.LogEventMessage;
 using StatusTypes = Skysim.Logger.Contracts.Constants.StatusTypes;

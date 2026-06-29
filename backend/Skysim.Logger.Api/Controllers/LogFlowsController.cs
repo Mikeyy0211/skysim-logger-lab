@@ -2,7 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Skysim.Logger.Api.Base;
 using Skysim.Logger.Api.Contracts.DTOs;
 using Skysim.Logger.Contracts.DTOs;
-using Skysim.Logger.Api.Contracts.DTOs.Queries;
+using Skysim.Logger.Api.Contracts.Queries;
 using Skysim.Logger.Api.Services.Query;
 using FluentValidation;
 

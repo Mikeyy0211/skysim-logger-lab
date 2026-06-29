@@ -1,6 +1,6 @@
-using Skysim.Logger.Common.Kafka;
+using Skysim.Logger.Api.Kafka;
 
-namespace Skysim.Logger.Api.Infrastructure.Kafka;
+namespace Skysim.Logger.Api.Kafka;
 
 public class KafkaConsumerOptions
 {
