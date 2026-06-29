@@ -4,10 +4,10 @@ using FluentValidation.TestHelper;
 using Skysim.Logger.Api.Contracts.DTOs;
 using Xunit;
 using LogEventMessage = Skysim.Logger.Contracts.Events.LogEventMessage;
-using Status = Skysim.Logger.Contracts.Constants.Status;
-using FlowType = Skysim.Logger.Contracts.Constants.FlowType;
-using CheckoutType = Skysim.Logger.Contracts.Constants.CheckoutType;
-using ActionType = Skysim.Logger.Contracts.Constants.ActionType;
+using StatusTypes = Skysim.Logger.Contracts.Constants.StatusTypes;
+using FlowTypes = Skysim.Logger.Contracts.Constants.FlowTypes;
+using CheckoutTypes = Skysim.Logger.Contracts.Constants.CheckoutTypes;
+using ActionTypes = Skysim.Logger.Contracts.Constants.ActionTypes;
 
 namespace Skysim.Logger.Api.Tests;
 
@@ -44,10 +44,10 @@ public class LogEventMessageValidatorTests
         var message = LogEventMessage.Deserialize(System.Text.Encoding.UTF8.GetBytes(json));
 
         message.Should().NotBeNull();
-        message!.FlowType.Should().Be(FlowType.CheckoutEsim);
-        message.CheckoutType.Should().Be(CheckoutType.Guest);
-        message.Status.Should().Be(Status.Success);
-        message.ActionType.Should().Be(ActionType.OrderCreated);
+        message!.FlowType.Should().Be(FlowTypes.CheckoutEsim);
+        message.CheckoutType.Should().Be(CheckoutTypes.Guest);
+        message.Status.Should().Be(StatusTypes.Success);
+        message.ActionType.Should().Be(ActionTypes.OrderCreated);
     }
 
     [Fact]
@@ -68,8 +68,8 @@ public class LogEventMessageValidatorTests
         var message = LogEventMessage.Deserialize(System.Text.Encoding.UTF8.GetBytes(json));
 
         message.Should().NotBeNull();
-        message!.CheckoutType.Should().Be(CheckoutType.Authenticated);
-        message.ActionType.Should().Be(ActionType.PaymentSuccess);
+        message!.CheckoutType.Should().Be(CheckoutTypes.Authenticated);
+        message.ActionType.Should().Be(ActionTypes.PaymentSuccess);
     }
 
     [Fact]
@@ -90,13 +90,13 @@ public class LogEventMessageValidatorTests
         var message = LogEventMessage.Deserialize(System.Text.Encoding.UTF8.GetBytes(json));
 
         message.Should().NotBeNull();
-        message!.Status.Should().Be(Status.Failed);
-        message.ActionType.Should().Be(ActionType.ProviderFailed);
+        message!.Status.Should().Be(StatusTypes.Failed);
+        message.ActionType.Should().Be(ActionTypes.ProviderFailed);
         message.ErrorCode.Should().Be("PROVIDER_ERROR");
     }
 
     [Fact]
-    public void Deserialize_InvalidEnumValue_ShouldThrowJsonException()
+    public void Deserialize_InvalidFlowType_PassesDeserializationButFailsValidation()
     {
         var json = @"{
             ""eventId"": ""550e8400-e29b-41d4-a716-446655440003"",
@@ -108,9 +108,14 @@ public class LogEventMessageValidatorTests
             ""createdAt"": ""2026-06-23T10:00:00Z""
         }";
 
-        var action = () => LogEventMessage.Deserialize(System.Text.Encoding.UTF8.GetBytes(json));
+        var message = LogEventMessage.Deserialize(System.Text.Encoding.UTF8.GetBytes(json));
 
-        action.Should().Throw<JsonException>();
+        message.Should().NotBeNull();
+        message!.FlowType.Should().Be("INVALID_FLOW_TYPE");
+
+        var validator = new LogEventMessageValidator();
+        var result = validator.TestValidate(message);
+        result.ShouldHaveValidationErrorFor(x => x.FlowType);
     }
 
     [Fact]
@@ -169,14 +174,14 @@ public class LogEventMessageValidatorTests
         // Status enum defaults to 0 which maps to Success, so use an invalid value
         // We test this by verifying the validator rejects unknown string values at JSON parse level
         // Here we just ensure the enum validation works
-        message.Status.Should().BeOneOf(Status.Success, Status.Failed, Status.InProgress);
+        message.Status.Should().BeOneOf(StatusTypes.Success, StatusTypes.Failed, StatusTypes.InProgress);
     }
 
     [Fact]
     public void Validate_InvalidActionType_ShouldFail()
     {
         var message = CreateValidMessage();
-        message.ActionType = ActionType.HttpRequest;
+        message.ActionType = ActionTypes.HttpRequest;
 
         var result = _validator.TestValidate(message);
 
@@ -187,7 +192,7 @@ public class LogEventMessageValidatorTests
     public void Validate_GuestCheckoutWithoutUserId_ShouldPass()
     {
         var message = CreateValidMessage();
-        message.CheckoutType = CheckoutType.Guest;
+        message.CheckoutType = CheckoutTypes.Guest;
         message.UserId = null;
 
         var result = _validator.TestValidate(message);
@@ -251,7 +256,7 @@ public class LogEventMessageValidatorTests
     public void Validate_HttpRequestActionType_ShouldPass()
     {
         var message = CreateValidMessage();
-        message.ActionType = ActionType.HttpRequest;
+        message.ActionType = ActionTypes.HttpRequest;
 
         var result = _validator.TestValidate(message);
 
@@ -274,8 +279,8 @@ public class LogEventMessageValidatorTests
         var message = LogEventMessage.Deserialize(System.Text.Encoding.UTF8.GetBytes(json));
 
         message.Should().NotBeNull();
-        message!.ActionType.Should().Be(ActionType.HttpRequest);
-        message.FlowType.Should().Be(FlowType.HttpAction);
+        message!.ActionType.Should().Be(ActionTypes.HttpRequest);
+        message.FlowType.Should().Be(FlowTypes.HttpAction);
     }
 
     private static LogEventMessage CreateValidMessage()
@@ -284,12 +289,12 @@ public class LogEventMessageValidatorTests
         {
             EventId = Guid.NewGuid(),
             FlowId = "test-flow-001",
-            FlowType = FlowType.CheckoutEsim,
+            FlowType = FlowTypes.CheckoutEsim,
             ServiceName = "Order",
-            ActionType = ActionType.OrderCreated,
-            Status = Status.Success,
+            ActionType = ActionTypes.OrderCreated,
+            Status = StatusTypes.Success,
             CreatedAt = DateTime.UtcNow,
-            CheckoutType = CheckoutType.Guest,
+            CheckoutType = CheckoutTypes.Guest,
             CustomerEmail = "test@example.com",
             OrderId = "ORD-001"
         };

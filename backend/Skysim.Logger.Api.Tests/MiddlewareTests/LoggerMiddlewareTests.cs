@@ -8,9 +8,9 @@ using Skysim.Logger.Api.Infrastructure.Kafka;
 using Skysim.Logger.Api.Middlewares;
 using Xunit;
 using LogEventMessage = Skysim.Logger.Contracts.Events.LogEventMessage;
-using Status = Skysim.Logger.Contracts.Constants.Status;
-using FlowType = Skysim.Logger.Contracts.Constants.FlowType;
-using ActionType = Skysim.Logger.Contracts.Constants.ActionType;
+using StatusTypes = Skysim.Logger.Contracts.Constants.StatusTypes;
+using FlowTypes = Skysim.Logger.Contracts.Constants.FlowTypes;
+using ActionTypes = Skysim.Logger.Contracts.Constants.ActionTypes;
 
 namespace Skysim.Logger.Api.Tests.MiddlewareTests;
 
@@ -47,9 +47,9 @@ public class LoggerMiddlewareTests
             Times.Once);
 
         capturedMessage.Should().NotBeNull();
-        capturedMessage!.FlowType.Should().Be(FlowType.HttpAction);
-        capturedMessage.ActionType.Should().Be(ActionType.HttpRequest);
-        capturedMessage.Status.Should().Be(Status.Success);
+        capturedMessage!.FlowType.Should().Be(FlowTypes.HttpAction);
+        capturedMessage.ActionType.Should().Be(ActionTypes.HttpRequest);
+        capturedMessage.Status.Should().Be(StatusTypes.Success);
         capturedMessage.CorrelationId.Should().NotBeNullOrEmpty();
     }
 
@@ -158,7 +158,7 @@ public class LoggerMiddlewareTests
         // Assert — ErrorCode comes from exception.Message, not status code
         // Status is Failed because statusCode >= 500 without an exception
         capturedMessage.Should().NotBeNull();
-        capturedMessage!.Status.Should().Be(Status.Failed);
+        capturedMessage!.Status.Should().Be(StatusTypes.Failed);
         capturedMessage.ErrorCode.Should().BeNull();
         capturedMessage.Message.Should().Contain("500");
     }
@@ -187,7 +187,7 @@ public class LoggerMiddlewareTests
 
         // Assert — ErrorCode and ErrorMessage come from the caught exception
         capturedMessage.Should().NotBeNull();
-        capturedMessage!.Status.Should().Be(Status.Failed);
+        capturedMessage!.Status.Should().Be(StatusTypes.Failed);
         capturedMessage.ErrorCode.Should().Be("500");
         capturedMessage.ErrorMessage.Should().Be("Something went wrong");
     }
@@ -595,7 +595,7 @@ public class LoggerMiddlewareTests
 
         // Assert
         capturedMessage.Should().NotBeNull();
-        capturedMessage!.Status.Should().Be(Status.Failed);
+        capturedMessage!.Status.Should().Be(StatusTypes.Failed);
         capturedMessage.ErrorMessage.Should().Be("handled exception");
         capturedMessage.Exception.Should().Contain("InvalidOperationException");
     }

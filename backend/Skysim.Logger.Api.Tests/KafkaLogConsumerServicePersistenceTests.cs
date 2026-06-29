@@ -10,9 +10,9 @@ using Skysim.Logger.Infrastructure.Entities;
 using Skysim.Logger.Infrastructure.Repositories;
 using Xunit;
 using LogEventMessage = Skysim.Logger.Contracts.Events.LogEventMessage;
-using Status = Skysim.Logger.Contracts.Constants.Status;
-using FlowType = Skysim.Logger.Contracts.Constants.FlowType;
-using ActionType = Skysim.Logger.Contracts.Constants.ActionType;
+using StatusTypes = Skysim.Logger.Contracts.Constants.StatusTypes;
+using FlowTypes = Skysim.Logger.Contracts.Constants.FlowTypes;
+using ActionTypes = Skysim.Logger.Contracts.Constants.ActionTypes;
 
 namespace Skysim.Logger.Api.Tests;
 
@@ -27,10 +27,10 @@ public class KafkaLogConsumerServicePersistenceTests
         {
             EventId = Guid.NewGuid(),
             FlowId = "test-flow",
-            FlowType = FlowType.CheckoutEsim,
+            FlowType = FlowTypes.CheckoutEsim,
             ServiceName = "Test",
-            ActionType = ActionType.OrderCreated,
-            Status = Status.Success,
+            ActionType = ActionTypes.OrderCreated,
+            Status = StatusTypes.Success,
             CreatedAt = DateTime.UtcNow,
             RequestData = JsonDocument.Parse($"{{\"{fieldName}\":\"{rawValue}\"}}").RootElement.Clone(),
             ResponseData = JsonDocument.Parse($"{{\"{fieldName}\":\"{rawValue}\"}}").RootElement.Clone(),

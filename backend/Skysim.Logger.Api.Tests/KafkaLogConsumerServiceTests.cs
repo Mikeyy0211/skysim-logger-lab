@@ -10,10 +10,10 @@ using Skysim.Logger.Common.Kafka;
 using Skysim.Logger.Infrastructure.Entities;
 using Xunit;
 using LogEventMessage = Skysim.Logger.Contracts.Events.LogEventMessage;
-using Status = Skysim.Logger.Contracts.Constants.Status;
-using ActionType = Skysim.Logger.Contracts.Constants.ActionType;
-using FlowType = Skysim.Logger.Contracts.Constants.FlowType;
-using CheckoutType = Skysim.Logger.Contracts.Constants.CheckoutType;
+using StatusTypes = Skysim.Logger.Contracts.Constants.StatusTypes;
+using ActionTypes = Skysim.Logger.Contracts.Constants.ActionTypes;
+using FlowTypes = Skysim.Logger.Contracts.Constants.FlowTypes;
+using CheckoutTypes = Skysim.Logger.Contracts.Constants.CheckoutTypes;
 
 namespace Skysim.Logger.Api.Tests;
 
@@ -28,19 +28,19 @@ public class KafkaLogConsumerServiceTests
     private static LogEventMessage CreateValidMessage(
         Guid? eventId = null,
         string? flowId = null,
-        ActionType? actionType = null,
-        Status? status = null)
+        string? actionType = null,
+        string? status = null)
     {
         return new LogEventMessage
         {
             EventId = eventId ?? Guid.NewGuid(),
             FlowId = flowId ?? "test-flow-001",
-            FlowType = FlowType.CheckoutEsim,
+            FlowType = FlowTypes.CheckoutEsim,
             ServiceName = "Order",
-            ActionType = actionType ?? ActionType.OrderCreated,
-            Status = status ?? Status.Success,
+            ActionType = actionType ?? ActionTypes.OrderCreated,
+            Status = status ?? StatusTypes.Success,
             CreatedAt = DateTime.UtcNow,
-            CheckoutType = CheckoutType.Guest,
+            CheckoutType = CheckoutTypes.Guest,
             CustomerEmail = "test@example.com",
             OrderId = "ORD-001"
         };
@@ -171,7 +171,7 @@ public class KafkaLogConsumerServiceTests
         // Arrange
         var validator = new LogEventMessageValidator();
         var message = CreateValidMessage();
-        message.CheckoutType = CheckoutType.Guest;
+        message.CheckoutType = CheckoutTypes.Guest;
         message.UserId = null;
 
         // Act
@@ -206,10 +206,10 @@ public class KafkaLogConsumerServiceTests
         {
             EventId = Guid.NewGuid(),
             FlowId = "test-flow",
-            FlowType = FlowType.CheckoutEsim,
+            FlowType = FlowTypes.CheckoutEsim,
             ServiceName = "Order",
-            ActionType = ActionType.OrderCreated,
-            Status = Status.Success,
+            ActionType = ActionTypes.OrderCreated,
+            Status = StatusTypes.Success,
             CreatedAt = DateTime.UtcNow
             // All optional fields null
         };

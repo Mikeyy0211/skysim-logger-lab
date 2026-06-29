@@ -5,8 +5,8 @@ using Skysim.Logger.Infrastructure.Data;
 using Skysim.Logger.Infrastructure.Entities;
 using Skysim.Logger.Infrastructure.Repositories;
 using Xunit;
-using Status = Skysim.Logger.Contracts.Constants.Status;
-using ActionType = Skysim.Logger.Contracts.Constants.ActionType;
+using StatusTypes = Skysim.Logger.Contracts.Constants.StatusTypes;
+using ActionTypes = Skysim.Logger.Contracts.Constants.ActionTypes;
 
 namespace Skysim.Logger.Api.Tests.RepositoryTests;
 
@@ -36,8 +36,8 @@ public class LogActionRepositoryTests : IDisposable
         var action = CreateValidLogAction(
             Guid.NewGuid(),
             "test-flow-001",
-            ActionType.OrderCreated,
-            Status.Success);
+            ActionTypes.OrderCreated,
+            StatusTypes.Success);
 
         var result = await _repo.InsertAsync(action);
 
@@ -51,9 +51,9 @@ public class LogActionRepositoryTests : IDisposable
     public async Task InsertAsync_ShouldAssignStepOrderIncrementally()
     {
         var flowId = "test-flow-step-order";
-        var action1 = CreateValidLogAction(Guid.NewGuid(), flowId, ActionType.OrderCreated, Status.Success);
-        var action2 = CreateValidLogAction(Guid.NewGuid(), flowId, ActionType.PaymentRequested, Status.InProgress);
-        var action3 = CreateValidLogAction(Guid.NewGuid(), flowId, ActionType.PaymentSuccess, Status.Success);
+        var action1 = CreateValidLogAction(Guid.NewGuid(), flowId, ActionTypes.OrderCreated, StatusTypes.Success);
+        var action2 = CreateValidLogAction(Guid.NewGuid(), flowId, ActionTypes.PaymentRequested, StatusTypes.InProgress);
+        var action3 = CreateValidLogAction(Guid.NewGuid(), flowId, ActionTypes.PaymentSuccess, StatusTypes.Success);
 
         var result1 = await _repo.InsertAsync(action1);
         var result2 = await _repo.InsertAsync(action2);
@@ -96,7 +96,7 @@ public class LogActionRepositoryTests : IDisposable
         saved.CorrelationId.Should().Be("corr-123");
     }
 
-    private static LogAction CreateValidLogAction(Guid id, string flowId, ActionType actionType, Status status)
+    private static LogAction CreateValidLogAction(Guid id, string flowId, string actionType, string status)
     {
         return new LogAction
         {
@@ -104,8 +104,8 @@ public class LogActionRepositoryTests : IDisposable
             EventId = Guid.NewGuid(),
             FlowId = flowId,
             ServiceName = "Order",
-            ActionType = actionType.ToString(),
-            Status = status.ToString()
+            ActionType = actionType,
+            Status = status
         };
     }
 }

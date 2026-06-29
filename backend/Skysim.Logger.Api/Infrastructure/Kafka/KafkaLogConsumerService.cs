@@ -15,6 +15,7 @@ using Skysim.Logger.Common.Masking;
 using Skysim.Logger.Infrastructure.Data;
 using Skysim.Logger.Infrastructure.Entities;
 using Skysim.Logger.Infrastructure.Repositories;
+using StatusTypes = Skysim.Logger.Contracts.Constants.StatusTypes;
 
 namespace Skysim.Logger.Api.Infrastructure.Kafka;
 
@@ -278,24 +279,24 @@ public class KafkaLogConsumerService : BackgroundService
 
     private static void MapFlowFromMessage(LogFlow flow, LogEventMessage message)
     {
-        flow.FlowType = message.FlowType.ToString();
-        flow.CheckoutType = message.CheckoutType?.ToString();
-        flow.Status = message.Status.ToString();
+        flow.FlowType = message.FlowType;
+        flow.CheckoutType = message.CheckoutType;
+        flow.Status = message.Status;
         flow.CustomerEmail = message.CustomerEmail;
         flow.CustomerPhone = message.CustomerPhone;
         flow.UserId = message.UserId;
         flow.OrderId = message.OrderId;
         flow.PaymentId = message.PaymentId;
-        flow.LastActionType = message.ActionType.ToString();
+        flow.LastActionType = message.ActionType;
         flow.LastMessage = message.Message;
         flow.StartedAt = message.CreatedAt;
 
-        if (message.Status == Skysim.Logger.Contracts.Constants.Status.Success)
+        if (message.Status == StatusTypes.Success)
         {
             flow.SuccessSteps++;
             flow.CompletedAt = DateTime.UtcNow;
         }
-        else if (message.Status == Skysim.Logger.Contracts.Constants.Status.Failed)
+        else if (message.Status == StatusTypes.Failed)
         {
             flow.FailedSteps++;
             flow.CompletedAt = DateTime.UtcNow;
@@ -317,8 +318,8 @@ public class KafkaLogConsumerService : BackgroundService
             FlowId = message.FlowId,
             StepOrder = 0,
             ServiceName = message.ServiceName,
-            ActionType = message.ActionType.ToString(),
-            Status = message.Status.ToString(),
+            ActionType = message.ActionType,
+            Status = message.Status,
             Message = message.Message,
             ErrorCode = message.ErrorCode,
             ErrorMessage = message.ErrorMessage,

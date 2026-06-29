@@ -5,10 +5,10 @@ using Skysim.Logger.Api.Services.Query;
 using Skysim.Logger.Infrastructure.Data;
 using Skysim.Logger.Infrastructure.Entities;
 using Xunit;
-using Status = Skysim.Logger.Contracts.Constants.Status;
-using CheckoutType = Skysim.Logger.Contracts.Constants.CheckoutType;
-using FlowType = Skysim.Logger.Contracts.Constants.FlowType;
-using ActionType = Skysim.Logger.Contracts.Constants.ActionType;
+using StatusTypes = Skysim.Logger.Contracts.Constants.StatusTypes;
+using CheckoutTypes = Skysim.Logger.Contracts.Constants.CheckoutTypes;
+using FlowTypes = Skysim.Logger.Contracts.Constants.FlowTypes;
+using ActionTypes = Skysim.Logger.Contracts.Constants.ActionTypes;
 
 namespace Skysim.Logger.Api.Tests.QueryServiceTests;
 
@@ -80,16 +80,16 @@ public class LogFlowQueryServiceTests : IDisposable
     public async Task GetListAsync_SortByStatus_HasSecondarySort()
     {
         await _db.LogFlows.AddRangeAsync(
-            CreateFlow("flow-aaa", status: Status.Failed),
-            CreateFlow("flow-bbb", status: Status.Failed));
+            CreateFlow("flow-aaa", status: StatusTypes.Failed),
+            CreateFlow("flow-bbb", status: StatusTypes.Failed));
         await _db.SaveChangesAsync();
 
         var query = new LogFlowListQuery { SortBy = "status", SortDirection = "desc" };
         var result = await _service.GetListAsync(query);
 
         result.Items.Should().HaveCount(2);
-        result.Items[0].Status.Should().Be("Failed");
-        result.Items[1].Status.Should().Be("Failed");
+        result.Items[0].Status.Should().Be("FAILED");
+        result.Items[1].Status.Should().Be("FAILED");
     }
 
     [Fact]
@@ -110,11 +110,11 @@ public class LogFlowQueryServiceTests : IDisposable
     public async Task GetListAsync_FilterByStatus()
     {
         await _db.LogFlows.AddRangeAsync(
-            CreateFlow("flow-success", status: Status.Success),
-            CreateFlow("flow-failed", status: Status.Failed));
+            CreateFlow("flow-success", status: StatusTypes.Success),
+            CreateFlow("flow-failed", status: StatusTypes.Failed));
         await _db.SaveChangesAsync();
 
-        var query = new LogFlowListQuery { Status = "Failed" };
+        var query = new LogFlowListQuery { Status = "FAILED" };
         var result = await _service.GetListAsync(query);
 
         result.Items.Should().HaveCount(1);
@@ -150,8 +150,8 @@ public class LogFlowQueryServiceTests : IDisposable
         await _db.SaveChangesAsync();
 
         await _db.LogActions.AddRangeAsync(
-            CreateAction(flowPayment.FlowId, "Payment", ActionType.PaymentSuccess),
-            CreateAction(flowOrder.FlowId, "Order", ActionType.OrderCreated));
+            CreateAction(flowPayment.FlowId, "Payment", ActionTypes.PaymentSuccess),
+            CreateAction(flowOrder.FlowId, "Order", ActionTypes.OrderCreated));
         await _db.SaveChangesAsync();
 
         var query = new LogFlowListQuery { ServiceName = "Payment" };
@@ -165,12 +165,12 @@ public class LogFlowQueryServiceTests : IDisposable
     public async Task GetListAsync_FilterByMultipleFields_CombinesWithAnd()
     {
         await _db.LogFlows.AddRangeAsync(
-            CreateFlow("flow-1", customerEmail: "alice@test.com", status: Status.Success),
-            CreateFlow("flow-2", customerEmail: "bob@test.com", status: Status.Failed),
-            CreateFlow("flow-3", customerEmail: "alice@test.com", status: Status.Failed));
+            CreateFlow("flow-1", customerEmail: "alice@test.com", status: StatusTypes.Success),
+            CreateFlow("flow-2", customerEmail: "bob@test.com", status: StatusTypes.Failed),
+            CreateFlow("flow-3", customerEmail: "alice@test.com", status: StatusTypes.Failed));
         await _db.SaveChangesAsync();
 
-        var query = new LogFlowListQuery { CustomerEmail = "alice@test.com", Status = "Failed" };
+        var query = new LogFlowListQuery { CustomerEmail = "alice@test.com", Status = "FAILED" };
         var result = await _service.GetListAsync(query);
 
         result.Items.Should().HaveCount(1);
@@ -193,9 +193,9 @@ public class LogFlowQueryServiceTests : IDisposable
         await _db.SaveChangesAsync();
 
         await _db.LogActions.AddRangeAsync(
-            CreateAction(flow.FlowId, "Order", ActionType.OrderCreated, stepOrder: 3),
-            CreateAction(flow.FlowId, "Order", ActionType.OrderCreated, stepOrder: 1),
-            CreateAction(flow.FlowId, "Payment", ActionType.PaymentSuccess, stepOrder: 2));
+            CreateAction(flow.FlowId, "Order", ActionTypes.OrderCreated, stepOrder: 3),
+            CreateAction(flow.FlowId, "Order", ActionTypes.OrderCreated, stepOrder: 1),
+            CreateAction(flow.FlowId, "Payment", ActionTypes.PaymentSuccess, stepOrder: 2));
         await _db.SaveChangesAsync();
 
         var result = await _service.GetByFlowIdAsync("detail-flow");
@@ -240,15 +240,15 @@ public class LogFlowQueryServiceTests : IDisposable
     private static LogFlow CreateFlow(
         string flowId,
         string? customerEmail = null,
-        Status status = Status.InProgress)
+        string status = "IN_PROGRESS")
     {
         return new LogFlow
         {
             Id = Guid.NewGuid(),
             FlowId = flowId,
-            FlowType = FlowType.CheckoutEsim.ToString(),
-            CheckoutType = CheckoutType.Guest.ToString(),
-            Status = status.ToString(),
+            FlowType = FlowTypes.CheckoutEsim,
+            CheckoutType = CheckoutTypes.Guest,
+            Status = status,
             CustomerEmail = customerEmail,
             CustomerPhone = "+1234567890",
             UserId = null,
@@ -257,7 +257,7 @@ public class LogFlowQueryServiceTests : IDisposable
             TotalSteps = 1,
             SuccessSteps = 0,
             FailedSteps = 0,
-            LastActionType = ActionType.OrderCreated.ToString(),
+            LastActionType = ActionTypes.OrderCreated,
             LastMessage = null,
             StartedAt = DateTime.UtcNow,
             CompletedAt = null,
@@ -269,7 +269,7 @@ public class LogFlowQueryServiceTests : IDisposable
     private static LogAction CreateAction(
         string flowId,
         string serviceName,
-        ActionType actionType,
+        string actionType,
         int stepOrder = 1)
     {
         return new LogAction
@@ -279,8 +279,8 @@ public class LogFlowQueryServiceTests : IDisposable
             FlowId = flowId,
             StepOrder = stepOrder,
             ServiceName = serviceName,
-            ActionType = actionType.ToString(),
-            Status = Status.Success.ToString(),
+            ActionType = actionType,
+            Status = StatusTypes.Success,
             Message = null,
             ErrorCode = null,
             ErrorMessage = null,

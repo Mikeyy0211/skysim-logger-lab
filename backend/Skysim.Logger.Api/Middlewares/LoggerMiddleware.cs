@@ -7,9 +7,9 @@ using Skysim.Logger.Api.Common;
 using Skysim.Logger.Api.Infrastructure.Kafka;
 using Skysim.Logger.Common.Masking;
 using LogEventMessage = Skysim.Logger.Contracts.Events.LogEventMessage;
-using Status = Skysim.Logger.Contracts.Constants.Status;
-using FlowType = Skysim.Logger.Contracts.Constants.FlowType;
-using ActionType = Skysim.Logger.Contracts.Constants.ActionType;
+using StatusTypes = Skysim.Logger.Contracts.Constants.StatusTypes;
+using FlowTypes = Skysim.Logger.Contracts.Constants.FlowTypes;
+using ActionTypes = Skysim.Logger.Contracts.Constants.ActionTypes;
 using SensitiveFields = Skysim.Logger.Common.Masking.SensitiveFields;
 
 namespace Skysim.Logger.Api.Middlewares;
@@ -251,8 +251,8 @@ public class LoggerMiddleware
         {
             EventId = Guid.NewGuid(),
             FlowId = flowId,
-            FlowType = FlowType.HttpAction,
-            ActionType = ActionType.HttpRequest,
+            FlowType = FlowTypes.HttpAction,
+            ActionType = ActionTypes.HttpRequest,
             Status = status,
             CreatedAt = requestTime,
             RequestTime = requestTime,
@@ -410,13 +410,13 @@ public class LoggerMiddleware
             && contentType.Contains("application/octet-stream", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static Status MapStatus(int statusCode, Exception? exception)
+    private static string MapStatus(int statusCode, Exception? exception)
     {
         if (exception != null || statusCode >= 500)
         {
-            return Status.Failed;
+            return StatusTypes.Failed;
         }
-        return statusCode >= 200 && statusCode < 300 ? Status.Success : Status.Failed;
+        return statusCode >= 200 && statusCode < 300 ? StatusTypes.Success : StatusTypes.Failed;
     }
 
     private async Task FireAndForgetPublishAsync(LogEventMessage message)

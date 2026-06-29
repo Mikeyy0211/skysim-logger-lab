@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Skysim.Logger.Contracts.Constants;
 
 namespace Skysim.Logger.Contracts.Events;
 
@@ -8,8 +9,7 @@ public class LogEventMessage
 {
     public static readonly JsonSerializerOptions JsonOptions = new()
     {
-        PropertyNameCaseInsensitive = true,
-        Converters = { new JsonStringEnumConverter(JsonNamingPolicy.SnakeCaseUpper, allowIntegerValues: false) }
+        PropertyNameCaseInsensitive = true
     };
 
     public static LogEventMessage? Deserialize(byte[] payload)
@@ -30,22 +30,22 @@ public class LogEventMessage
     public string FlowId { get; set; } = string.Empty;
 
     [JsonPropertyName("flowType")]
-    public Constants.FlowType FlowType { get; set; }
+    public string FlowType { get; set; } = string.Empty;
 
     [JsonPropertyName("serviceName")]
     public string ServiceName { get; set; } = string.Empty;
 
     [JsonPropertyName("actionType")]
-    public Constants.ActionType ActionType { get; set; }
+    public string ActionType { get; set; } = string.Empty;
 
     [JsonPropertyName("status")]
-    public Constants.Status Status { get; set; }
+    public string Status { get; set; } = string.Empty;
 
     [JsonPropertyName("createdAt")]
     public DateTime CreatedAt { get; set; }
 
     [JsonPropertyName("checkoutType")]
-    public Constants.CheckoutType? CheckoutType { get; set; }
+    public string? CheckoutType { get; set; }
 
     [JsonPropertyName("userId")]
     public string? UserId { get; set; }

@@ -6,10 +6,10 @@ using Skysim.Logger.Api.Services.Query;
 using Skysim.Logger.Infrastructure.Data;
 using Skysim.Logger.Infrastructure.Entities;
 using Xunit;
-using Status = Skysim.Logger.Contracts.Constants.Status;
-using CheckoutType = Skysim.Logger.Contracts.Constants.CheckoutType;
-using FlowType = Skysim.Logger.Contracts.Constants.FlowType;
-using ActionType = Skysim.Logger.Contracts.Constants.ActionType;
+using StatusTypes = Skysim.Logger.Contracts.Constants.StatusTypes;
+using CheckoutTypes = Skysim.Logger.Contracts.Constants.CheckoutTypes;
+using FlowTypes = Skysim.Logger.Contracts.Constants.FlowTypes;
+using ActionTypes = Skysim.Logger.Contracts.Constants.ActionTypes;
 
 namespace Skysim.Logger.Api.Tests.QueryServiceTests;
 
@@ -41,7 +41,7 @@ public class LogActionQueryServiceTests : IDisposable
 
         for (int i = 1; i <= 15; i++)
         {
-            await _db.LogActions.AddAsync(CreateAction(flow.FlowId, "Order", ActionType.OrderCreated, i));
+            await _db.LogActions.AddAsync(CreateAction(flow.FlowId, "Order", ActionTypes.OrderCreated, i));
         }
         await _db.SaveChangesAsync();
 
@@ -62,8 +62,8 @@ public class LogActionQueryServiceTests : IDisposable
         await _db.SaveChangesAsync();
 
         await _db.LogActions.AddRangeAsync(
-            CreateAction(flow.FlowId, "Payment", ActionType.PaymentSuccess, 1),
-            CreateAction(flow.FlowId, "Order", ActionType.OrderCreated, 2));
+            CreateAction(flow.FlowId, "Payment", ActionTypes.PaymentSuccess, 1),
+            CreateAction(flow.FlowId, "Order", ActionTypes.OrderCreated, 2));
         await _db.SaveChangesAsync();
 
         var query = new LogActionListQuery { FlowId = flow.FlowId, ServiceName = "Payment" };
@@ -96,7 +96,7 @@ public class LogActionQueryServiceTests : IDisposable
     public async Task GetDetailsAsync_ExistingActionId_ReturnsDetailWithMaskedPayloads()
     {
         var flow = CreateFlow("payload-flow");
-        var action = CreateAction(flow.FlowId, "Order", ActionType.OrderCreated);
+        var action = CreateAction(flow.FlowId, "Order", ActionTypes.OrderCreated);
         await _db.LogFlows.AddAsync(flow);
         await _db.LogActions.AddAsync(action);
         await _db.SaveChangesAsync();
@@ -132,7 +132,7 @@ public class LogActionQueryServiceTests : IDisposable
     public async Task GetDetailsAsync_NullPayloads_StayNull()
     {
         var flow = CreateFlow("null-payload-flow");
-        var action = CreateAction(flow.FlowId, "Order", ActionType.OrderCreated);
+        var action = CreateAction(flow.FlowId, "Order", ActionTypes.OrderCreated);
         await _db.LogFlows.AddAsync(flow);
         await _db.LogActions.AddAsync(action);
         await _db.SaveChangesAsync();
@@ -165,9 +165,9 @@ public class LogActionQueryServiceTests : IDisposable
         {
             Id = Guid.NewGuid(),
             FlowId = flowId,
-            FlowType = FlowType.CheckoutEsim.ToString(),
-            CheckoutType = CheckoutType.Guest.ToString(),
-            Status = Status.InProgress.ToString(),
+            FlowType = FlowTypes.CheckoutEsim,
+            CheckoutType = CheckoutTypes.Guest,
+            Status = StatusTypes.InProgress,
             CustomerEmail = "test@test.com",
             CustomerPhone = "+1234567890",
             UserId = null,
@@ -176,7 +176,7 @@ public class LogActionQueryServiceTests : IDisposable
             TotalSteps = 1,
             SuccessSteps = 0,
             FailedSteps = 0,
-            LastActionType = ActionType.OrderCreated.ToString(),
+            LastActionType = ActionTypes.OrderCreated,
             LastMessage = null,
             StartedAt = DateTime.UtcNow,
             CompletedAt = null,
@@ -188,7 +188,7 @@ public class LogActionQueryServiceTests : IDisposable
     private static LogAction CreateAction(
         string flowId,
         string serviceName,
-        ActionType actionType,
+        string actionType,
         int stepOrder = 1)
     {
         return new LogAction
@@ -198,8 +198,8 @@ public class LogActionQueryServiceTests : IDisposable
             FlowId = flowId,
             StepOrder = stepOrder,
             ServiceName = serviceName,
-            ActionType = actionType.ToString(),
-            Status = Status.Success.ToString(),
+            ActionType = actionType,
+            Status = StatusTypes.Success,
             Message = null,
             ErrorCode = null,
             ErrorMessage = null,

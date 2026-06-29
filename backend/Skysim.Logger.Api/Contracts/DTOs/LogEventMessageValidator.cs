@@ -1,5 +1,9 @@
 using FluentValidation;
 using LogEventMessage = Skysim.Logger.Contracts.Events.LogEventMessage;
+using ActionTypes = Skysim.Logger.Contracts.Constants.ActionTypes;
+using StatusTypes = Skysim.Logger.Contracts.Constants.StatusTypes;
+using FlowTypes = Skysim.Logger.Contracts.Constants.FlowTypes;
+using CheckoutTypes = Skysim.Logger.Contracts.Constants.CheckoutTypes;
 
 namespace Skysim.Logger.Api.Contracts.DTOs;
 
@@ -22,7 +26,7 @@ public class LogEventMessageValidator : AbstractValidator<LogEventMessage>
             .WithMessage("serviceName is required");
 
         RuleFor(x => x.Status)
-            .IsInEnum()
+            .Must(status => status == StatusTypes.Success || status == StatusTypes.Failed || status == StatusTypes.InProgress)
             .WithMessage("status must be one of: SUCCESS, FAILED, IN_PROGRESS");
 
         RuleFor(x => x.CreatedAt)
@@ -32,12 +36,12 @@ public class LogEventMessageValidator : AbstractValidator<LogEventMessage>
             .WithMessage("createdAt must be a valid ISO-8601 UTC timestamp");
 
         RuleFor(x => x.FlowType)
-            .IsInEnum()
+            .Must(flowType => flowType == FlowTypes.CheckoutEsim || flowType == FlowTypes.HttpAction)
             .WithMessage("flowType must be a valid FlowType value");
 
         RuleFor(x => x.CheckoutType)
-            .IsInEnum()
-            .When(x => x.CheckoutType.HasValue)
+            .Must(checkoutType => checkoutType == CheckoutTypes.Guest || checkoutType == CheckoutTypes.Authenticated)
+            .When(x => !string.IsNullOrEmpty(x.CheckoutType))
             .WithMessage("checkoutType must be one of: GUEST, AUTHENTICATED");
 
         RuleFor(x => x.RequestTime)
