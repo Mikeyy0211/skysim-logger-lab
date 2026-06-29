@@ -1,11 +1,13 @@
 using System.Reflection;
 using System.Text.Json;
 using FluentValidation;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.OpenApi;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
 using Skysim.Logger.Api.Consumers;
 using Skysim.Logger.Api.Kafka;
+using Skysim.Logger.Api.Options;
 using Skysim.Logger.Api.Services.Query;
 using Skysim.Logger.Api.Validators;
 using Skysim.Logger.Client.Middlewares;
@@ -23,6 +25,9 @@ builder.Services.Configure<KafkaConsumerOptions>(
 
 builder.Services.Configure<LoggerOptions>(
     builder.Configuration.GetSection("Logger"));
+
+builder.Services.Configure<JwtOptions>(
+    builder.Configuration.GetSection("Jwt"));
 
 builder.Services.AddDbContextFactory<LoggerDbContext>(options =>
 {
@@ -66,6 +71,18 @@ builder.Services.AddHostedService<KafkaLogConsumerService>();
 builder.Services.AddScoped<ILogFlowQueryService, LogFlowQueryService>();
 builder.Services.AddScoped<ILogActionQueryService, LogActionQueryService>();
 
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        var jwtOptions = builder.Configuration.GetSection("Jwt").Get<JwtOptions>()
+            ?? throw new InvalidOperationException("JWT configuration is missing.");
+        options.Authority = jwtOptions.Authority;
+        options.Audience = jwtOptions.Audience;
+        options.RequireHttpsMetadata = jwtOptions.RequireHttpsMetadata;
+    });
+
+builder.Services.AddAuthorization();
+
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
     {
@@ -88,6 +105,30 @@ builder.Services.AddSwaggerGen(options =>
     {
         options.IncludeXmlComments(xmlPath);
     }
+
+    options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    {
+        Description = "JWT Authorization header using the Bearer scheme. Enter 'Bearer' [space] and then your token.",
+        Name = "Authorization",
+        In = ParameterLocation.Header,
+        Type = SecuritySchemeType.ApiKey,
+        Scheme = "Bearer"
+    });
+
+    options.AddSecurityRequirement(new OpenApiSecurityRequirement
+    {
+        {
+            new OpenApiSecurityScheme
+            {
+                Reference = new OpenApiReference
+                {
+                    Type = ReferenceType.SecurityScheme,
+                    Id = "Bearer"
+                }
+            },
+            Array.Empty<string>()
+        }
+    });
 });
 
 var app = builder.Build();
@@ -101,6 +142,9 @@ if (app.Environment.IsDevelopment())
 app.MapGet("/health", () => Results.Ok(new { status = "healthy", timestamp = DateTime.UtcNow }))
    .WithName("HealthCheck")
    .WithTags("Health");
+
+app.UseAuthentication();
+app.UseAuthorization();
 
 app.UseMiddleware<LoggerMiddleware>();
 

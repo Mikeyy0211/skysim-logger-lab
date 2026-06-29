@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Skysim.Logger.Api.Base;
 using Skysim.Logger.Api.Contracts.DTOs;
@@ -11,6 +12,7 @@ namespace Skysim.Logger.Api.Controllers;
 /// Provides endpoints for retrieving detailed information about individual log actions.
 /// </summary>
 [Route("api/log-actions")]
+[Authorize]
 [Produces("application/json")]
 public class LogActionsController : ApiControllerBase
 {

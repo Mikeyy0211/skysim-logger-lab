@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Skysim.Logger.Api.Base;
 using Skysim.Logger.Api.Contracts.DTOs;
@@ -13,6 +14,7 @@ namespace Skysim.Logger.Api.Controllers;
 /// Provides endpoints for listing, filtering, and retrieving detailed flow information.
 /// </summary>
 [Route("api/log-flows")]
+[Authorize]
 [Produces("application/json")]
 public class LogFlowsController : ApiControllerBase
 {
