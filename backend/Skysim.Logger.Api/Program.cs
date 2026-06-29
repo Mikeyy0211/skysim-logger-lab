@@ -12,7 +12,7 @@ using Skysim.Logger.Common.Kafka;
 using Skysim.Logger.Common.Masking;
 using Skysim.Logger.Infrastructure.Data;
 using Skysim.Logger.Infrastructure.Repositories;
-using LogEventMessage = Skysim.Logger.Api.Contracts.DTOs.LogEventMessage;
+using LogEventMessage = Skysim.Logger.Contracts.Events.LogEventMessage;
 using LoggerOptions = Skysim.Logger.Api.Infrastructure.Kafka.LoggerOptions;
 using LogFlowListQuery = Skysim.Logger.Api.Contracts.DTOs.Queries.LogFlowListQuery;
 using LogActionListQuery = Skysim.Logger.Api.Contracts.DTOs.Queries.LogActionListQuery;

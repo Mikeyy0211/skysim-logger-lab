@@ -2,7 +2,7 @@ using System.Text;
 using Confluent.Kafka;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Skysim.Logger.Api.Contracts.DTOs;
+using Skysim.Logger.Contracts.Events;
 using Skysim.Logger.Common.Kafka;
 
 namespace Skysim.Logger.Api.Infrastructure.Kafka;

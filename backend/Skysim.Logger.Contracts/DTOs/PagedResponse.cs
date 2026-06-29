@@ -1,4 +1,4 @@
-namespace Skysim.Logger.Api.Contracts.DTOs;
+namespace Skysim.Logger.Contracts.DTOs;
 
 public record PagedResponse<T>(
     List<T> Items,

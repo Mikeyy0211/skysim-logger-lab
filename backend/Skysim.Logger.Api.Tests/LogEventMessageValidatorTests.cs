@@ -2,9 +2,12 @@ using System.Text.Json;
 using FluentAssertions;
 using FluentValidation.TestHelper;
 using Skysim.Logger.Api.Contracts.DTOs;
-using Skysim.Logger.Api.Domain.Enums;
 using Xunit;
-using Status = Skysim.Logger.Api.Domain.Enums.Status;
+using LogEventMessage = Skysim.Logger.Contracts.Events.LogEventMessage;
+using Status = Skysim.Logger.Contracts.Constants.Status;
+using FlowType = Skysim.Logger.Contracts.Constants.FlowType;
+using CheckoutType = Skysim.Logger.Contracts.Constants.CheckoutType;
+using ActionType = Skysim.Logger.Contracts.Constants.ActionType;
 
 namespace Skysim.Logger.Api.Tests;
 

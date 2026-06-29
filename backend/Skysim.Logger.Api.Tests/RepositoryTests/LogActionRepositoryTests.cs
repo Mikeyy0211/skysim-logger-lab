@@ -5,8 +5,8 @@ using Skysim.Logger.Infrastructure.Data;
 using Skysim.Logger.Infrastructure.Entities;
 using Skysim.Logger.Infrastructure.Repositories;
 using Xunit;
-using Status = Skysim.Logger.Api.Domain.Enums.Status;
-using ActionType = Skysim.Logger.Api.Domain.Enums.ActionType;
+using Status = Skysim.Logger.Contracts.Constants.Status;
+using ActionType = Skysim.Logger.Contracts.Constants.ActionType;
 
 namespace Skysim.Logger.Api.Tests.RepositoryTests;
 

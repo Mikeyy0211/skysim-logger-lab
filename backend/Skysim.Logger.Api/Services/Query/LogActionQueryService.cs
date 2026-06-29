@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Skysim.Logger.Api.Contracts.DTOs;
 using Skysim.Logger.Api.Contracts.DTOs.Queries;
 using Skysim.Logger.Common.Masking;
+using Skysim.Logger.Contracts.DTOs;
 using Skysim.Logger.Infrastructure.Data;
 
 namespace Skysim.Logger.Api.Services.Query;

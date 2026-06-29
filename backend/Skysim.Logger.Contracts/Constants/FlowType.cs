@@ -1,4 +1,4 @@
-namespace Skysim.Logger.Api.Domain.Enums;
+namespace Skysim.Logger.Contracts.Constants;
 
 public enum FlowType
 {

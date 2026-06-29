@@ -1,5 +1,6 @@
 using Skysim.Logger.Api.Contracts.DTOs;
 using Skysim.Logger.Api.Contracts.DTOs.Queries;
+using Skysim.Logger.Contracts.DTOs;
 
 namespace Skysim.Logger.Api.Services.Query;
 

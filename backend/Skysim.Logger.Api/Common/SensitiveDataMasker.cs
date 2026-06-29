@@ -1,6 +1,6 @@
 using System.Text.Json;
 using Skysim.Logger.Common.Masking;
-using LogEventMessage = Skysim.Logger.Api.Contracts.DTOs.LogEventMessage;
+using LogEventMessage = Skysim.Logger.Contracts.Events.LogEventMessage;
 
 namespace Skysim.Logger.Api.Common;
 

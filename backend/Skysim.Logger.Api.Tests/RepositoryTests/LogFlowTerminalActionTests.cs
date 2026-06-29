@@ -1,8 +1,8 @@
 using FluentAssertions;
 using Skysim.Logger.Api.Domain.Services;
-using Skysim.Logger.Api.Domain.Enums;
 using Xunit;
-using Status = Skysim.Logger.Api.Domain.Enums.Status;
+using Status = Skysim.Logger.Contracts.Constants.Status;
+using ActionType = Skysim.Logger.Contracts.Constants.ActionType;
 
 namespace Skysim.Logger.Api.Tests.RepositoryTests;
 

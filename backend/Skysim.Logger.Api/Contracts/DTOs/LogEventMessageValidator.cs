@@ -1,4 +1,5 @@
 using FluentValidation;
+using LogEventMessage = Skysim.Logger.Contracts.Events.LogEventMessage;
 
 namespace Skysim.Logger.Api.Contracts.DTOs;
 

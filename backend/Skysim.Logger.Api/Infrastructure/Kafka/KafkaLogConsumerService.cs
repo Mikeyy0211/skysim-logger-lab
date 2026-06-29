@@ -8,7 +8,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Polly;
-using Skysim.Logger.Api.Contracts.DTOs;
+using Skysim.Logger.Contracts.Events;
 using Skysim.Logger.Api.Infrastructure.Persistence.Exceptions;
 using Skysim.Logger.Common.Kafka;
 using Skysim.Logger.Common.Masking;
@@ -290,12 +290,12 @@ public class KafkaLogConsumerService : BackgroundService
         flow.LastMessage = message.Message;
         flow.StartedAt = message.CreatedAt;
 
-        if (message.Status == Domain.Enums.Status.Success)
+        if (message.Status == Skysim.Logger.Contracts.Constants.Status.Success)
         {
             flow.SuccessSteps++;
             flow.CompletedAt = DateTime.UtcNow;
         }
-        else if (message.Status == Domain.Enums.Status.Failed)
+        else if (message.Status == Skysim.Logger.Contracts.Constants.Status.Failed)
         {
             flow.FailedSteps++;
             flow.CompletedAt = DateTime.UtcNow;

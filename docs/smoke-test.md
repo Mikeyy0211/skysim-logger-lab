@@ -18,16 +18,30 @@ cd backend/Skysim.Logger.Api
 dotnet run --urls "http://localhost:5000"
 ```
 
-### 2. Trigger a simple request with sensitive data
+### 2. Trigger a request with JWT (authenticated user)
+
+```bash
+curl -X POST http://localhost:5000/api/orders \
+  -H "Content-Type: application/json" \
+  -H "X-Correlation-ID: smoke-test-jwt-001" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyLTk5OSJ9.test" \
+  -d '{"email":"test@example.com","password":"secret123","orderId":"ORD-JWT-001"}'
+```
+
+**Expected:** After consumer processes this, `user_id` column should contain `user-999`.
+
+### 3. Trigger a simple request without JWT (anonymous)
 
 ```bash
 curl -X POST http://localhost:5000/api/log-flows \
   -H "Content-Type: application/json" \
-  -H "X-Correlation-ID: smoke-test-001" \
-  -d '{"email":"test@example.com","password":"secret123","orderId":"ORD-SMOKE"}'
+  -H "X-Correlation-ID: smoke-test-anon-001" \
+  -d '{"email":"guest@example.com","orderId":"ORD-GUEST-001"}'
 ```
 
-### 3. Trigger a health check (no body, with correlation ID)
+**Expected:** After consumer processes this, `user_id` column should be NULL.
+
+### 4. Trigger a health check (no body, with correlation ID)
 
 ```bash
 curl -v http://localhost:5000/health \
@@ -41,25 +55,46 @@ Check that the Kafka consumer has picked up the HTTP-action log events and store
 #### Check log_actions table for HttpRequest records
 
 ```sql
-SELECT event_id, flow_id, action_type, status, message, created_at
+SELECT event_id, flow_id, action_type, status, message, user_id, created_at
 FROM log_actions
 WHERE action_type = 'HTTP_REQUEST'
 ORDER BY created_at DESC
 LIMIT 10;
 ```
 
-**Expected:** At least two records — one for the POST to `/api/log-flows` and one for the GET to `/health`. Both should have `flow_type = 'HTTP_ACTION'` and `action_type = 'HTTP_REQUEST'`.
+**Expected:** At least three records — JWT request, anonymous request, and health check. JWT request should have `user_id = 'user-999'`. Anonymous request should have `user_id = NULL`.
 
 #### Check correlation IDs are preserved
 
 ```sql
-SELECT event_id, correlation_id, message
+SELECT event_id, correlation_id, message, user_id
 FROM log_actions
-WHERE correlation_id IN ('smoke-test-001', 'smoke-test-002')
+WHERE correlation_id IN ('smoke-test-jwt-001', 'smoke-test-anon-001')
 ORDER BY created_at DESC;
 ```
 
 **Expected:** Both correlation IDs appear in the `correlation_id` column.
+
+#### Verify userId extraction from JWT
+
+```sql
+SELECT user_id, COUNT(*) as count
+FROM log_actions
+WHERE user_id IS NOT NULL
+GROUP BY user_id;
+```
+
+**Expected:** Shows `user-999` for authenticated requests.
+
+#### Verify anonymous user has null userId
+
+```sql
+SELECT correlation_id, user_id
+FROM log_actions
+WHERE correlation_id = 'smoke-test-anon-001';
+```
+
+**Expected:** `user_id` is NULL.
 
 #### Verify sensitive fields are masked in log_action_details
 
@@ -91,7 +126,18 @@ curl -s -D - http://localhost:5000/health -o /dev/null | grep -i "x-correlation-
 
 **Expected:** A new `Guid` is returned in the `X-Correlation-ID` response header.
 
-### 7. Verify 5xx errors produce Failed status
+### 7. Verify userId extraction from JWT
+
+After running the JWT request, check if userId was captured:
+
+```bash
+# Via API
+curl "http://localhost:5000/api/log-flows?userId=user-999"
+```
+
+**Expected:** Returns flows where userId matches.
+
+### 8. Verify 5xx errors produce Failed status
 
 ```bash
 # Trigger a deliberate error (non-existent endpoint will return 404, not 500)
@@ -99,7 +145,7 @@ curl -s -D - http://localhost:5000/health -o /dev/null | grep -i "x-correlation-
 curl -s http://localhost:5000/api/nonexistent-endpoint -o /dev/null -w "%{http_code}"
 ```
 
-### 8. Verify application logs for publish failures (when Kafka is intentionally down)
+### 9. Verify application logs for publish failures (when Kafka is intentionally down)
 
 1. Stop Kafka: `docker compose stop kafka`
 2. Make a request: `curl http://localhost:5000/health`
@@ -112,7 +158,7 @@ warn: Skysim.Logger.Api.Middlewares.LoggerMiddleware[0]
 
 **Expected:** API returns `200 OK` to the client despite Kafka being down. No HTTP error is returned.
 
-### 9. Tear down
+### 10. Tear down
 
 ```bash
 docker compose down
@@ -127,3 +173,5 @@ docker compose down
 | Sensitive data not masked | `SensitiveDataMasker` not registered | Check DI registration |
 | API returns 500 | Producer constructor throws | Check Kafka broker is reachable |
 | Messages not in Kafka | Producer config wrong | Check `appsettings.json` `Kafka:Producer` section |
+| userId always NULL | JWT authentication not configured | Check `AddAuthentication()` in Program.cs |
+| userId incorrect | Claim type mismatch | Check `ExtractUserId` claims order |

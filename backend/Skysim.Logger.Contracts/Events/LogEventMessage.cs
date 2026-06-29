@@ -1,9 +1,8 @@
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Skysim.Logger.Api.Domain.Enums;
 
-namespace Skysim.Logger.Api.Contracts.DTOs;
+namespace Skysim.Logger.Contracts.Events;
 
 public class LogEventMessage
 {
@@ -31,22 +30,22 @@ public class LogEventMessage
     public string FlowId { get; set; } = string.Empty;
 
     [JsonPropertyName("flowType")]
-    public FlowType FlowType { get; set; }
+    public Constants.FlowType FlowType { get; set; }
 
     [JsonPropertyName("serviceName")]
     public string ServiceName { get; set; } = string.Empty;
 
     [JsonPropertyName("actionType")]
-    public ActionType ActionType { get; set; }
+    public Constants.ActionType ActionType { get; set; }
 
     [JsonPropertyName("status")]
-    public Status Status { get; set; }
+    public Constants.Status Status { get; set; }
 
     [JsonPropertyName("createdAt")]
     public DateTime CreatedAt { get; set; }
 
     [JsonPropertyName("checkoutType")]
-    public CheckoutType? CheckoutType { get; set; }
+    public Constants.CheckoutType? CheckoutType { get; set; }
 
     [JsonPropertyName("userId")]
     public string? UserId { get; set; }

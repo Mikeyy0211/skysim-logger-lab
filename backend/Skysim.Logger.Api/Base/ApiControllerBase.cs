@@ -1,6 +1,6 @@
 using FluentValidation;
 using Microsoft.AspNetCore.Mvc;
-using Skysim.Logger.Api.Contracts.DTOs;
+using Skysim.Logger.Contracts.DTOs;
 
 namespace Skysim.Logger.Api.Base;
 

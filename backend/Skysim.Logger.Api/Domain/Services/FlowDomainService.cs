@@ -1,6 +1,5 @@
-using Skysim.Logger.Api.Domain.Enums;
-using ActionType = Skysim.Logger.Api.Domain.Enums.ActionType;
-using Status = Skysim.Logger.Api.Domain.Enums.Status;
+using ActionType = Skysim.Logger.Contracts.Constants.ActionType;
+using Status = Skysim.Logger.Contracts.Constants.Status;
 
 namespace Skysim.Logger.Api.Domain.Services;
 

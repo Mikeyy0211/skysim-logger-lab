@@ -9,10 +9,11 @@ using Skysim.Logger.Api.Infrastructure.Persistence.Exceptions;
 using Skysim.Logger.Common.Kafka;
 using Skysim.Logger.Infrastructure.Entities;
 using Xunit;
-using Status = Skysim.Logger.Api.Domain.Enums.Status;
-using ActionType = Skysim.Logger.Api.Domain.Enums.ActionType;
-using FlowType = Skysim.Logger.Api.Domain.Enums.FlowType;
-using CheckoutType = Skysim.Logger.Api.Domain.Enums.CheckoutType;
+using LogEventMessage = Skysim.Logger.Contracts.Events.LogEventMessage;
+using Status = Skysim.Logger.Contracts.Constants.Status;
+using ActionType = Skysim.Logger.Contracts.Constants.ActionType;
+using FlowType = Skysim.Logger.Contracts.Constants.FlowType;
+using CheckoutType = Skysim.Logger.Contracts.Constants.CheckoutType;
 
 namespace Skysim.Logger.Api.Tests;
 

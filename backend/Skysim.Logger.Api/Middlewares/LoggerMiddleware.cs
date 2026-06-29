@@ -1,12 +1,15 @@
+using System.Security.Claims;
 using System.Text;
 using System.Text.Json;
 using System.Web;
 using Microsoft.AspNetCore.Http.Extensions;
 using Skysim.Logger.Api.Common;
-using Skysim.Logger.Api.Contracts.DTOs;
-using Skysim.Logger.Api.Domain.Enums;
 using Skysim.Logger.Api.Infrastructure.Kafka;
 using Skysim.Logger.Common.Masking;
+using LogEventMessage = Skysim.Logger.Contracts.Events.LogEventMessage;
+using Status = Skysim.Logger.Contracts.Constants.Status;
+using FlowType = Skysim.Logger.Contracts.Constants.FlowType;
+using ActionType = Skysim.Logger.Contracts.Constants.ActionType;
 using SensitiveFields = Skysim.Logger.Common.Masking.SensitiveFields;
 
 namespace Skysim.Logger.Api.Middlewares;
@@ -164,6 +167,20 @@ public class LoggerMiddleware
         return generated;
     }
 
+    private static string? ExtractUserId(HttpContext context)
+    {
+        if (context.User?.Identity?.IsAuthenticated != true)
+        {
+            return null;
+        }
+
+        var userId = context.User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+            ?? context.User.FindFirst("sub")?.Value
+            ?? context.User.FindFirst("userId")?.Value;
+
+        return string.IsNullOrWhiteSpace(userId) ? null : userId;
+    }
+
     private static async Task<byte[]?> ReadRequestBodyAsync(HttpRequest request)
     {
         if (!request.Body.CanSeek)
@@ -242,6 +259,7 @@ public class LoggerMiddleware
             ResponseTime = responseTime,
             Duration = duration,
             CorrelationId = flowId,
+            UserId = ExtractUserId(context),
             ErrorCode = errorCode,
             ErrorMessage = errorMessage,
             Exception = exceptionText,

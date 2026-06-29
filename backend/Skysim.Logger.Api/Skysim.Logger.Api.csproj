@@ -13,6 +13,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Skysim.Logger.Contracts\Skysim.Logger.Contracts.csproj" />
     <ProjectReference Include="..\Skysim.Logger.Common\Skysim.Logger.Common.csproj" />
     <ProjectReference Include="..\Skysim.Logger.Infrastructure\Skysim.Logger.Infrastructure.csproj" />
   </ItemGroup>

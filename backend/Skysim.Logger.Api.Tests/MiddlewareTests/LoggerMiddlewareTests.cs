@@ -1,13 +1,16 @@
+using System.Security.Claims;
 using FluentAssertions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Moq;
 using Skysim.Logger.Api.Common;
-using Skysim.Logger.Api.Contracts.DTOs;
-using Skysim.Logger.Api.Domain.Enums;
 using Skysim.Logger.Api.Infrastructure.Kafka;
 using Skysim.Logger.Api.Middlewares;
 using Xunit;
+using LogEventMessage = Skysim.Logger.Contracts.Events.LogEventMessage;
+using Status = Skysim.Logger.Contracts.Constants.Status;
+using FlowType = Skysim.Logger.Contracts.Constants.FlowType;
+using ActionType = Skysim.Logger.Contracts.Constants.ActionType;
 
 namespace Skysim.Logger.Api.Tests.MiddlewareTests;
 
@@ -597,6 +600,87 @@ public class LoggerMiddlewareTests
         capturedMessage.Exception.Should().Contain("InvalidOperationException");
     }
 
+    [Fact]
+    public async Task InvokeAsync_AuthenticatedUser_ExtractsUserIdFromSubClaim()
+    {
+        // Arrange
+        LogEventMessage? capturedMessage = null;
+        _producerMock
+            .Setup(p => p.PublishAsync(It.IsAny<LogEventMessage>(), It.IsAny<CancellationToken>()))
+            .Callback<LogEventMessage, CancellationToken>((msg, _) => capturedMessage = msg)
+            .Returns(Task.CompletedTask);
+
+        var middleware = new LoggerMiddleware(
+            next: _ => Task.CompletedTask,
+            _producerMock.Object,
+            _masker,
+            _loggerMock.Object);
+
+        var context = CreateHttpContext("GET", "/api/test");
+        SetupAuthenticatedUser(context, "sub", "user-123-sub");
+
+        // Act
+        await middleware.InvokeAsync(context);
+
+        // Assert
+        capturedMessage.Should().NotBeNull();
+        capturedMessage!.UserId.Should().Be("user-123-sub");
+    }
+
+    [Fact]
+    public async Task InvokeAsync_AuthenticatedUser_ExtractsUserIdFromUserIdClaim()
+    {
+        // Arrange
+        LogEventMessage? capturedMessage = null;
+        _producerMock
+            .Setup(p => p.PublishAsync(It.IsAny<LogEventMessage>(), It.IsAny<CancellationToken>()))
+            .Callback<LogEventMessage, CancellationToken>((msg, _) => capturedMessage = msg)
+            .Returns(Task.CompletedTask);
+
+        var middleware = new LoggerMiddleware(
+            next: _ => Task.CompletedTask,
+            _producerMock.Object,
+            _masker,
+            _loggerMock.Object);
+
+        var context = CreateHttpContext("GET", "/api/test");
+        SetupAuthenticatedUser(context, "userId", "user-456");
+
+        // Act
+        await middleware.InvokeAsync(context);
+
+        // Assert
+        capturedMessage.Should().NotBeNull();
+        capturedMessage!.UserId.Should().Be("user-456");
+    }
+
+    [Fact]
+    public async Task InvokeAsync_AnonymousUser_SetsUserIdToNull()
+    {
+        // Arrange
+        LogEventMessage? capturedMessage = null;
+        _producerMock
+            .Setup(p => p.PublishAsync(It.IsAny<LogEventMessage>(), It.IsAny<CancellationToken>()))
+            .Callback<LogEventMessage, CancellationToken>((msg, _) => capturedMessage = msg)
+            .Returns(Task.CompletedTask);
+
+        var middleware = new LoggerMiddleware(
+            next: _ => Task.CompletedTask,
+            _producerMock.Object,
+            _masker,
+            _loggerMock.Object);
+
+        var context = CreateHttpContext("GET", "/api/test");
+        // Default context is anonymous (no authentication set up)
+
+        // Act
+        await middleware.InvokeAsync(context);
+
+        // Assert
+        capturedMessage.Should().NotBeNull();
+        capturedMessage!.UserId.Should().BeNull();
+    }
+
     private static DefaultHttpContext CreateHttpContext(string method, string path)
     {
         var context = new DefaultHttpContext();
@@ -612,5 +696,12 @@ public class LoggerMiddlewareTests
     {
         var bytes = System.Text.Encoding.UTF8.GetBytes(body);
         return new MemoryStream(bytes);
+    }
+
+    private static void SetupAuthenticatedUser(DefaultHttpContext context, string claimType, string claimValue)
+    {
+        var claims = new[] { new Claim(claimType, claimValue) };
+        var identity = new ClaimsIdentity(claims, "TestAuth");
+        context.User = new ClaimsPrincipal(identity);
     }
 }
