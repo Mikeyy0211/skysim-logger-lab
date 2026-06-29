@@ -3,7 +3,7 @@ using Skysim.Logger.Api.Contracts.Queries;
 using Skysim.Logger.Api.Validators;
 using Xunit;
 
-namespace Skysim.Logger.Api.Tests.QueryServiceTests;
+namespace Skysim.Logger.Api.Tests.Validators;
 
 public class LogActionListQueryValidatorTests
 {

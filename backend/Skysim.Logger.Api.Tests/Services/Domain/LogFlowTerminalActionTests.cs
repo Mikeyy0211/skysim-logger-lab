@@ -4,7 +4,7 @@ using Xunit;
 using StatusTypes = Skysim.Logger.Contracts.Constants.StatusTypes;
 using ActionTypes = Skysim.Logger.Contracts.Constants.ActionTypes;
 
-namespace Skysim.Logger.Api.Tests.RepositoryTests;
+namespace Skysim.Logger.Api.Tests.Services.Domain;
 
 public class LogFlowTerminalActionTests
 {

@@ -11,7 +11,7 @@ using CheckoutTypes = Skysim.Logger.Contracts.Constants.CheckoutTypes;
 using FlowTypes = Skysim.Logger.Contracts.Constants.FlowTypes;
 using ActionTypes = Skysim.Logger.Contracts.Constants.ActionTypes;
 
-namespace Skysim.Logger.Api.Tests.QueryServiceTests;
+namespace Skysim.Logger.Api.Tests.Services.Query;
 
 public class LogActionQueryServiceTests : IDisposable
 {

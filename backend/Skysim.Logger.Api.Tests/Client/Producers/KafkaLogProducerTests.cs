@@ -10,7 +10,7 @@ using StatusTypes = Skysim.Logger.Contracts.Constants.StatusTypes;
 using FlowTypes = Skysim.Logger.Contracts.Constants.FlowTypes;
 using ActionTypes = Skysim.Logger.Contracts.Constants.ActionTypes;
 
-namespace Skysim.Logger.Api.Tests.KafkaProducerTests;
+namespace Skysim.Logger.Api.Tests.Client.Producers;
 
 public class KafkaLogProducerTests
 {

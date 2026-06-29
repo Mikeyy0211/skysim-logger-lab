@@ -9,7 +9,7 @@ using FlowTypes = Skysim.Logger.Contracts.Constants.FlowTypes;
 using CheckoutTypes = Skysim.Logger.Contracts.Constants.CheckoutTypes;
 using ActionTypes = Skysim.Logger.Contracts.Constants.ActionTypes;
 
-namespace Skysim.Logger.Api.Tests;
+namespace Skysim.Logger.Api.Tests.Validators;
 
 public class LogEventMessageValidatorTests
 {

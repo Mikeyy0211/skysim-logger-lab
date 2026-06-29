@@ -13,7 +13,7 @@ using ActionTypes = Skysim.Logger.Contracts.Constants.ActionTypes;
 using FlowTypes = Skysim.Logger.Contracts.Constants.FlowTypes;
 using CheckoutTypes = Skysim.Logger.Contracts.Constants.CheckoutTypes;
 
-namespace Skysim.Logger.Api.Tests;
+namespace Skysim.Logger.Api.Tests.Consumers;
 
 public class KafkaLogConsumerServiceTests
 {

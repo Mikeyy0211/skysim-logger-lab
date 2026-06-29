@@ -2,7 +2,7 @@ using FluentAssertions;
 using Skysim.Logger.Client.Masking;
 using Xunit;
 
-namespace Skysim.Logger.Api.Tests;
+namespace Skysim.Logger.Api.Tests.Client.Masking;
 
 public class SensitiveDataMaskerTests
 {
