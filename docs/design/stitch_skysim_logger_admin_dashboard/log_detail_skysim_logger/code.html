@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Skysim Logger - Log Detail</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "surface-container-high": "#e7e7f3",
+                        "on-surface": "#191b23",
+                        "surface-variant": "#e1e2ed",
+                        "error-container": "#ffdad6",
+                        "surface-dim": "#d9d9e5",
+                        "on-primary": "#ffffff",
+                        "on-error-container": "#93000a",
+                        "tertiary-fixed-dim": "#ffb596",
+                        "surface-container": "#ededf9",
+                        "outline": "#737686",
+                        "on-background": "#191b23",
+                        "tertiary": "#943700",
+                        "on-tertiary": "#ffffff",
+                        "error": "#ba1a1a",
+                        "surface-tint": "#0053db",
+                        "on-secondary": "#ffffff",
+                        "surface-container-lowest": "#ffffff",
+                        "on-tertiary-fixed-variant": "#7d2d00",
+                        "secondary-fixed-dim": "#b7c8e1",
+                        "primary-fixed": "#dbe1ff",
+                        "primary-fixed-dim": "#b4c5ff",
+                        "inverse-primary": "#b4c5ff",
+                        "surface-container-low": "#f3f3fe",
+                        "on-tertiary-container": "#ffede6",
+                        "on-error": "#ffffff",
+                        "surface": "#faf8ff",
+                        "tertiary-fixed": "#ffdbcd",
+                        "primary": "#004ac6",
+                        "secondary-fixed": "#d3e4fe",
+                        "secondary-container": "#d0e1fb",
+                        "background": "#faf8ff",
+                        "outline-variant": "#c3c6d7",
+                        "on-secondary-container": "#54647a",
+                        "on-secondary-fixed-variant": "#38485d",
+                        "primary-container": "#2563eb",
+                        "on-primary-container": "#eeefff",
+                        "on-primary-fixed": "#00174b",
+                        "surface-container-highest": "#e1e2ed",
+                        "on-tertiary-fixed": "#360f00",
+                        "surface-bright": "#faf8ff",
+                        "tertiary-container": "#bc4800",
+                        "on-secondary-fixed": "#0b1c30",
+                        "secondary": "#505f76",
+                        "on-surface-variant": "#434655",
+                        "inverse-on-surface": "#f0f0fb",
+                        "on-primary-fixed-variant": "#003ea8",
+                        "inverse-surface": "#2e3039"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "container-padding-mobile": "16px",
+                        "gutter": "24px",
+                        "container-padding-desktop": "32px",
+                        "stack-lg": "24px",
+                        "stack-md": "16px",
+                        "base": "4px",
+                        "stack-sm": "8px"
+                    },
+                    "fontFamily": {
+                        "label-bold": ["Inter"],
+                        "headline-sm": ["Inter"],
+                        "display-lg": ["Inter"],
+                        "headline-md": ["Inter"],
+                        "code-md": ["JetBrains Mono"],
+                        "body-md": ["Inter"],
+                        "body-sm": ["Inter"],
+                        "body-lg": ["Inter"]
+                    },
+                    "fontSize": {
+                        "label-bold": ["12px", {"lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "600"}],
+                        "headline-sm": ["20px", {"lineHeight": "28px", "fontWeight": "600"}],
+                        "display-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                        "headline-md": ["24px", {"lineHeight": "32px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                        "code-md": ["13px", {"lineHeight": "20px", "fontWeight": "400"}],
+                        "body-md": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                        "body-sm": ["12px", {"lineHeight": "18px", "fontWeight": "400"}],
+                        "body-lg": ["16px", {"lineHeight": "24px", "fontWeight": "400"}]
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        body { font-family: 'Inter', sans-serif; }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .status-badge-success {
+            background-color: #10b9811a;
+            color: #10b981;
+        }
+        .status-badge-error {
+            background-color: #ef44441a;
+            color: #ef4444;
+        }
+        .status-badge-neutral {
+            background-color: #64748b1a;
+            color: #64748b;
+        }
+        .custom-shadow {
+            box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
+        }
+    </style>
+</head>
+<body class="bg-surface text-on-surface">
+<!-- SideNavBar (Authority: JSON + Conflict Resolution) -->
+<aside class="fixed left-0 top-0 h-full w-[280px] bg-surface border-r border-outline-variant flex flex-col py-spacing-stack-lg px-spacing-stack-md z-50">
+<div class="mb-10 px-4">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-lg bg-primary flex items-center justify-center text-white">
+<span class="material-symbols-outlined">data_object</span>
+</div>
+<div>
+<h1 class="font-headline-sm text-headline-sm font-bold text-primary">Skysim Logger</h1>
+<p class="text-[10px] uppercase tracking-widest text-on-surface-variant font-bold">Admin Console</p>
+</div>
+</div>
+</div>
+<nav class="flex-1 space-y-2">
+<a class="flex items-center gap-3 px-4 py-3 rounded-xl transition-colors duration-200 text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface" href="#">
+<span class="material-symbols-outlined">dashboard</span>
+<span class="font-label-bold text-label-bold">Dashboard</span>
+</a>
+<!-- Active State: Logs -->
+<a class="flex items-center gap-3 px-4 py-3 rounded-xl text-primary font-bold border-r-4 border-primary bg-surface-container-low transition-colors duration-200" href="#">
+<span class="material-symbols-outlined">list_alt</span>
+<span class="font-label-bold text-label-bold">Logs</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 rounded-xl transition-colors duration-200 text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface" href="#">
+<span class="material-symbols-outlined">settings</span>
+<span class="font-label-bold text-label-bold">Settings</span>
+</a>
+</nav>
+<div class="mt-auto border-t border-outline-variant pt-spacing-stack-md">
+<div class="flex items-center gap-3 px-4 mb-6">
+<div class="w-10 h-10 rounded-full overflow-hidden bg-surface-container-highest">
+<img class="w-full h-full object-cover" data-alt="A professional headshot of a systems administrator, soft studio lighting, focused gaze, corporate technology professional aesthetic with a clean blurred server room background in cool blue tones." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDhTtmCH-T2rxv7MAVAE68xKwNkwjZIbdTDKG_bzpp4omMopfzQ497Q1HatnBbuAzNEoQ0ORoBYOcnejc7NFCET27Lquq3y0JZNucFaDthJz_VGuOV5K9-ypUWHHKpA723CyLVExePRuvKkgiQT7DbkeZvL0WtxuX1444Mok4vX6K92fKiJvxCLOaPRte07gsFP1dpZSJi6xCRbU0O0znzZXwl8BJB0tWqkPjQiX40Kna1yeLstbtQXk3bT3bAou33QWEHfYqD2QfSr"/>
+</div>
+<div class="flex-1 overflow-hidden">
+<p class="font-label-bold text-label-bold truncate">Skysim Operator</p>
+<p class="text-[10px] text-on-surface-variant truncate">operator@skysim.io</p>
+</div>
+</div>
+<button class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-on-surface-variant hover:bg-error-container hover:text-on-error-container transition-all">
+<span class="material-symbols-outlined">logout</span>
+<span class="font-label-bold text-label-bold">Logout</span>
+</button>
+</div>
+</aside>
+<!-- Main Wrapper -->
+<div class="ml-[280px] min-h-screen flex flex-col">
+<!-- TopNavBar -->
+<header class="sticky top-0 z-40 bg-surface-container-lowest flex justify-between items-center h-16 w-full px-container-padding-desktop border-b border-outline-variant">
+<div class="flex flex-col">
+<h2 class="font-headline-md text-headline-md font-extrabold text-primary">Log Detail</h2>
+<p class="font-body-sm text-body-sm text-on-surface-variant">Trace and inspect all actions in this flow</p>
+</div>
+<div class="flex items-center gap-4">
+<div class="relative group">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline">search</span>
+<input class="pl-10 pr-4 py-2 bg-surface-container rounded-lg border-none focus:ring-2 focus:ring-primary text-body-sm w-64 transition-all" placeholder="Search trace ID..." type="text"/>
+</div>
+<div class="flex items-center gap-2">
+<button class="p-2 text-on-surface-variant hover:text-primary transition-all">
+<span class="material-symbols-outlined">notifications</span>
+</button>
+<button class="p-2 text-on-surface-variant hover:text-primary transition-all">
+<span class="material-symbols-outlined">help</span>
+</button>
+</div>
+</div>
+</header>
+<!-- Main Content Area -->
+<main class="flex-1 p-container-padding-desktop space-y-gutter bg-surface">
+<!-- Breadcrumb / Actions Row -->
+<div class="flex justify-between items-center">
+<button class="flex items-center gap-2 text-primary font-label-bold text-label-bold hover:gap-3 transition-all duration-300">
+<span class="material-symbols-outlined text-sm">arrow_back</span>
+<span>Back to Logs</span>
+</button>
+<div class="flex gap-2">
+<button class="px-4 py-2 rounded-lg border border-outline-variant text-on-surface-variant hover:bg-surface-container-high font-label-bold text-label-bold flex items-center gap-2 transition-all">
+<span class="material-symbols-outlined text-sm">download</span> Export JSON
+                    </button>
+<button class="px-4 py-2 rounded-lg bg-primary text-white hover:bg-primary-container font-label-bold text-label-bold flex items-center gap-2 transition-all">
+<span class="material-symbols-outlined text-sm">refresh</span> Re-run Flow
+                    </button>
+</div>
+</div>
+<!-- Flow Summary Card (Bento-style layout) -->
+<section class="bg-white rounded-2xl border border-outline-variant p-spacing-stack-lg custom-shadow">
+<div class="flex justify-between items-start mb-6">
+<div class="flex items-center gap-4">
+<div class="p-3 bg-primary/10 rounded-xl text-primary">
+<span class="material-symbols-outlined text-3xl">hub</span>
+</div>
+<div>
+<p class="font-label-bold text-label-bold text-on-surface-variant uppercase">Flow Instance</p>
+<h3 class="font-headline-sm text-headline-sm text-on-surface font-bold">e2e-guest-flow-001</h3>
+</div>
+</div>
+<span class="status-badge-success px-3 py-1 rounded-full font-label-bold text-label-bold flex items-center gap-1">
+<span class="material-symbols-outlined text-sm" style="font-variation-settings: 'FILL' 1;">check_circle</span> SUCCESS
+                    </span>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-gutter border-t border-outline-variant pt-6">
+<div class="space-y-1">
+<p class="font-label-bold text-label-bold text-on-surface-variant">Flow Type</p>
+<p class="font-body-md text-body-md font-semibold">HTTP_ACTION</p>
+</div>
+<div class="space-y-1">
+<p class="font-label-bold text-label-bold text-on-surface-variant">Last Action</p>
+<p class="font-body-md text-body-md font-semibold">HTTP_REQUEST</p>
+</div>
+<div class="space-y-1">
+<p class="font-label-bold text-label-bold text-on-surface-variant">Started At</p>
+<p class="font-body-md text-body-md font-code-md text-on-surface">2026-06-30 10:30:00</p>
+</div>
+<div class="space-y-1">
+<p class="font-label-bold text-label-bold text-on-surface-variant">Updated At</p>
+<p class="font-body-md text-body-md font-code-md text-on-surface">2026-06-30 10:30:01</p>
+</div>
+</div>
+<div class="mt-6 p-4 bg-surface-container-low rounded-xl flex items-center gap-4 border border-outline-variant/50">
+<div class="text-primary">
+<span class="material-symbols-outlined">message</span>
+</div>
+<div class="flex-1">
+<p class="font-label-bold text-label-bold text-on-surface-variant">Last Message</p>
+<p class="font-code-md text-code-md text-primary font-medium">POST /api/checkout/esim -&gt; 200</p>
+</div>
+</div>
+</section>
+<!-- Metrics Cards Row -->
+<div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+<div class="bg-white p-spacing-stack-md rounded-2xl border border-outline-variant flex items-center gap-4 hover:border-primary transition-all cursor-default">
+<div class="w-12 h-12 rounded-xl bg-surface-container flex items-center justify-center text-secondary">
+<span class="material-symbols-outlined">view_list</span>
+</div>
+<div>
+<p class="font-label-bold text-label-bold text-on-surface-variant">Total Steps</p>
+<p class="font-headline-sm text-headline-sm font-bold">1</p>
+</div>
+</div>
+<div class="bg-white p-spacing-stack-md rounded-2xl border border-outline-variant flex items-center gap-4 hover:border-emerald-500 transition-all cursor-default">
+<div class="w-12 h-12 rounded-xl bg-emerald-50 flex items-center justify-center text-emerald-600">
+<span class="material-symbols-outlined">check_circle</span>
+</div>
+<div>
+<p class="font-label-bold text-label-bold text-on-surface-variant">Success Steps</p>
+<p class="font-headline-sm text-headline-sm font-bold text-emerald-600">1</p>
+</div>
+</div>
+<div class="bg-white p-spacing-stack-md rounded-2xl border border-outline-variant flex items-center gap-4 hover:border-error transition-all cursor-default">
+<div class="w-12 h-12 rounded-xl bg-rose-50 flex items-center justify-center text-error">
+<span class="material-symbols-outlined">cancel</span>
+</div>
+<div>
+<p class="font-label-bold text-label-bold text-on-surface-variant">Failed Steps</p>
+<p class="font-headline-sm text-headline-sm font-bold text-error">0</p>
+</div>
+</div>
+</div>
+<!-- Action Timeline -->
+<section class="bg-white rounded-2xl border border-outline-variant overflow-hidden custom-shadow">
+<div class="px-spacing-stack-lg py-4 border-b border-outline-variant flex justify-between items-center bg-surface-container-lowest">
+<h3 class="font-headline-sm text-headline-sm font-bold flex items-center gap-2">
+<span class="material-symbols-outlined text-primary">timeline</span>
+                        Action Timeline
+                    </h3>
+<div class="flex gap-2">
+<span class="text-body-sm text-on-surface-variant">Showing 1 entry</span>
+</div>
+</div>
+<div class="overflow-x-auto">
+<table class="w-full text-left border-collapse">
+<thead>
+<tr class="bg-surface-container-low border-b border-outline-variant">
+<th class="px-spacing-stack-lg py-3 font-label-bold text-label-bold text-on-surface-variant">Action Type</th>
+<th class="px-4 py-3 font-label-bold text-label-bold text-on-surface-variant">Service</th>
+<th class="px-4 py-3 font-label-bold text-label-bold text-on-surface-variant">Status</th>
+<th class="px-4 py-3 font-label-bold text-label-bold text-on-surface-variant">Message</th>
+<th class="px-4 py-3 font-label-bold text-label-bold text-on-surface-variant">Duration</th>
+<th class="px-spacing-stack-lg py-3 font-label-bold text-label-bold text-on-surface-variant text-right">Created At</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-slate-100">
+<tr class="hover:bg-slate-50 transition-colors group">
+<td class="px-spacing-stack-lg py-4">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-blue-500 text-sm">http</span>
+<span class="font-body-md text-body-md font-semibold">HTTP_REQUEST</span>
+</div>
+</td>
+<td class="px-4 py-4">
+<span class="font-body-sm text-body-sm px-2 py-1 bg-surface-container-high rounded text-on-surface">sample-checkout-service</span>
+</td>
+<td class="px-4 py-4">
+<span class="status-badge-success px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider">Success</span>
+</td>
+<td class="px-4 py-4 max-w-xs truncate">
+<span class="font-code-md text-code-md text-on-surface-variant">POST /api/checkout/esim -&gt; 200</span>
+</td>
+<td class="px-4 py-4">
+<span class="font-body-sm text-body-sm text-on-surface-variant italic">152 ms</span>
+</td>
+<td class="px-spacing-stack-lg py-4 text-right">
+<span class="font-code-md text-code-md text-on-surface-variant">2026-06-30 10:30:00</span>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<!-- Action Details Expandable Section -->
+<section class="bg-white rounded-2xl border border-outline-variant overflow-hidden custom-shadow">
+<div class="px-spacing-stack-lg py-4 border-b border-outline-variant bg-surface-container-lowest">
+<div class="flex justify-between items-center mb-4">
+<h3 class="font-headline-sm text-headline-sm font-bold flex items-center gap-2">
+<span class="material-symbols-outlined text-primary">analytics</span>
+                            Action Details
+                        </h3>
+<div class="flex p-1 bg-surface-container rounded-lg">
+<button class="px-4 py-1.5 rounded-md text-label-bold font-label-bold bg-white shadow-sm text-primary transition-all" id="tab-request">Request</button>
+<button class="px-4 py-1.5 rounded-md text-label-bold font-label-bold text-on-surface-variant hover:text-on-surface transition-all" id="tab-response">Response</button>
+<button class="px-4 py-1.5 rounded-md text-label-bold font-label-bold text-on-surface-variant hover:text-on-surface transition-all" id="tab-error">Error</button>
+</div>
+</div>
+</div>
+<div class="p-spacing-stack-lg bg-surface-container-low">
+<div class="relative" id="content-request">
+<div class="absolute right-4 top-4">
+<button class="p-2 bg-white rounded-lg border border-outline-variant text-on-surface-variant hover:text-primary transition-all" onclick="copyJson()" title="Copy to clipboard">
+<span class="material-symbols-outlined text-sm">content_copy</span>
+</button>
+</div>
+<pre class="font-code-md text-code-md text-on-surface-variant bg-white border border-outline-variant p-6 rounded-xl overflow-x-auto shadow-inner leading-relaxed"><span class="text-indigo-600">{</span>
+  <span class="text-rose-500">"method"</span>: <span class="text-emerald-600">"POST"</span>,
+  <span class="text-rose-500">"path"</span>: <span class="text-emerald-600">"/api/checkout/esim"</span>,
+  <span class="text-rose-500">"statusCode"</span>: <span class="text-blue-500">200</span>,
+  <span class="text-rose-500">"headers"</span>: <span class="text-indigo-600">{</span>
+    <span class="text-rose-500">"content-type"</span>: <span class="text-emerald-600">"application/json"</span>,
+    <span class="text-rose-500">"x-request-id"</span>: <span class="text-emerald-600">"77d2-45e1-88f2"</span>
+  <span class="text-indigo-600">}</span>,
+  <span class="text-rose-500">"body"</span>: <span class="text-indigo-600">{</span>
+    <span class="text-rose-500">"cartId"</span>: <span class="text-emerald-600">"99011"</span>,
+    <span class="text-rose-500">"masked"</span>: <span class="text-amber-600">true</span>
+  <span class="text-indigo-600">}</span>
+<span class="text-indigo-600">}</span></pre>
+</div>
+<div class="hidden" id="content-response">
+<div class="flex flex-col items-center justify-center py-12 text-on-surface-variant">
+<span class="material-symbols-outlined text-4xl mb-2">tab_unselected</span>
+<p class="font-body-md">Response data successfully logged.</p>
+</div>
+</div>
+<div class="hidden" id="content-error">
+<div class="flex flex-col items-center justify-center py-12 text-on-surface-variant">
+<span class="material-symbols-outlined text-4xl mb-2 text-emerald-500">check_circle</span>
+<p class="font-body-md">No errors detected in this flow action.</p>
+</div>
+</div>
+</div>
+<div class="px-spacing-stack-lg py-3 border-t border-outline-variant bg-surface-container-highest flex justify-between items-center">
+<div class="flex items-center gap-4">
+<div class="flex items-center gap-1">
+<div class="w-2 h-2 rounded-full bg-emerald-500"></div>
+<span class="text-[10px] font-label-bold text-on-surface-variant">STABLE</span>
+</div>
+<span class="text-[10px] font-label-bold text-outline">TRACE_ID: 8829-XJ-0119</span>
+</div>
+<button class="text-[11px] font-label-bold text-primary hover:underline">View Raw Logs</button>
+</div>
+</section>
+</main>
+<footer class="mt-auto px-container-padding-desktop py-6 border-t border-outline-variant bg-surface-container-lowest">
+<div class="flex justify-between items-center">
+<p class="font-body-sm text-body-sm text-on-surface-variant">© 2026 Skysim Logger v4.2.0-stable</p>
+<div class="flex gap-6">
+<a class="font-body-sm text-body-sm text-on-surface-variant hover:text-primary" href="#">System Status</a>
+<a class="font-body-sm text-body-sm text-on-surface-variant hover:text-primary" href="#">Documentation</a>
+<a class="font-body-sm text-body-sm text-on-surface-variant hover:text-primary" href="#">API Reference</a>
+</div>
+</div>
+</footer>
+</div>
+<script>
+        // Simple tab switching logic
+        const tabs = ['request', 'response', 'error'];
+        tabs.forEach(tab => {
+            const btn = document.getElementById(`tab-${tab}`);
+            const content = document.getElementById(`content-${tab}`);
+            
+            btn.addEventListener('click', () => {
+                // Reset all
+                tabs.forEach(t => {
+                    document.getElementById(`tab-${t}`).classList.remove('bg-white', 'shadow-sm', 'text-primary');
+                    document.getElementById(`tab-${t}`).classList.add('text-on-surface-variant');
+                    document.getElementById(`content-${t}`).classList.add('hidden');
+                });
+                
+                // Set active
+                btn.classList.add('bg-white', 'shadow-sm', 'text-primary');
+                btn.classList.remove('text-on-surface-variant');
+                content.classList.remove('hidden');
+            });
+        });
+
+        function copyJson() {
+            // Placeholder for copy functionality
+            const btn = event.currentTarget;
+            const originalIcon = btn.innerHTML;
+            btn.innerHTML = '<span class="material-symbols-outlined text-sm">check</span>';
+            btn.classList.add('text-emerald-500');
+            
+            setTimeout(() => {
+                btn.innerHTML = originalIcon;
+                btn.classList.remove('text-emerald-500');
+            }, 2000);
+        }
+    </script>
+</body></html>
