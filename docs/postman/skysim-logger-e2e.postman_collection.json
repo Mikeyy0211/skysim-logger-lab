@@ -1,0 +1,480 @@
+{
+  "info": {
+    "name": "Skysim Logger E2E Smoke Test",
+    "description": "End-to-end smoke test collection for the Skysim Logger pipeline. Use with the `skysim-logger-local.postman_environment.json` environment file.\n\n## Prerequisites\n1. Import the environment file `skysim-logger-local.postman_environment.json`\n2. Start Docker Compose infrastructure\n3. Start Logger.Api on port 5108\n4. Start SampleService and update `sample_service_base_url` in the environment\n5. Run `Get Keycloak Token` first to obtain an access token",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "keycloak_base_url",
+      "value": "http://localhost:8081"
+    },
+    {
+      "key": "logger_api_base_url",
+      "value": "http://localhost:5108"
+    },
+    {
+      "key": "sample_service_base_url",
+      "value": "http://localhost:5000"
+    },
+    {
+      "key": "keycloak_realm",
+      "value": "skysim"
+    },
+    {
+      "key": "keycloak_client_id",
+      "value": "skysim-logger-api"
+    },
+    {
+      "key": "username",
+      "value": "logger_admin"
+    },
+    {
+      "key": "password",
+      "value": "admin123"
+    },
+    {
+      "key": "access_token",
+      "value": ""
+    },
+    {
+      "key": "guest_flow_id",
+      "value": "e2e-guest-flow-001"
+    },
+    {
+      "key": "auth_flow_id",
+      "value": "e2e-auth-flow-001"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Get Keycloak Token",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "if (pm.response.code === 200) {",
+              "    var jsonData = pm.response.json();",
+              "    if (jsonData.access_token) {",
+              "        pm.collectionVariables.set('access_token', jsonData.access_token);",
+              "        console.log('Access token saved to collection variables');",
+              "    }",
+              "}",
+              "",
+              "pm.test('Response has access_token', function() {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('access_token');",
+              "});",
+              "",
+              "pm.test('Token type is Bearer', function() {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('token_type');",
+              "    pm.expect(jsonData.token_type.toLowerCase()).to.eql('bearer');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "urlencoded",
+          "urlencoded": [
+            { "key": "username", "value": "{{username}}", "type": "text" },
+            { "key": "password", "value": "{{password}}", "type": "text" },
+            { "key": "grant_type", "value": "password", "type": "text" },
+            { "key": "client_id", "value": "{{keycloak_client_id}}", "type": "text" }
+          ]
+        },
+        "url": {
+          "raw": "{{keycloak_base_url}}/realms/{{keycloak_realm}}/protocol/openid-connect/token",
+          "host": ["{{keycloak_base_url}}"],
+          "path": ["realms", "{{keycloak_realm}}", "protocol", "openid-connect", "token"]
+        },
+        "description": "Obtains a Keycloak access token using the password grant flow. The token is automatically saved to the `access_token` collection variable."
+      },
+      "response": []
+    },
+    {
+      "name": "2. Logger.Api Health Check",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code is 200', function() {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('Response has status field', function() {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('status');",
+              "});",
+              "",
+              "pm.test('Status is Healthy', function() {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData.status.toLowerCase()).to.eql('healthy');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{logger_api_base_url}}/health",
+          "host": ["{{logger_api_base_url}}"],
+          "path": ["health"]
+        },
+        "description": "Checks if Logger.Api is running and healthy. This endpoint does not require authentication."
+      },
+      "response": []
+    },
+    {
+      "name": "3. Logger.Api Log Flows Without Token",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code is 401 Unauthorized', function() {",
+              "    pm.response.to.have.status(401);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{logger_api_base_url}}/api/log-flows",
+          "host": ["{{logger_api_base_url}}"],
+          "path": ["api", "log-flows"]
+        },
+        "description": "Verifies that Logger.Api query endpoints require authentication. This request intentionally omits the Authorization header."
+      },
+      "response": []
+    },
+    {
+      "name": "4. SampleService Guest Checkout",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code is 200', function() {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('Response has checkoutType', function() {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('checkoutType');",
+              "});",
+              "",
+              "pm.test('checkoutType is GUEST', function() {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData.checkoutType.toUpperCase()).to.eql('GUEST');",
+              "});",
+              "",
+              "pm.test('flowId matches guest_flow_id', function() {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('flowId');",
+              "    pm.expect(jsonData.flowId).to.eql(pm.collectionVariables.get('guest_flow_id'));",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "X-Flow-Id", "value": "{{guest_flow_id}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"email\": \"guest@test.com\",\n    \"phone\": \"+1234567890\"\n}"
+        },
+        "url": {
+          "raw": "{{sample_service_base_url}}/api/checkout/esim",
+          "host": ["{{sample_service_base_url}}"],
+          "path": ["api", "checkout", "esim"]
+        },
+        "description": "Sends a guest checkout request (without Authorization header) to SampleService."
+      },
+      "response": []
+    },
+    {
+      "name": "5. SampleService Authenticated Checkout",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code is 200', function() {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('Response has checkoutType', function() {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('checkoutType');",
+              "});",
+              "",
+              "pm.test('checkoutType is AUTHENTICATED', function() {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData.checkoutType.toUpperCase()).to.eql('AUTHENTICATED');",
+              "});",
+              "",
+              "pm.test('flowId matches auth_flow_id', function() {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('flowId');",
+              "    pm.expect(jsonData.flowId).to.eql(pm.collectionVariables.get('auth_flow_id'));",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "auth": {
+        "type": "bearer",
+        "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+      },
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "X-Flow-Id", "value": "{{auth_flow_id}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"email\": \"auth@test.com\",\n    \"phone\": \"+9876543210\",\n    \"userId\": \"user-001\"\n}"
+        },
+        "url": {
+          "raw": "{{sample_service_base_url}}/api/checkout/esim",
+          "host": ["{{sample_service_base_url}}"],
+          "path": ["api", "checkout", "esim"]
+        },
+        "description": "Sends an authenticated checkout request (with Authorization: Bearer header) to SampleService."
+      },
+      "response": []
+    },
+    {
+      "name": "6. Logger.Api Log Flows With Token",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code is 200', function() {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('Response has items array', function() {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('items');",
+              "    pm.expect(jsonData.items).to.be.an('array');",
+              "});",
+              "",
+              "pm.test('Response has pagination fields', function() {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('page');",
+              "    pm.expect(jsonData).to.have.property('pageSize');",
+              "    pm.expect(jsonData).to.have.property('totalItems');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "auth": {
+        "type": "bearer",
+        "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+      },
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{logger_api_base_url}}/api/log-flows",
+          "host": ["{{logger_api_base_url}}"],
+          "path": ["api", "log-flows"]
+        },
+        "description": "Queries all log flows with Bearer token authentication."
+      },
+      "response": []
+    },
+    {
+      "name": "7. Logger.Api Query Guest Flow By FlowId",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code is 200', function() {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('Response has correct flowId', function() {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('flowId');",
+              "    pm.expect(jsonData.flowId).to.eql(pm.collectionVariables.get('guest_flow_id'));",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "auth": {
+        "type": "bearer",
+        "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+      },
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{logger_api_base_url}}/api/log-flows/{{guest_flow_id}}",
+          "host": ["{{logger_api_base_url}}"],
+          "path": ["api", "log-flows", "{{guest_flow_id}}"]
+        },
+        "description": "Retrieves detailed information for the guest checkout flow by its flowId."
+      },
+      "response": []
+    },
+    {
+      "name": "8. Logger.Api Query Auth Flow By FlowId",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code is 200', function() {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('Response has correct flowId', function() {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('flowId');",
+              "    pm.expect(jsonData.flowId).to.eql(pm.collectionVariables.get('auth_flow_id'));",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "auth": {
+        "type": "bearer",
+        "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+      },
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{logger_api_base_url}}/api/log-flows/{{auth_flow_id}}",
+          "host": ["{{logger_api_base_url}}"],
+          "path": ["api", "log-flows", "{{auth_flow_id}}"]
+        },
+        "description": "Retrieves detailed information for the authenticated checkout flow by its flowId."
+      },
+      "response": []
+    },
+    {
+      "name": "9. Logger.Api Query Guest Flow Actions",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code is 200', function() {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('Response has items array', function() {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('items');",
+              "    pm.expect(jsonData.items).to.be.an('array');",
+              "});",
+              "",
+              "pm.test('Actions have correct flowId', function() {",
+              "    var jsonData = pm.response.json();",
+              "    if (jsonData.items && jsonData.items.length > 0) {",
+              "        jsonData.items.forEach(function(item) {",
+              "            pm.expect(item.flowId).to.eql(pm.collectionVariables.get('guest_flow_id'));",
+              "        });",
+              "    }",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "auth": {
+        "type": "bearer",
+        "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+      },
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{logger_api_base_url}}/api/log-flows/{{guest_flow_id}}/actions",
+          "host": ["{{logger_api_base_url}}"],
+          "path": ["api", "log-flows", "{{guest_flow_id}}", "actions"]
+        },
+        "description": "Retrieves all log actions for the guest checkout flow."
+      },
+      "response": []
+    },
+    {
+      "name": "10. Logger.Api Query Auth Flow Actions",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code is 200', function() {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('Response has items array', function() {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('items');",
+              "    pm.expect(jsonData.items).to.be.an('array');",
+              "});",
+              "",
+              "pm.test('Actions have correct flowId', function() {",
+              "    var jsonData = pm.response.json();",
+              "    if (jsonData.items && jsonData.items.length > 0) {",
+              "        jsonData.items.forEach(function(item) {",
+              "            pm.expect(item.flowId).to.eql(pm.collectionVariables.get('auth_flow_id'));",
+              "        });",
+              "    }",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "auth": {
+        "type": "bearer",
+        "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+      },
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{logger_api_base_url}}/api/log-flows/{{auth_flow_id}}/actions",
+          "host": ["{{logger_api_base_url}}"],
+          "path": ["api", "log-flows", "{{auth_flow_id}}", "actions"]
+        },
+        "description": "Retrieves all log actions for the authenticated checkout flow."
+      },
+      "response": []
+    }
+  ]
+}

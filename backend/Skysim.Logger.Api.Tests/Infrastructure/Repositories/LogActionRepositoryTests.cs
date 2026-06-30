@@ -33,6 +33,7 @@ public class LogActionRepositoryTests : IDisposable
     [Fact]
     public async Task InsertAsync_WithValidAction_ShouldPersistAndReturnAction()
     {
+        var beforeInsert = DateTime.UtcNow;
         var action = CreateValidLogAction(
             Guid.NewGuid(),
             "test-flow-001",
@@ -43,8 +44,9 @@ public class LogActionRepositoryTests : IDisposable
 
         result.Should().NotBeNull();
         result.StepOrder.Should().Be(1);
-        result.CreatedAt.Should().BeCloseTo(DateTime.UtcNow, TimeSpan.FromSeconds(2));
-        result.UpdatedAt.Should().BeCloseTo(DateTime.UtcNow, TimeSpan.FromSeconds(2));
+        result.CreatedAt.Should().BeOnOrAfter(beforeInsert);
+        result.CreatedAt.Should().BeCloseTo(beforeInsert, TimeSpan.FromSeconds(2));
+        result.UpdatedAt.Should().BeCloseTo(beforeInsert, TimeSpan.FromSeconds(2));
     }
 
     [Fact]
