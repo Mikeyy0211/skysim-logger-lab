@@ -1,6 +1,6 @@
 # HTTP Logging Middleware Smoke Test
 
-This document describes end-to-end verification steps to confirm the HTTP logging middleware and Kafka producer are working correctly.
+> **Note:** For authentication testing, see [Local Keycloak Setup](local-keycloak-setup.md).
 
 ## Prerequisites
 
