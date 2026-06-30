@@ -4,6 +4,7 @@ import { LoginPage } from '../pages/LoginPage';
 import { DashboardPage } from '../pages/DashboardPage';
 import { LogListPage } from '../pages/LogListPage';
 import { LogDetailPage } from '../pages/LogDetailPage';
+import { ProtectedRoute } from '../components/ProtectedRoute';
 
 const router = createBrowserRouter([
   {
@@ -12,7 +13,7 @@ const router = createBrowserRouter([
   },
   {
     path: '/',
-    element: <AdminLayout />,
+    element: <ProtectedRoute><AdminLayout /></ProtectedRoute>,
     children: [
       {
         index: true,
