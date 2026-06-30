@@ -1,9 +1,31 @@
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { PageHeader } from '../components/PageHeader';
 import { StatusBadge } from '../components/StatusBadge';
-import { mockFlows } from '../data/mockData';
+import { getLogFlows } from '../services/logFlowService';
+import type { LogFlowSummary } from '../types/logFlow';
 
 export function LogListPage() {
+  const [flows, setFlows] = useState<LogFlowSummary[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function fetchFlows() {
+      try {
+        setIsLoading(true);
+        setError(null);
+        const data = await getLogFlows();
+        setFlows(data);
+      } catch (err) {
+        setError('Unable to load log flows.');
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    fetchFlows();
+  }, []);
+
   return (
     <div className="p-6">
       <PageHeader
@@ -72,78 +94,94 @@ export function LogListPage() {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="bg-gray-50">
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Flow ID
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Flow Type
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Status
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Last Action
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Last Message
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Steps
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Updated At
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {mockFlows.map((flow) => (
-                <tr key={flow.flowId} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {flow.flowId}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                    {flow.flowType}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <StatusBadge status={flow.status} />
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                    {flow.lastActionType}
-                  </td>
-                  <td className="px-6 py-4 text-sm text-gray-600 max-w-xs truncate">
-                    {flow.lastMessage}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className="text-sm text-gray-900">
-                      {flow.successSteps}/{flow.totalSteps}
-                    </span>
-                    {flow.failedSteps > 0 && (
-                      <span className="ml-1 text-sm text-red-600">
-                        ({flow.failedSteps} failed)
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {new Date(flow.updatedAt).toLocaleString()}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm">
-                    <Link
-                      to={`/logs/${flow.flowId}`}
-                      className="text-blue-600 hover:text-blue-800 font-medium"
-                    >
-                      View Detail
-                    </Link>
-                  </td>
+          {isLoading ? (
+            <div className="flex items-center justify-center p-6">
+              <div className="text-gray-500">Loading log flows...</div>
+            </div>
+          ) : error ? (
+            <div className="p-6">
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700">
+                {error}
+              </div>
+            </div>
+          ) : flows.length === 0 ? (
+            <div className="p-6">
+              <div className="text-center text-gray-500">No log flows found.</div>
+            </div>
+          ) : (
+            <table className="w-full">
+              <thead>
+                <tr className="bg-gray-50">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Flow ID
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Flow Type
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Status
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Last Action
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Last Message
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Steps
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Updated At
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Actions
+                  </th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {flows.map((flow) => (
+                  <tr key={flow.flowId} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {flow.flowId}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                      {flow.flowType}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <StatusBadge status={flow.status} />
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                      {flow.lastActionType}
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-600 max-w-xs truncate">
+                      {flow.lastMessage}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className="text-sm text-gray-900">
+                        {flow.successSteps}/{flow.totalSteps}
+                      </span>
+                      {flow.failedSteps > 0 && (
+                        <span className="ml-1 text-sm text-red-600">
+                          ({flow.failedSteps} failed)
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {new Date(flow.updatedAt).toLocaleString()}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                      <Link
+                        to={`/logs/${flow.flowId}`}
+                        className="text-blue-600 hover:text-blue-800 font-medium"
+                      >
+                        View Detail
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       </div>
     </div>

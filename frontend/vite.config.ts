@@ -17,6 +17,11 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/keycloak/, ''),
       },
+      '/logger-api': {
+        target: 'http://localhost:5108',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/logger-api/, ''),
+      },
     },
   },
 })
