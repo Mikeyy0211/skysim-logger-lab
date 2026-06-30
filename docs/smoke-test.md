@@ -265,7 +265,7 @@ Replace `<sample-service-port>` with the actual port from Step 4.
 curl -X POST http://localhost:<sample-service-port>/api/checkout/esim \
   -H "Content-Type: application/json" \
   -H "X-Flow-Id: e2e-guest-flow-001" \
-  -d '{"email":"guest@test.com","phone":"+1234567890"}'
+  -d '{"customerEmail":"guest.e2e@example.com","customerPhone":"0900000001","packageCode":"ESIM_5GB_7D","quantity":1}'
 ```
 
 **Expected Response:**
@@ -287,7 +287,7 @@ curl -X POST http://localhost:<sample-service-port>/api/checkout/esim \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer <your-token>" \
   -H "X-Flow-Id: e2e-auth-flow-001" \
-  -d '{"email":"auth@test.com","phone":"+9876543210","userId":"user-001"}'
+  -d '{"customerEmail":"auth.e2e@example.com","customerPhone":"0900000002","packageCode":"ESIM_10GB_30D","quantity":1}'
 ```
 
 **Expected Response:**
@@ -448,14 +448,14 @@ TOKEN=$(./scripts/get-token.sh)
 curl -X POST http://localhost:<port>/api/checkout/esim \
   -H "Content-Type: application/json" \
   -H "X-Flow-Id: e2e-guest-flow-001" \
-  -d '{"email":"guest@test.com"}'
+  -d '{"customerEmail":"guest.e2e@example.com","customerPhone":"0900000001","packageCode":"ESIM_5GB_7D","quantity":1}'
 
 # 5. Auth checkout
 curl -X POST http://localhost:<port>/api/checkout/esim \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
   -H "X-Flow-Id: e2e-auth-flow-001" \
-  -d '{"email":"auth@test.com"}'
+  -d '{"customerEmail":"auth.e2e@example.com","customerPhone":"0900000002","packageCode":"ESIM_10GB_30D","quantity":1}'
 
 # 6. Query guest flow
 curl -X GET "http://localhost:5108/api/log-flows/e2e-guest-flow-001" \

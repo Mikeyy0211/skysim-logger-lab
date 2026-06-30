@@ -201,7 +201,7 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n    \"email\": \"guest@test.com\",\n    \"phone\": \"+1234567890\"\n}"
+          "raw": "{\n    \"customerEmail\": \"guest.e2e@example.com\",\n    \"customerPhone\": \"0900000001\",\n    \"packageCode\": \"ESIM_5GB_7D\",\n    \"quantity\": 1\n}"
         },
         "url": {
           "raw": "{{sample_service_base_url}}/api/checkout/esim",
@@ -255,7 +255,7 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n    \"email\": \"auth@test.com\",\n    \"phone\": \"+9876543210\",\n    \"userId\": \"user-001\"\n}"
+          "raw": "{\n    \"customerEmail\": \"auth.e2e@example.com\",\n    \"customerPhone\": \"0900000002\",\n    \"packageCode\": \"ESIM_10GB_30D\",\n    \"quantity\": 1\n}"
         },
         "url": {
           "raw": "{{sample_service_base_url}}/api/checkout/esim",
