@@ -1,7 +1,7 @@
-import type { FlowStatus } from '../data/mockData';
+import type { FlowStatus } from '../types/logFlow';
 
 interface StatusBadgeProps {
-  status: FlowStatus;
+  status?: string | null;
 }
 
 const statusStyles: Record<FlowStatus, string> = {
@@ -12,9 +12,13 @@ const statusStyles: Record<FlowStatus, string> = {
 };
 
 export function StatusBadge({ status }: StatusBadgeProps) {
+  const normalizedStatus = status?.trim() || 'UNKNOWN';
+  const style = statusStyles[normalizedStatus as FlowStatus] ?? 'bg-gray-100 text-gray-800';
+  const label = normalizedStatus.replace(/_/g, ' ');
+
   return (
-    <span className={`px-2 py-1 text-xs font-medium rounded-full ${statusStyles[status]}`}>
-      {status.replace('_', ' ')}
+    <span className={`px-2 py-1 text-xs font-medium rounded-full ${style}`}>
+      {label}
     </span>
   );
 }

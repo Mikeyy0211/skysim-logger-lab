@@ -30,3 +30,8 @@ export interface PagedResponse<T> {
 }
 
 export type LogFlowListResponse = PagedResponse<LogFlowSummary> | LogFlowSummary[];
+
+export interface LogFlowDetail extends LogFlowSummary {
+  // LogFlowDetail uses the same fields as LogFlowSummary
+  // The backend returns the full flow details via GET /api/log-flows/{flowId}
+}
