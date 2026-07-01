@@ -15,6 +15,7 @@ public record LogFlowSummaryDto(
     int FailedSteps,
     string? LastActionType,
     string? LastMessage,
+    string? LastServiceName,
     DateTime StartedAt,
     DateTime? CompletedAt,
     DateTime CreatedAt,

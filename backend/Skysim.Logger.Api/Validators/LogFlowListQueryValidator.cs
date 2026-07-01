@@ -1,5 +1,6 @@
 using FluentValidation;
 using Skysim.Logger.Api.Contracts.Queries;
+using Skysim.Logger.Contracts.Constants;
 
 namespace Skysim.Logger.Api.Validators;
 
@@ -13,6 +14,26 @@ public class LogFlowListQueryValidator : AbstractValidator<LogFlowListQuery>
         "status"
     };
 
+    private static readonly HashSet<string> ValidStatus = new(StringComparer.Ordinal)
+    {
+        StatusTypes.Success,
+        StatusTypes.Failed,
+        StatusTypes.Running,
+        StatusTypes.PartialFailed
+    };
+
+    private static readonly HashSet<string> ValidFlowType = new(StringComparer.Ordinal)
+    {
+        FlowTypes.CheckoutEsim,
+        FlowTypes.HttpAction
+    };
+
+    private static readonly HashSet<string> ValidCheckoutType = new(StringComparer.Ordinal)
+    {
+        CheckoutTypes.Guest,
+        CheckoutTypes.Authenticated
+    };
+
     public LogFlowListQueryValidator()
     {
         RuleFor(q => q.Page)
@@ -22,6 +43,26 @@ public class LogFlowListQueryValidator : AbstractValidator<LogFlowListQuery>
         RuleFor(q => q.PageSize)
             .InclusiveBetween(1, 100)
             .WithMessage("PageSize must be between 1 and 100.");
+
+        RuleFor(q => q.Search)
+            .MaximumLength(200)
+            .WithMessage("Search must not exceed 200 characters.")
+            .When(q => !string.IsNullOrWhiteSpace(q.Search));
+
+        RuleFor(q => q.Status)
+            .Must(status => string.IsNullOrWhiteSpace(status) || ValidStatus.Contains(status))
+            .WithMessage($"Status must be one of: {string.Join(", ", ValidStatus)}.")
+            .When(q => !string.IsNullOrWhiteSpace(q.Status));
+
+        RuleFor(q => q.FlowType)
+            .Must(flowType => string.IsNullOrWhiteSpace(flowType) || ValidFlowType.Contains(flowType))
+            .WithMessage($"FlowType must be one of: {string.Join(", ", ValidFlowType)}.")
+            .When(q => !string.IsNullOrWhiteSpace(q.FlowType));
+
+        RuleFor(q => q.CheckoutType)
+            .Must(checkoutType => string.IsNullOrWhiteSpace(checkoutType) || ValidCheckoutType.Contains(checkoutType))
+            .WithMessage($"CheckoutType must be one of: {string.Join(", ", ValidCheckoutType)}.")
+            .When(q => !string.IsNullOrWhiteSpace(q.CheckoutType));
 
         RuleFor(q => q.SortBy)
             .Must(sortBy => string.IsNullOrWhiteSpace(sortBy) || ValidSortBy.Contains(sortBy))

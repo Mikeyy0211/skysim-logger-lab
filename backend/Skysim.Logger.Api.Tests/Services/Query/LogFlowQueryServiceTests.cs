@@ -60,12 +60,12 @@ public class LogFlowQueryServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task GetListAsync_SortByCreatedAtDesc_IsDefault()
+    public async Task GetListAsync_SortByUpdatedAtDesc_IsDefault()
     {
         var old = CreateFlow("flow-old");
         var recent = CreateFlow("flow-recent");
-        old.CreatedAt = DateTime.UtcNow.AddDays(-10);
-        recent.CreatedAt = DateTime.UtcNow;
+        old.UpdatedAt = DateTime.UtcNow.AddDays(-10);
+        recent.UpdatedAt = DateTime.UtcNow;
         await _db.LogFlows.AddRangeAsync(old, recent);
         await _db.SaveChangesAsync();
 
@@ -77,155 +77,299 @@ public class LogFlowQueryServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task GetListAsync_SortByStatus_HasSecondarySort()
+    public async Task GetListAsync_SearchMatchesFlowId_CaseInsensitive()
     {
         await _db.LogFlows.AddRangeAsync(
-            CreateFlow("flow-aaa", status: StatusTypes.Failed),
-            CreateFlow("flow-bbb", status: StatusTypes.Failed));
+            CreateFlow("demo-business-flow"),
+            CreateFlow("other-flow"));
         await _db.SaveChangesAsync();
 
-        var query = new LogFlowListQuery { SortBy = "status", SortDirection = "desc" };
+        var query = new LogFlowListQuery { Search = "demo-business-flow" };
+        var result = await _service.GetListAsync(query);
+
+        result.Items.Should().HaveCount(1);
+        result.Items[0].FlowId.Should().Be("demo-business-flow");
+    }
+
+    [Fact]
+    public async Task GetListAsync_SearchMatchesCustomerEmail_CaseInsensitive()
+    {
+        await _db.LogFlows.AddRangeAsync(
+            CreateFlow("flow-email-1", customerEmail: "detail.demo@example.com"),
+            CreateFlow("flow-email-2", customerEmail: "other@test.com"));
+        await _db.SaveChangesAsync();
+
+        var query = new LogFlowListQuery { Search = "detail.demo@example.com" };
+        var result = await _service.GetListAsync(query);
+
+        result.Items.Should().HaveCount(1);
+        result.Items[0].FlowId.Should().Be("flow-email-1");
+    }
+
+    [Fact]
+    public async Task GetListAsync_SearchMatchesCustomerPhone_CaseInsensitive()
+    {
+        await _db.LogFlows.AddRangeAsync(
+            CreateFlow("flow-phone-1", customerPhone: "0900000003"),
+            CreateFlow("flow-phone-2", customerPhone: "0123456789"));
+        await _db.SaveChangesAsync();
+
+        var query = new LogFlowListQuery { Search = "0900000003" };
+        var result = await _service.GetListAsync(query);
+
+        result.Items.Should().HaveCount(1);
+        result.Items[0].FlowId.Should().Be("flow-phone-1");
+    }
+
+    [Fact]
+    public async Task GetListAsync_SearchMatchesOrderId_CaseInsensitive()
+    {
+        await _db.LogFlows.AddRangeAsync(
+            CreateFlow("flow-0001-order", orderId: "ORDER-XYZ-001"),
+            CreateFlow("flow-0002-other", paymentId: "PAYMENT-XYZ-002"));
+        await _db.SaveChangesAsync();
+
+        var query = new LogFlowListQuery { Search = "ORDER-XYZ-001" };
+        var result = await _service.GetListAsync(query);
+
+        result.Items.Should().HaveCount(1);
+        result.Items[0].FlowId.Should().Be("flow-0001-order");
+    }
+
+    [Fact]
+    public async Task GetListAsync_SearchMatchesPaymentId_CaseInsensitive()
+    {
+        await _db.LogFlows.AddRangeAsync(
+            CreateFlow("flow-0003-payment", paymentId: "PAYMENT-ABC-001"),
+            CreateFlow("flow-0004-other", orderId: "ORDER-DEF-002"));
+        await _db.SaveChangesAsync();
+
+        var query = new LogFlowListQuery { Search = "PAYMENT-ABC" };
+        var result = await _service.GetListAsync(query);
+
+        result.Items.Should().HaveCount(1);
+        result.Items[0].FlowId.Should().Be("flow-0003-payment");
+    }
+
+    [Fact]
+    public async Task GetListAsync_SearchMatchesUserId_CaseInsensitive()
+    {
+        await _db.LogFlows.AddRangeAsync(
+            CreateFlow("flow-user-1", userId: "user-42"),
+            CreateFlow("flow-user-2", userId: "guest-99"));
+        await _db.SaveChangesAsync();
+
+        var query = new LogFlowListQuery { Search = "user-42" };
+        var result = await _service.GetListAsync(query);
+
+        result.Items.Should().HaveCount(1);
+        result.Items[0].FlowId.Should().Be("flow-user-1");
+    }
+
+    [Fact]
+    public async Task GetListAsync_SearchMatchesLastMessage_CaseInsensitive()
+    {
+        await _db.LogFlows.AddRangeAsync(
+            CreateFlow("flow-msg-1", lastMessage: "payment timeout error"),
+            CreateFlow("flow-msg-2", lastMessage: "order created successfully"));
+        await _db.SaveChangesAsync();
+
+        var query = new LogFlowListQuery { Search = "payment timeout" };
+        var result = await _service.GetListAsync(query);
+
+        result.Items.Should().HaveCount(1);
+        result.Items[0].FlowId.Should().Be("flow-msg-1");
+    }
+
+    [Fact]
+    public async Task GetListAsync_SearchCaseInsensitive_MatchesUppercaseSearch()
+    {
+        await _db.LogFlows.AddRangeAsync(
+            CreateFlow("flow-lower", customerEmail: "demo@example.com"),
+            CreateFlow("flow-upper", customerEmail: "DEMO@EXAMPLE.COM"));
+        await _db.SaveChangesAsync();
+
+        var query = new LogFlowListQuery { Search = "DEMO" };
         var result = await _service.GetListAsync(query);
 
         result.Items.Should().HaveCount(2);
-        result.Items[0].Status.Should().Be("FAILED");
-        result.Items[1].Status.Should().Be("FAILED");
     }
 
     [Fact]
-    public async Task GetListAsync_FilterByCustomerEmail_CaseInsensitive()
-    {
-        await SeedFlowsAsync(5);
-        await _db.LogFlows.AddAsync(CreateFlow("flow-email-test", customerEmail: "Alice@Example.com"));
-        await _db.SaveChangesAsync();
-
-        var query = new LogFlowListQuery { CustomerEmail = "alice@example.com" };
-        var result = await _service.GetListAsync(query);
-
-        result.Items.Should().HaveCount(1);
-        result.Items[0].FlowId.Should().Be("flow-email-test");
-    }
-
-    [Fact]
-    public async Task GetListAsync_FilterByStatus()
+    public async Task GetListAsync_SearchCombinedWithFlowTypeFilter()
     {
         await _db.LogFlows.AddRangeAsync(
-            CreateFlow("flow-success", status: StatusTypes.Success),
-            CreateFlow("flow-failed", status: StatusTypes.Failed));
+            CreateFlow("flow-checkout-1", flowType: FlowTypes.CheckoutEsim, customerEmail: "detail.demo@example.com"),
+            CreateFlow("flow-http-1", flowType: FlowTypes.HttpAction, customerEmail: "detail.demo@example.com"),
+            CreateFlow("flow-checkout-2", flowType: FlowTypes.CheckoutEsim, customerEmail: "other@example.com"));
         await _db.SaveChangesAsync();
 
-        var query = new LogFlowListQuery { Status = "FAILED" };
+        var query = new LogFlowListQuery { Search = "detail.demo@example.com", FlowType = FlowTypes.CheckoutEsim };
         var result = await _service.GetListAsync(query);
 
         result.Items.Should().HaveCount(1);
-        result.Items[0].FlowId.Should().Be("flow-failed");
+        result.Items[0].FlowId.Should().Be("flow-checkout-1");
     }
 
     [Fact]
-    public async Task GetListAsync_FilterByDateRange()
-    {
-        var old = CreateFlow("flow-old");
-        var recent = CreateFlow("flow-recent");
-        old.CreatedAt = DateTime.UtcNow.AddDays(-30);
-        recent.CreatedAt = DateTime.UtcNow;
-        await _db.LogFlows.AddRangeAsync(old, recent);
-        await _db.SaveChangesAsync();
-
-        var from = DateTime.UtcNow.AddDays(-7).ToString("yyyy-MM-dd");
-        var to = DateTime.UtcNow.ToString("yyyy-MM-dd");
-        var query = new LogFlowListQuery { FromDate = from, ToDate = to };
-
-        var result = await _service.GetListAsync(query);
-
-        result.Items.Should().HaveCount(1);
-        result.Items[0].FlowId.Should().Be("flow-recent");
-    }
-
-    [Fact]
-    public async Task GetListAsync_FilterByServiceName_JoinsLogActions()
-    {
-        var flowPayment = CreateFlow("flow-payment");
-        var flowOrder = CreateFlow("flow-order");
-        await _db.LogFlows.AddRangeAsync(flowPayment, flowOrder);
-        await _db.SaveChangesAsync();
-
-        await _db.LogActions.AddRangeAsync(
-            CreateAction(flowPayment.FlowId, "Payment", ActionTypes.PaymentSuccess),
-            CreateAction(flowOrder.FlowId, "Order", ActionTypes.OrderCreated));
-        await _db.SaveChangesAsync();
-
-        var query = new LogFlowListQuery { ServiceName = "Payment" };
-        var result = await _service.GetListAsync(query);
-
-        result.Items.Should().HaveCount(1);
-        result.Items[0].FlowId.Should().Be("flow-payment");
-    }
-
-    [Fact]
-    public async Task GetListAsync_FilterByMultipleFields_CombinesWithAnd()
+    public async Task GetListAsync_SearchCombinedWithStatusFilter()
     {
         await _db.LogFlows.AddRangeAsync(
-            CreateFlow("flow-1", customerEmail: "alice@test.com", status: StatusTypes.Success),
-            CreateFlow("flow-2", customerEmail: "bob@test.com", status: StatusTypes.Failed),
-            CreateFlow("flow-3", customerEmail: "alice@test.com", status: StatusTypes.Failed));
+            CreateFlow("flow-success-1", status: StatusTypes.Success, customerEmail: "alice@example.com"),
+            CreateFlow("flow-failed-1", status: StatusTypes.Failed, customerEmail: "alice@example.com"));
         await _db.SaveChangesAsync();
 
-        var query = new LogFlowListQuery { CustomerEmail = "alice@test.com", Status = "FAILED" };
+        var query = new LogFlowListQuery { Search = "alice@example.com", Status = StatusTypes.Success };
         var result = await _service.GetListAsync(query);
 
         result.Items.Should().HaveCount(1);
-        result.Items[0].FlowId.Should().Be("flow-3");
+        result.Items[0].FlowId.Should().Be("flow-success-1");
     }
 
     [Fact]
-    public async Task GetByFlowIdAsync_UnknownFlowId_ReturnsNull()
+    public async Task GetListAsync_SearchCombinedWithCheckoutTypeFilter()
     {
-        var result = await _service.GetByFlowIdAsync("unknown-flow-id");
+        await _db.LogFlows.AddRangeAsync(
+            CreateFlow("flow-guest", checkoutType: CheckoutTypes.Guest, customerEmail: "bob@example.com"),
+            CreateFlow("flow-auth", checkoutType: CheckoutTypes.Authenticated, customerEmail: "bob@example.com"));
+        await _db.SaveChangesAsync();
 
-        result.Should().BeNull();
+        var query = new LogFlowListQuery { Search = "bob@example.com", CheckoutType = CheckoutTypes.Guest };
+        var result = await _service.GetListAsync(query);
+
+        result.Items.Should().HaveCount(1);
+        result.Items[0].FlowId.Should().Be("flow-guest");
     }
 
     [Fact]
-    public async Task GetByFlowIdAsync_ExistingFlowId_ReturnsDetailWithTimelineOrderedByStepOrder()
+    public async Task GetListAsync_SearchCombinedWithMultipleFilters()
     {
-        var flow = CreateFlow("detail-flow");
+        await _db.LogFlows.AddRangeAsync(
+            CreateFlow("flow-1", customerEmail: "carol@example.com", flowType: FlowTypes.CheckoutEsim, status: StatusTypes.Success),
+            CreateFlow("flow-2", customerEmail: "carol@example.com", flowType: FlowTypes.CheckoutEsim, status: StatusTypes.Failed),
+            CreateFlow("flow-3", customerEmail: "carol@example.com", flowType: FlowTypes.HttpAction, status: StatusTypes.Success));
+        await _db.SaveChangesAsync();
+
+        var query = new LogFlowListQuery
+        {
+            Search = "carol@example.com",
+            FlowType = FlowTypes.CheckoutEsim,
+            Status = StatusTypes.Success
+        };
+        var result = await _service.GetListAsync(query);
+
+        result.Items.Should().HaveCount(1);
+        result.Items[0].FlowId.Should().Be("flow-1");
+    }
+
+    [Fact]
+    public async Task GetListAsync_PaginationWithSearch_ReturnsCorrectPage()
+    {
+        foreach (var i in Enumerable.Range(1, 15))
+        {
+            await _db.LogFlows.AddAsync(CreateFlow($"search-flow-{i:D2}", customerEmail: "paged@example.com"));
+        }
+        await _db.SaveChangesAsync();
+
+        var query = new LogFlowListQuery { Search = "paged@example.com", Page = 2, PageSize = 5 };
+        var result = await _service.GetListAsync(query);
+
+        result.Items.Should().HaveCount(5);
+        result.Page.Should().Be(2);
+        result.TotalItems.Should().Be(15);
+        result.TotalPages.Should().Be(3);
+    }
+
+    [Fact]
+    public async Task GetListAsync_LastServiceName_ReflectsLatestBusinessActionByStepOrder()
+    {
+        var flow = CreateFlow("flow-with-actions");
         await _db.LogFlows.AddAsync(flow);
         await _db.SaveChangesAsync();
 
         await _db.LogActions.AddRangeAsync(
-            CreateAction(flow.FlowId, "Order", ActionTypes.OrderCreated, stepOrder: 3),
-            CreateAction(flow.FlowId, "Order", ActionTypes.OrderCreated, stepOrder: 1),
-            CreateAction(flow.FlowId, "Payment", ActionTypes.PaymentSuccess, stepOrder: 2));
+            CreateAction(flow.FlowId, "OrderService", ActionTypes.OrderCreated, stepOrder: 1),
+            CreateAction(flow.FlowId, "PaymentService", ActionTypes.PaymentSuccess, stepOrder: 2),
+            CreateAction(flow.FlowId, "ProviderService", ActionTypes.EsimActivated, stepOrder: 3));
         await _db.SaveChangesAsync();
 
-        var result = await _service.GetByFlowIdAsync("detail-flow");
+        var query = new LogFlowListQuery();
+        var result = await _service.GetListAsync(query);
 
-        result.Should().NotBeNull();
-        result!.Flow.FlowId.Should().Be("detail-flow");
-        result.Timeline.Should().HaveCount(3);
-        result.Timeline[0].StepOrder.Should().Be(1);
-        result.Timeline[1].StepOrder.Should().Be(2);
-        result.Timeline[2].StepOrder.Should().Be(3);
+        result.Items.Should().HaveCount(1);
+        result.Items[0].LastServiceName.Should().Be("ProviderService");
     }
 
     [Fact]
-    public async Task FlowExistsAsync_ExistingFlowId_ReturnsTrue()
+    public async Task GetListAsync_LastServiceName_IsNullWhenNoActions()
     {
-        var flow = CreateFlow("existing-flow");
+        var flow = CreateFlow("flow-no-actions");
         await _db.LogFlows.AddAsync(flow);
         await _db.SaveChangesAsync();
 
-        var result = await _service.FlowExistsAsync("existing-flow");
+        var query = new LogFlowListQuery();
+        var result = await _service.GetListAsync(query);
 
-        result.Should().BeTrue();
+        result.Items.Should().HaveCount(1);
+        result.Items[0].LastServiceName.Should().BeNull();
     }
 
     [Fact]
-    public async Task FlowExistsAsync_NonExistingFlowId_ReturnsFalse()
+    public async Task GetListAsync_LastServiceName_ReturnsNotificationServiceForCheckoutWithEmailSent()
     {
-        var result = await _service.FlowExistsAsync("non-existent-flow");
+        var flow = CreateFlow("flow-checkout-email", flowType: FlowTypes.CheckoutEsim);
+        await _db.LogFlows.AddAsync(flow);
+        await _db.SaveChangesAsync();
 
-        result.Should().BeFalse();
+        await _db.LogActions.AddRangeAsync(
+            CreateAction(flow.FlowId, "OrderService", ActionTypes.OrderCreated, stepOrder: 1),
+            CreateAction(flow.FlowId, "PaymentService", ActionTypes.PaymentSuccess, stepOrder: 2),
+            CreateAction(flow.FlowId, "NotificationService", ActionTypes.EmailSent, stepOrder: 3));
+        await _db.SaveChangesAsync();
+
+        var query = new LogFlowListQuery();
+        var result = await _service.GetListAsync(query);
+
+        result.Items.Should().HaveCount(1);
+        result.Items[0].LastServiceName.Should().Be("NotificationService");
+    }
+
+    [Fact]
+    public async Task GetListAsync_LastServiceName_CheckoutIgnoresHttpRequestWhenItIsLatestStep()
+    {
+        var flow = CreateFlow("flow-checkout-with-http", flowType: FlowTypes.CheckoutEsim);
+        await _db.LogFlows.AddAsync(flow);
+        await _db.SaveChangesAsync();
+
+        await _db.LogActions.AddRangeAsync(
+            CreateAction(flow.FlowId, "OrderService", ActionTypes.OrderCreated, stepOrder: 1),
+            CreateAction(flow.FlowId, "PaymentService", ActionTypes.PaymentSuccess, stepOrder: 2),
+            CreateAction(flow.FlowId, "NotificationService", ActionTypes.EmailSent, stepOrder: 3),
+            CreateAction(flow.FlowId, "sample-checkout-service", ActionTypes.HttpRequest, stepOrder: 4));
+        await _db.SaveChangesAsync();
+
+        var query = new LogFlowListQuery();
+        var result = await _service.GetListAsync(query);
+
+        result.Items.Should().HaveCount(1);
+        result.Items[0].LastServiceName.Should().Be("NotificationService");
+    }
+
+    [Fact]
+    public async Task GetListAsync_LastServiceName_HttpActionStillUsesLatestStepOrder()
+    {
+        var flow = CreateFlow("flow-http-action", flowType: FlowTypes.HttpAction);
+        await _db.LogFlows.AddAsync(flow);
+        await _db.SaveChangesAsync();
+
+        await _db.LogActions.AddAsync(CreateAction(flow.FlowId, "sample-checkout-service", ActionTypes.HttpRequest, stepOrder: 1));
+        await _db.SaveChangesAsync();
+
+        var query = new LogFlowListQuery();
+        var result = await _service.GetListAsync(query);
+
+        result.Items.Should().HaveCount(1);
+        result.Items[0].LastServiceName.Should().Be("sample-checkout-service");
     }
 
     private async Task SeedFlowsAsync(int count)
@@ -240,25 +384,32 @@ public class LogFlowQueryServiceTests : IDisposable
     private static LogFlow CreateFlow(
         string flowId,
         string? customerEmail = null,
+        string? customerPhone = null,
+        string? userId = null,
+        string? orderId = null,
+        string? paymentId = null,
+        string? lastMessage = null,
+        string flowType = "CHECKOUT_ESIM",
+        string checkoutType = "GUEST",
         string status = "IN_PROGRESS")
     {
         return new LogFlow
         {
             Id = Guid.NewGuid(),
             FlowId = flowId,
-            FlowType = FlowTypes.CheckoutEsim,
-            CheckoutType = CheckoutTypes.Guest,
+            FlowType = flowType,
+            CheckoutType = checkoutType,
             Status = status,
             CustomerEmail = customerEmail,
-            CustomerPhone = "+1234567890",
-            UserId = null,
-            OrderId = null,
-            PaymentId = null,
+            CustomerPhone = customerPhone,
+            UserId = userId,
+            OrderId = orderId,
+            PaymentId = paymentId,
             TotalSteps = 1,
             SuccessSteps = 0,
             FailedSteps = 0,
             LastActionType = ActionTypes.OrderCreated,
-            LastMessage = null,
+            LastMessage = lastMessage,
             StartedAt = DateTime.UtcNow,
             CompletedAt = null,
             CreatedAt = DateTime.UtcNow,

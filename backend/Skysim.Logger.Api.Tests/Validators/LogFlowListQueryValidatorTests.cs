@@ -1,6 +1,7 @@
 using FluentAssertions;
 using Skysim.Logger.Api.Contracts.Queries;
 using Skysim.Logger.Api.Validators;
+using Skysim.Logger.Contracts.Constants;
 using Xunit;
 
 namespace Skysim.Logger.Api.Tests.Validators;
@@ -201,14 +202,15 @@ public class LogFlowListQueryValidatorTests
     {
         var query = new LogFlowListQuery
         {
+            Search = "test search",
             CustomerEmail = "alice@example.com",
             CustomerPhone = "+1234567890",
             UserId = "user-123",
             OrderId = "ORD-456",
             PaymentId = "PAY-789",
-            FlowType = "CheckoutEsim",
-            CheckoutType = "Guest",
-            Status = "InProgress",
+            FlowType = "CHECKOUT_ESIM",
+            CheckoutType = "GUEST",
+            Status = "SUCCESS",
             ServiceName = "Payment",
             FromDate = "2026-06-01",
             ToDate = "2026-06-22",
@@ -221,5 +223,129 @@ public class LogFlowListQueryValidatorTests
         var result = _validator.Validate(query);
 
         result.IsValid.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Search_Exceeding200Chars_Fails()
+    {
+        var longSearch = new string('a', 201);
+        var query = new LogFlowListQuery { Search = longSearch };
+
+        var result = _validator.Validate(query);
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e => e.PropertyName == "Search");
+    }
+
+    [Fact]
+    public void Search_200Chars_Passes()
+    {
+        var maxSearch = new string('a', 200);
+        var query = new LogFlowListQuery { Search = maxSearch };
+
+        var result = _validator.Validate(query);
+
+        result.IsValid.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Search_EmptyString_Passes()
+    {
+        var query = new LogFlowListQuery { Search = "" };
+
+        var result = _validator.Validate(query);
+
+        result.IsValid.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Search_Null_Passes()
+    {
+        var query = new LogFlowListQuery { Search = null };
+
+        var result = _validator.Validate(query);
+
+        result.IsValid.Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData("SUCCESS")]
+    [InlineData("FAILED")]
+    [InlineData("RUNNING")]
+    [InlineData("PARTIAL_FAILED")]
+    public void Status_ValidValues_Pass(string status)
+    {
+        var query = new LogFlowListQuery { Status = status };
+
+        var result = _validator.Validate(query);
+
+        result.IsValid.Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData("InvalidStatus")]
+    [InlineData("IN_PROGRESS")]
+    [InlineData("success")]
+    [InlineData("failed")]
+    public void Status_InvalidValue_Fails(string status)
+    {
+        var query = new LogFlowListQuery { Status = status };
+
+        var result = _validator.Validate(query);
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e => e.PropertyName == "Status");
+    }
+
+    [Theory]
+    [InlineData("CHECKOUT_ESIM")]
+    [InlineData("HTTP_ACTION")]
+    public void FlowType_ValidValues_Pass(string flowType)
+    {
+        var query = new LogFlowListQuery { FlowType = flowType };
+
+        var result = _validator.Validate(query);
+
+        result.IsValid.Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData("InvalidFlowType")]
+    [InlineData("checkout_esim")]
+    [InlineData("http_action")]
+    public void FlowType_InvalidValue_Fails(string flowType)
+    {
+        var query = new LogFlowListQuery { FlowType = flowType };
+
+        var result = _validator.Validate(query);
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e => e.PropertyName == "FlowType");
+    }
+
+    [Theory]
+    [InlineData("GUEST")]
+    [InlineData("AUTHENTICATED")]
+    public void CheckoutType_ValidValues_Pass(string checkoutType)
+    {
+        var query = new LogFlowListQuery { CheckoutType = checkoutType };
+
+        var result = _validator.Validate(query);
+
+        result.IsValid.Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData("InvalidCheckoutType")]
+    [InlineData("guest")]
+    [InlineData("authenticated")]
+    public void CheckoutType_InvalidValue_Fails(string checkoutType)
+    {
+        var query = new LogFlowListQuery { CheckoutType = checkoutType };
+
+        var result = _validator.Validate(query);
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e => e.PropertyName == "CheckoutType");
     }
 }

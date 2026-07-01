@@ -2,6 +2,7 @@ namespace Skysim.Logger.Api.Contracts.Queries;
 
 public class LogFlowListQuery
 {
+    public string? Search { get; set; }
     public string? CustomerEmail { get; set; }
     public string? CustomerPhone { get; set; }
     public string? UserId { get; set; }

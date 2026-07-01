@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Skysim.Logger.Api.Contracts.DTOs;
 using Skysim.Logger.Api.Contracts.Queries;
 using Skysim.Logger.Contracts.DTOs;
+using Skysim.Logger.Contracts.Constants;
 using Skysim.Logger.Infrastructure.Data;
 using Skysim.Logger.Infrastructure.Entities;
 
@@ -100,34 +101,54 @@ public class LogFlowQueryService : ILogFlowQueryService
             q = q.Where(f => f.CreatedAt <= utcTo);
         }
 
+        q = ApplySearchPredicate(q, db, query.Search);
         q = ApplySorting(q, query.SortBy, query.SortDirection);
 
         var totalItems = await q.CountAsync(ct);
         var totalPages = (int)Math.Ceiling(totalItems / (double)pageSize);
 
-        var items = await q
+        var flows = await q
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
-            .Select(f => new LogFlowSummaryDto(
-                f.FlowId,
-                f.FlowType,
-                f.CheckoutType,
-                f.Status,
-                f.CustomerEmail,
-                f.CustomerPhone,
-                f.UserId,
-                f.OrderId,
-                f.PaymentId,
-                f.TotalSteps,
-                f.SuccessSteps,
-                f.FailedSteps,
-                f.LastActionType,
-                f.LastMessage,
-                f.StartedAt,
-                f.CompletedAt,
-                f.CreatedAt,
-                f.UpdatedAt))
             .ToListAsync(ct);
+
+        if (flows.Count == 0)
+        {
+            return new PagedResponse<LogFlowSummaryDto>(
+                new List<LogFlowSummaryDto>(), page, pageSize, totalItems, totalPages);
+        }
+
+        var flowIds = flows.Select(f => f.FlowId).ToList();
+        var allActions = await db.LogActions
+            .AsNoTracking()
+            .Where(a => flowIds.Contains(a.FlowId))
+            .ToListAsync(ct);
+
+        var lastServiceNameMap = flows.ToDictionary(
+            f => f.FlowId,
+            f => ComputeLastServiceName(f.FlowType, allActions.Where(a => a.FlowId == f.FlowId).ToList()));
+
+        var items = flows.Select(f => new LogFlowSummaryDto(
+            f.FlowId,
+            f.FlowType,
+            f.CheckoutType,
+            f.Status,
+            f.CustomerEmail,
+            f.CustomerPhone,
+            f.UserId,
+            f.OrderId,
+            f.PaymentId,
+            f.TotalSteps,
+            f.SuccessSteps,
+            f.FailedSteps,
+            f.LastActionType,
+            f.LastMessage,
+            lastServiceNameMap[f.FlowId],
+            f.StartedAt,
+            f.CompletedAt,
+            f.CreatedAt,
+            f.UpdatedAt))
+            .ToList();
 
         return new PagedResponse<LogFlowSummaryDto>(items, page, pageSize, totalItems, totalPages);
     }
@@ -170,6 +191,11 @@ public class LogFlowQueryService : ILogFlowQueryService
                 a.CreatedAt))
             .ToListAsync(ct);
 
+        var lastServiceName = actions
+            .OrderByDescending(a => a.StepOrder)
+            .FirstOrDefault(a => flow.FlowType != FlowTypes.CheckoutEsim || a.ActionType != ActionTypes.HttpRequest)
+            ?.ServiceName;
+
         var summary = new LogFlowSummaryDto(
             flow.FlowId,
             flow.FlowType,
@@ -185,6 +211,7 @@ public class LogFlowQueryService : ILogFlowQueryService
             flow.FailedSteps,
             flow.LastActionType,
             flow.LastMessage,
+            lastServiceName,
             flow.StartedAt,
             flow.CompletedAt,
             flow.CreatedAt,
@@ -206,6 +233,45 @@ public class LogFlowQueryService : ILogFlowQueryService
     }
 
     /// <summary>
+    /// Applies the unified search predicate across multiple fields using case-insensitive matching.
+    /// </summary>
+    private static IQueryable<LogFlow> ApplySearchPredicate(
+        IQueryable<LogFlow> query,
+        LoggerDbContext db,
+        string? search)
+    {
+        if (string.IsNullOrWhiteSpace(search))
+        {
+            return query;
+        }
+
+        var searchPattern = $"%{search}%";
+        var isNpgsql = db.Database.ProviderName == "Npgsql.EntityFrameworkCore.PostgreSQL";
+
+        if (isNpgsql)
+        {
+            return query.Where(f =>
+                (f.FlowId != null && EF.Functions.ILike(f.FlowId, searchPattern)) ||
+                (f.CustomerEmail != null && EF.Functions.ILike(f.CustomerEmail, searchPattern)) ||
+                (f.CustomerPhone != null && EF.Functions.ILike(f.CustomerPhone, searchPattern)) ||
+                (f.OrderId != null && EF.Functions.ILike(f.OrderId, searchPattern)) ||
+                (f.PaymentId != null && EF.Functions.ILike(f.PaymentId, searchPattern)) ||
+                (f.UserId != null && EF.Functions.ILike(f.UserId, searchPattern)) ||
+                (f.LastMessage != null && EF.Functions.ILike(f.LastMessage, searchPattern)));
+        }
+
+        var lowerSearch = search.ToLowerInvariant();
+        return query.Where(f =>
+            (f.FlowId != null && f.FlowId.ToLower().Contains(lowerSearch)) ||
+            (f.CustomerEmail != null && f.CustomerEmail.ToLower().Contains(lowerSearch)) ||
+            (f.CustomerPhone != null && f.CustomerPhone.ToLower().Contains(lowerSearch)) ||
+            (f.OrderId != null && f.OrderId.ToLower().Contains(lowerSearch)) ||
+            (f.PaymentId != null && f.PaymentId.ToLower().Contains(lowerSearch)) ||
+            (f.UserId != null && f.UserId.ToLower().Contains(lowerSearch)) ||
+            (f.LastMessage != null && f.LastMessage.ToLower().Contains(lowerSearch)));
+    }
+
+    /// <summary>
     /// Applies sorting to the log flows query based on the specified sort field and direction.
     /// </summary>
     /// <param name="query">The query to apply sorting to.</param>
@@ -219,13 +285,13 @@ public class LogFlowQueryService : ILogFlowQueryService
     {
         var isDesc = sortDirection?.Equals("desc", StringComparison.OrdinalIgnoreCase) ?? true;
 
-        var effectiveSortBy = (sortBy ?? "createdAt").ToLowerInvariant();
+        var effectiveSortBy = (sortBy ?? "updatedAt").ToLowerInvariant();
 
         if (effectiveSortBy == "status")
         {
             return isDesc
-                ? query.OrderByDescending(f => f.Status).ThenByDescending(f => f.CreatedAt)
-                : query.OrderBy(f => f.Status).ThenByDescending(f => f.CreatedAt);
+                ? query.OrderByDescending(f => f.Status).ThenByDescending(f => f.UpdatedAt)
+                : query.OrderBy(f => f.Status).ThenByDescending(f => f.UpdatedAt);
         }
 
         return effectiveSortBy switch
@@ -239,7 +305,34 @@ public class LogFlowQueryService : ILogFlowQueryService
             "completedat" => isDesc
                 ? query.OrderByDescending(f => f.CompletedAt)
                 : query.OrderBy(f => f.CompletedAt),
-            _ => query.OrderByDescending(f => f.CreatedAt)
+            _ => query.OrderByDescending(f => f.UpdatedAt)
         };
+    }
+
+    /// <summary>
+    /// Computes the lastServiceName for a flow based on its type and actions.
+    /// For CHECKOUT_ESIM flows: ignores HTTP_REQUEST actions, returns service name of the latest business action.
+    /// For HTTP_ACTION flows: returns service name of the latest action by stepOrder.
+    /// </summary>
+    private static string? ComputeLastServiceName(string flowType, List<LogAction> actions)
+    {
+        if (actions.Count == 0)
+        {
+            return null;
+        }
+
+        if (flowType == FlowTypes.CheckoutEsim)
+        {
+            var businessActions = actions
+                .Where(a => a.ActionType != ActionTypes.HttpRequest)
+                .OrderByDescending(a => a.StepOrder)
+                .FirstOrDefault();
+            return businessActions?.ServiceName;
+        }
+
+        return actions
+            .OrderByDescending(a => a.StepOrder)
+            .Select(a => a.ServiceName)
+            .FirstOrDefault();
     }
 }
