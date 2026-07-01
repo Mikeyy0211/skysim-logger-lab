@@ -5,6 +5,7 @@ using FluentValidation;
 using Skysim.Logger.Api.Kafka;
 using Skysim.Logger.Api.Validators;
 using Skysim.Logger.Api.Infrastructure.Persistence.Exceptions;
+using Skysim.Logger.Api.Domain.Services;
 using Skysim.Logger.Infrastructure.Entities;
 using Xunit;
 using LogEventMessage = Skysim.Logger.Contracts.Events.LogEventMessage;
@@ -397,5 +398,390 @@ public class KafkaLogConsumerServiceTests
     {
         var delay = options.InitialDelayMs * Math.Pow(options.BackoffMultiplier, attempt - 1);
         return TimeSpan.FromMilliseconds(Math.Min(delay, options.MaxDelayMs));
+    }
+}
+
+// Test class specifically for MapFlowFromMessage merge behavior
+public class MapFlowFromMessageMergeTests
+{
+    private static LogEventMessage CreateMessage(
+        string flowId,
+        string flowType,
+        string actionType,
+        string status,
+        string? checkoutType = null,
+        string? customerEmail = null,
+        string? customerPhone = null,
+        string? userId = null,
+        string? orderId = null,
+        string? paymentId = null,
+        string? message = null)
+    {
+        return new LogEventMessage
+        {
+            EventId = Guid.NewGuid(),
+            FlowId = flowId,
+            FlowType = flowType,
+            ServiceName = "TestService",
+            ActionType = actionType,
+            Status = status,
+            CreatedAt = DateTime.UtcNow,
+            CheckoutType = checkoutType,
+            CustomerEmail = customerEmail,
+            CustomerPhone = customerPhone,
+            UserId = userId,
+            OrderId = orderId,
+            PaymentId = paymentId,
+            Message = message
+        };
+    }
+
+    private static LogFlow CreateFlow(string flowType = FlowTypes.HttpAction)
+    {
+        return new LogFlow
+        {
+            Id = Guid.NewGuid(),
+            FlowId = "test-flow",
+            FlowType = flowType,
+            Status = StatusTypes.Success,
+            TotalSteps = 0,
+            SuccessSteps = 0,
+            FailedSteps = 0,
+            StartedAt = DateTime.UtcNow,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+    }
+
+    // 6.2 / fix: CHECKOUT_ESIM message upgrades flow regardless of current flowType
+    [Fact]
+    public void MapFlowFromMessage_ChekoutEsimEvent_SetsFlowTypeToCheckoutEsim()
+    {
+        // Arrange - starts as HTTP_ACTION (middleware logs first)
+        var flow = CreateFlow(FlowTypes.HttpAction);
+        var message = CreateMessage(
+            flowId: "test-flow-001",
+            flowType: FlowTypes.CheckoutEsim,
+            actionType: ActionTypes.OrderCreated,
+            status: StatusTypes.Success,
+            checkoutType: CheckoutTypes.Guest,
+            customerEmail: "test@example.com",
+            orderId: "ORD-123");
+
+        // Act
+        MapFlowFromMessage(flow, message);
+
+        // Assert
+        flow.FlowType.Should().Be(FlowTypes.CheckoutEsim);
+    }
+
+    [Fact]
+    public void MapFlowFromMessage_ChekoutEsimEvent_UpdatesBusinessFields()
+    {
+        // Arrange
+        var flow = CreateFlow(FlowTypes.HttpAction);
+        var message = CreateMessage(
+            flowId: "test-flow-001",
+            flowType: FlowTypes.CheckoutEsim,
+            actionType: ActionTypes.OrderCreated,
+            status: StatusTypes.Success,
+            checkoutType: CheckoutTypes.Guest,
+            customerEmail: "test@example.com",
+            orderId: "ORD-123");
+
+        // Act
+        MapFlowFromMessage(flow, message);
+
+        // Assert
+        flow.CheckoutType.Should().Be(CheckoutTypes.Guest);
+        flow.CustomerEmail.Should().Be("test@example.com");
+        flow.OrderId.Should().Be("ORD-123");
+    }
+
+    [Fact]
+    public void MapFlowFromMessage_ChekoutEsimEvent_SetsFlowType_WhenCurrentIsEmptyString()
+    {
+        // Arrange - new LogFlow defaults to string.Empty before any message is processed
+        var flow = new LogFlow
+        {
+            Id = Guid.NewGuid(),
+            FlowId = "test-flow",
+            FlowType = string.Empty, // This is what happens when a new LogFlow is created
+            Status = string.Empty,
+            TotalSteps = 0,
+            SuccessSteps = 0,
+            FailedSteps = 0,
+            StartedAt = DateTime.UtcNow,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+
+        var message = CreateMessage(
+            flowId: "test-flow",
+            flowType: FlowTypes.CheckoutEsim,
+            actionType: ActionTypes.OrderCreated,
+            status: StatusTypes.Success,
+            checkoutType: CheckoutTypes.Guest);
+
+        // Act
+        MapFlowFromMessage(flow, message);
+
+        // Assert
+        flow.FlowType.Should().Be(FlowTypes.CheckoutEsim);
+    }
+
+    // 6.3: CHECKOUT_ESIM exists, HTTP_ACTION arrives later and must not clear business fields
+    [Fact]
+    public void MapFlowFromMessage_CheckoutEsimExists_HttpActionDoesNotClearBusinessFields()
+    {
+        // Arrange
+        var flow = CreateFlow(FlowTypes.CheckoutEsim);
+        flow.CustomerEmail = "existing@example.com";
+        flow.CustomerPhone = "0900123456";
+        flow.OrderId = "ORD-existing";
+        flow.PaymentId = "PAY-existing";
+        flow.UserId = "user-123";
+        flow.CheckoutType = CheckoutTypes.Authenticated;
+        flow.LastActionType = ActionTypes.EmailSent;
+        flow.LastMessage = "Email sent successfully";
+
+        var message = CreateMessage(
+            flowId: "test-flow-002",
+            flowType: FlowTypes.HttpAction,
+            actionType: ActionTypes.HttpRequest,
+            status: StatusTypes.Success,
+            customerEmail: null,
+            customerPhone: null,
+            orderId: null,
+            paymentId: null,
+            message: "HTTP GET /api/checkout");
+
+        // Act
+        MapFlowFromMessage(flow, message);
+
+        // Assert
+        flow.CustomerEmail.Should().Be("existing@example.com");
+        flow.CustomerPhone.Should().Be("0900123456");
+        flow.OrderId.Should().Be("ORD-existing");
+        flow.PaymentId.Should().Be("PAY-existing");
+        flow.UserId.Should().Be("user-123");
+    }
+
+    // 6.4: CHECKOUT_ESIM exists, HTTP_ACTION arrives later and must not downgrade flowType
+    [Fact]
+    public void MapFlowFromMessage_CheckoutEsimExists_HttpActionDoesNotDowngradeFlowType()
+    {
+        // Arrange
+        var flow = CreateFlow(FlowTypes.CheckoutEsim);
+        flow.CustomerEmail = "existing@example.com";
+
+        var message = CreateMessage(
+            flowId: "test-flow-003",
+            flowType: FlowTypes.HttpAction,
+            actionType: ActionTypes.HttpRequest,
+            status: StatusTypes.Success);
+
+        // Act
+        MapFlowFromMessage(flow, message);
+
+        // Assert
+        flow.FlowType.Should().Be(FlowTypes.CheckoutEsim);
+    }
+
+    // 6.5: HTTP_ACTION-only flow still works (existing behavior preserved)
+    [Fact]
+    public void MapFlowFromMessage_HttpActionOnlyFlow_WorksNormally()
+    {
+        // Arrange
+        var flow = CreateFlow(FlowTypes.HttpAction);
+        var message = CreateMessage(
+            flowId: "http-only-flow",
+            flowType: FlowTypes.HttpAction,
+            actionType: ActionTypes.HttpRequest,
+            status: StatusTypes.Success,
+            customerEmail: null,
+            message: "HTTP GET /api/test");
+
+        // Act
+        MapFlowFromMessage(flow, message);
+
+        // Assert
+        flow.FlowType.Should().Be(FlowTypes.HttpAction);
+        flow.CustomerEmail.Should().BeNull();
+    }
+
+    // 6.6: HTTP_ACTION-only flow should still set lastActionType = HTTP_REQUEST
+    [Fact]
+    public void MapFlowFromMessage_HttpActionOnlyFlow_SetsLastActionTypeToHttpRequest()
+    {
+        // Arrange
+        var flow = CreateFlow(FlowTypes.HttpAction);
+        var message = CreateMessage(
+            flowId: "http-only-flow",
+            flowType: FlowTypes.HttpAction,
+            actionType: ActionTypes.HttpRequest,
+            status: StatusTypes.Success,
+            message: "HTTP GET /api/test");
+
+        // Act
+        MapFlowFromMessage(flow, message);
+
+        // Assert
+        flow.LastActionType.Should().Be(ActionTypes.HttpRequest);
+        flow.LastMessage.Should().Be("HTTP GET /api/test");
+    }
+
+    // 6.7: CHECKOUT_ESIM flow preserves lastActionType when HTTP_REQUEST arrives later
+    [Fact]
+    public void MapFlowFromMessage_CheckoutEsimFlow_PreservesLastActionTypeWhenHttpRequestArrives()
+    {
+        // Arrange
+        var flow = CreateFlow(FlowTypes.CheckoutEsim);
+        flow.LastActionType = ActionTypes.EmailSent;
+        flow.LastMessage = "Email sent successfully";
+
+        var message = CreateMessage(
+            flowId: "business-flow",
+            flowType: FlowTypes.HttpAction,
+            actionType: ActionTypes.HttpRequest,
+            status: StatusTypes.Success,
+            message: "HTTP POST /api/checkout/esim");
+
+        // Act
+        MapFlowFromMessage(flow, message);
+
+        // Assert
+        flow.LastActionType.Should().Be(ActionTypes.EmailSent);
+        flow.LastMessage.Should().Be("Email sent successfully");
+    }
+
+    [Fact]
+    public void MapFlowFromMessage_BusinessFieldsMerged_UsesIncomingNonNullValues()
+    {
+        // Arrange
+        var flow = CreateFlow(FlowTypes.CheckoutEsim);
+        flow.CustomerEmail = "existing@example.com";
+        flow.CustomerPhone = null;
+        flow.OrderId = null;
+
+        var message = CreateMessage(
+            flowId: "test-flow-004",
+            flowType: FlowTypes.CheckoutEsim,
+            actionType: ActionTypes.PaymentSuccess,
+            status: StatusTypes.Success,
+            customerEmail: null,
+            customerPhone: "0900123456",
+            orderId: "ORD-new",
+            paymentId: "PAY-new");
+
+        // Act
+        MapFlowFromMessage(flow, message);
+
+        // Assert
+        flow.CustomerEmail.Should().Be("existing@example.com"); // preserved (incoming was null)
+        flow.CustomerPhone.Should().Be("0900123456"); // filled (incoming was non-null)
+        flow.OrderId.Should().Be("ORD-new"); // filled (incoming was non-null)
+        flow.PaymentId.Should().Be("PAY-new"); // filled (incoming was non-null)
+    }
+
+    [Fact]
+    public void MapFlowFromMessage_AllBusinessFieldsMerged()
+    {
+        // Arrange
+        var flow = CreateFlow(FlowTypes.CheckoutEsim);
+        flow.CheckoutType = CheckoutTypes.Authenticated;
+        flow.CustomerEmail = "alice@example.com";
+        flow.CustomerPhone = "0900000000";
+        flow.UserId = "user-001";
+        flow.OrderId = "ORD-001";
+        flow.PaymentId = "PAY-001";
+
+        var message = CreateMessage(
+            flowId: "test-flow-005",
+            flowType: FlowTypes.HttpAction,
+            actionType: ActionTypes.HttpRequest,
+            status: StatusTypes.Success);
+
+        // Act
+        MapFlowFromMessage(flow, message);
+
+        // Assert
+        flow.CheckoutType.Should().Be(CheckoutTypes.Authenticated);
+        flow.CustomerEmail.Should().Be("alice@example.com");
+        flow.CustomerPhone.Should().Be("0900000000");
+        flow.UserId.Should().Be("user-001");
+        flow.OrderId.Should().Be("ORD-001");
+        flow.PaymentId.Should().Be("PAY-001");
+    }
+
+    [Fact]
+    public void MapFlowFromMessage_ChecksTerminalAction()
+    {
+        // Arrange
+        var flow = CreateFlow(FlowTypes.CheckoutEsim);
+
+        // ESIM_ACTIVATED is a terminal success action
+        var message = CreateMessage(
+            flowId: "test-flow",
+            flowType: FlowTypes.CheckoutEsim,
+            actionType: ActionTypes.EsimActivated,
+            status: StatusTypes.Success);
+
+        // Act
+        MapFlowFromMessage(flow, message);
+
+        // Assert
+        flow.CompletedAt.Should().NotBeNull();
+    }
+
+    private static void MapFlowFromMessage(LogFlow flow, LogEventMessage message)
+    {
+        // Upgrade flowType: set to CHECKOUT_ESIM for business messages.
+        // Handles both new flows (string.Empty -> CHECKOUT_ESIM) and HTTP_ACTION -> CHECKOUT_ESIM upgrades.
+        if (message.FlowType == FlowTypes.CheckoutEsim)
+        {
+            flow.FlowType = message.FlowType;
+        }
+
+        // Merge business fields: use incoming non-null values, preserve existing non-null values
+        flow.CheckoutType ??= message.CheckoutType;
+        flow.CustomerEmail ??= message.CustomerEmail;
+        flow.CustomerPhone ??= message.CustomerPhone;
+        flow.UserId ??= message.UserId;
+        flow.OrderId ??= message.OrderId;
+        flow.PaymentId ??= message.PaymentId;
+
+        // Update status from latest event
+        flow.Status = message.Status;
+        flow.StartedAt = message.CreatedAt;
+
+        // Preserve lastActionType/lastMessage: HTTP_REQUEST after CHECKOUT_ESIM should not overwrite business action
+        bool isExistingBusinessFlow = flow.FlowType == FlowTypes.CheckoutEsim;
+        bool isHttpRequest = message.ActionType == ActionTypes.HttpRequest;
+
+        if (isHttpRequest && isExistingBusinessFlow)
+        {
+            // Preserve existing lastActionType/lastMessage (business action preserved)
+        }
+        else
+        {
+            flow.LastActionType = message.ActionType;
+            flow.LastMessage = message.Message;
+        }
+
+        if (message.Status == StatusTypes.Success)
+        {
+            flow.SuccessSteps++;
+            if (FlowDomainService.IsTerminalAction(message.ActionType, message.Status))
+            {
+                flow.CompletedAt = DateTime.UtcNow;
+            }
+        }
+        else if (message.Status == StatusTypes.Failed)
+        {
+            flow.FailedSteps++;
+            flow.CompletedAt = DateTime.UtcNow;
+        }
+        flow.TotalSteps++;
     }
 }

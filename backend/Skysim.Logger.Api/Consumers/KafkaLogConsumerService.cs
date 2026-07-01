@@ -16,6 +16,9 @@ using Skysim.Logger.Infrastructure.Data;
 using Skysim.Logger.Infrastructure.Entities;
 using Skysim.Logger.Infrastructure.Repositories;
 using StatusTypes = Skysim.Logger.Contracts.Constants.StatusTypes;
+using ActionTypes = Skysim.Logger.Contracts.Constants.ActionTypes;
+using FlowTypes = Skysim.Logger.Contracts.Constants.FlowTypes;
+using Skysim.Logger.Api.Domain.Services;
 
 namespace Skysim.Logger.Api.Consumers;
 
@@ -279,22 +282,48 @@ public class KafkaLogConsumerService : BackgroundService
 
     private static void MapFlowFromMessage(LogFlow flow, LogEventMessage message)
     {
-        flow.FlowType = message.FlowType;
-        flow.CheckoutType = message.CheckoutType;
+        // 1.2: Upgrade flowType: set to CHECKOUT_ESIM for business messages.
+        // Handles both new flows (string.Empty -> CHECKOUT_ESIM) and HTTP_ACTION -> CHECKOUT_ESIM upgrades.
+        if (message.FlowType == FlowTypes.CheckoutEsim)
+        {
+            flow.FlowType = message.FlowType;
+        }
+
+        // 1.3: Merge business fields: use incoming non-null values, preserve existing non-null values
+        flow.CheckoutType ??= message.CheckoutType;
+        flow.CustomerEmail ??= message.CustomerEmail;
+        flow.CustomerPhone ??= message.CustomerPhone;
+        flow.UserId ??= message.UserId;
+        flow.OrderId ??= message.OrderId;
+        flow.PaymentId ??= message.PaymentId;
+
+        // Update status from latest event
         flow.Status = message.Status;
-        flow.CustomerEmail = message.CustomerEmail;
-        flow.CustomerPhone = message.CustomerPhone;
-        flow.UserId = message.UserId;
-        flow.OrderId = message.OrderId;
-        flow.PaymentId = message.PaymentId;
-        flow.LastActionType = message.ActionType;
-        flow.LastMessage = message.Message;
         flow.StartedAt = message.CreatedAt;
+
+        // 1.4: Preserve lastActionType/lastMessage: HTTP_REQUEST after CHECKOUT_ESIM should not overwrite business action
+        // HTTP_ACTION-only flows: update normally from HTTP_REQUEST
+        // CHECKOUT_ESIM flows with HTTP_REQUEST arriving later: preserve last business action
+        bool isExistingBusinessFlow = flow.FlowType == FlowTypes.CheckoutEsim;
+        bool isHttpRequest = message.ActionType == ActionTypes.HttpRequest;
+
+        if (isHttpRequest && isExistingBusinessFlow)
+        {
+            // Preserve existing lastActionType/lastMessage (business action preserved)
+        }
+        else
+        {
+            flow.LastActionType = message.ActionType;
+            flow.LastMessage = message.Message;
+        }
 
         if (message.Status == StatusTypes.Success)
         {
             flow.SuccessSteps++;
-            flow.CompletedAt = DateTime.UtcNow;
+            if (FlowDomainService.IsTerminalAction(message.ActionType, message.Status))
+            {
+                flow.CompletedAt = DateTime.UtcNow;
+            }
         }
         else if (message.Status == StatusTypes.Failed)
         {

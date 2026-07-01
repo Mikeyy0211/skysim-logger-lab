@@ -61,7 +61,10 @@ public class KafkaLogProducer : IKafkaLogProducer, IDisposable
 
     public async Task PublishAsync(LogEventMessage message, CancellationToken cancellationToken = default)
     {
-        message.ServiceName = _serviceName;
+        if (string.IsNullOrWhiteSpace(message.ServiceName))
+        {
+            message.ServiceName = _serviceName;
+        }
 
         byte[] payload;
         try

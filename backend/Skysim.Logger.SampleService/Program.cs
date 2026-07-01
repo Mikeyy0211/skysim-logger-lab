@@ -2,6 +2,7 @@ using Skysim.Logger.Client.Masking;
 using Skysim.Logger.Client.Middlewares;
 using Skysim.Logger.Client.Producers;
 using Skysim.Logger.SampleService.Middlewares;
+using Skysim.Logger.SampleService.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -47,6 +48,9 @@ builder.Services.AddSingleton(sp =>
         masker,
         logger);
 });
+
+// Register BusinessActionLogger
+builder.Services.AddScoped<IBusinessActionLogger, BusinessActionLogger>();
 
 // Add controllers
 builder.Services.AddControllers();

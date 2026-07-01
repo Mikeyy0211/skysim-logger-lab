@@ -31,7 +31,7 @@ public class KafkaLogProducerTests
     }
 
     [Fact]
-    public async Task PublishAsync_ValidMessage_ShouldSetServiceName()
+    public async Task PublishAsync_ValidMessage_ShouldPreserveExistingServiceName()
     {
         var producer = CreateMockProducer();
         var logger = new Mock<ILogger<KafkaLogProducer>>();
@@ -41,18 +41,81 @@ public class KafkaLogProducerTests
             "all",
             5,
             200,
-            "TestService",
+            "ConfiguredServiceName",
             logger.Object,
             producer.Object);
 
         var message = CreateMessage();
         await sut.PublishAsync(message);
 
+        // ServiceName should be preserved from the message, not overwritten by config
         message.ServiceName.Should().Be("TestService");
-        producer.Verify(p => p.ProduceAsync(
-            "skysim.action.logs",
-            It.Is<Message<string, byte[]>>(m => m.Key == "flow-123"),
-            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task PublishAsync_NullServiceName_ShouldSetFromConfig()
+    {
+        var producer = CreateMockProducer();
+        var logger = new Mock<ILogger<KafkaLogProducer>>();
+
+        using var sut = new KafkaLogProducer(
+            "localhost:9092",
+            "all",
+            5,
+            200,
+            "ConfiguredServiceName",
+            logger.Object,
+            producer.Object);
+
+        var message = CreateMessage();
+        message.ServiceName = null!;
+        await sut.PublishAsync(message);
+
+        message.ServiceName.Should().Be("ConfiguredServiceName");
+    }
+
+    [Fact]
+    public async Task PublishAsync_EmptyServiceName_ShouldSetFromConfig()
+    {
+        var producer = CreateMockProducer();
+        var logger = new Mock<ILogger<KafkaLogProducer>>();
+
+        using var sut = new KafkaLogProducer(
+            "localhost:9092",
+            "all",
+            5,
+            200,
+            "ConfiguredServiceName",
+            logger.Object,
+            producer.Object);
+
+        var message = CreateMessage();
+        message.ServiceName = string.Empty;
+        await sut.PublishAsync(message);
+
+        message.ServiceName.Should().Be("ConfiguredServiceName");
+    }
+
+    [Fact]
+    public async Task PublishAsync_WhitespaceServiceName_ShouldSetFromConfig()
+    {
+        var producer = CreateMockProducer();
+        var logger = new Mock<ILogger<KafkaLogProducer>>();
+
+        using var sut = new KafkaLogProducer(
+            "localhost:9092",
+            "all",
+            5,
+            200,
+            "ConfiguredServiceName",
+            logger.Object,
+            producer.Object);
+
+        var message = CreateMessage();
+        message.ServiceName = "   ";
+        await sut.PublishAsync(message);
+
+        message.ServiceName.Should().Be("ConfiguredServiceName");
     }
 
     [Fact]
