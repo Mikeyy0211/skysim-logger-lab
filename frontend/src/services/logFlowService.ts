@@ -5,6 +5,10 @@ import type { LogAction, LogActionDetail } from '../types/logAction';
 export interface LogFlowListParams {
   page?: number;
   pageSize?: number;
+  search?: string;
+  status?: string;
+  flowType?: string;
+  checkoutType?: string;
 }
 
 export async function getLogFlows(params?: LogFlowListParams): Promise<LogFlowSummary[]> {

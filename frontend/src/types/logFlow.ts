@@ -15,6 +15,7 @@ export interface LogFlowSummary {
   failedSteps: number;
   lastActionType: string | null;
   lastMessage: string | null;
+  lastServiceName: string | null;
   startedAt: string;
   completedAt: string | null;
   createdAt: string;

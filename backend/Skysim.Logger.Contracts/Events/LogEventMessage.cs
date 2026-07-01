@@ -74,6 +74,27 @@ public class LogEventMessage
     [JsonPropertyName("duration")]
     public int? Duration { get; set; }
 
+    [JsonPropertyName("durationMs")]
+    public int? DurationMs { get; set; }
+
+    [JsonPropertyName("method")]
+    public string? Method { get; set; }
+
+    [JsonPropertyName("path")]
+    public string? Path { get; set; }
+
+    [JsonPropertyName("queryString")]
+    public string? QueryString { get; set; }
+
+    [JsonPropertyName("statusCode")]
+    public int? StatusCode { get; set; }
+
+    [JsonPropertyName("requestBody")]
+    public string? RequestBody { get; set; }
+
+    [JsonPropertyName("responseBody")]
+    public string? ResponseBody { get; set; }
+
     [JsonPropertyName("requestData")]
     public JsonElement? RequestData { get; set; }
 
@@ -91,4 +112,19 @@ public class LogEventMessage
 
     [JsonPropertyName("correlationId")]
     public string? CorrelationId { get; set; }
+
+    [JsonPropertyName("fullUrl")]
+    public string? FullUrl { get; set; }
+
+    [JsonPropertyName("clientIp")]
+    public string? ClientIp { get; set; }
+
+    [JsonPropertyName("sourceService")]
+    public string? SourceService { get; set; }
+
+    [JsonPropertyName("requestHeaders")]
+    public Dictionary<string, string>? RequestHeaders { get; set; }
+
+    [JsonPropertyName("responseHeaders")]
+    public Dictionary<string, string>? ResponseHeaders { get; set; }
 }

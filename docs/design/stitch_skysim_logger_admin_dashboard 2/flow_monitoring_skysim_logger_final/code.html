@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Skysim Logger - Flow Monitoring</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-secondary": "#ffffff",
+                        "surface-bright": "#faf8ff",
+                        "secondary-fixed-dim": "#b7c8e1",
+                        "secondary-fixed": "#d3e4fe",
+                        "secondary": "#505f76",
+                        "on-error-container": "#93000a",
+                        "outline": "#737686",
+                        "on-tertiary-fixed-variant": "#7d2d00",
+                        "on-secondary-fixed": "#0b1c30",
+                        "inverse-surface": "#2e3039",
+                        "tertiary-fixed": "#ffdbcd",
+                        "on-tertiary-container": "#ffede6",
+                        "surface-dim": "#d9d9e5",
+                        "surface": "#faf8ff",
+                        "on-surface": "#191b23",
+                        "tertiary-fixed-dim": "#ffb596",
+                        "surface-tint": "#0053db",
+                        "primary-container": "#2563eb",
+                        "surface-container-lowest": "#ffffff",
+                        "on-primary-container": "#eeefff",
+                        "surface-variant": "#e1e2ed",
+                        "secondary-container": "#d0e1fb",
+                        "outline-variant": "#c3c6d7",
+                        "on-secondary-container": "#54647a",
+                        "tertiary": "#943700",
+                        "primary": "#004ac6",
+                        "on-primary": "#ffffff",
+                        "surface-container-low": "#f3f3fe",
+                        "on-background": "#191b23",
+                        "on-error": "#ffffff",
+                        "error-container": "#ffdad6",
+                        "surface-container": "#ededf9",
+                        "on-surface-variant": "#434655",
+                        "on-secondary-fixed-variant": "#38485d",
+                        "surface-container-high": "#e7e7f3",
+                        "on-primary-fixed-variant": "#003ea8",
+                        "on-primary-fixed": "#00174b",
+                        "background": "#faf8ff",
+                        "surface-container-highest": "#e1e2ed",
+                        "tertiary-container": "#bc4800",
+                        "primary-fixed": "#dbe1ff",
+                        "primary-fixed-dim": "#b4c5ff",
+                        "on-tertiary-fixed": "#360f00",
+                        "error": "#ba1a1a",
+                        "on-tertiary": "#ffffff",
+                        "inverse-primary": "#b4c5ff",
+                        "inverse-on-surface": "#f0f0fb"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "container-padding-mobile": "16px",
+                        "container-padding-desktop": "32px",
+                        "base": "4px",
+                        "stack-sm": "8px",
+                        "stack-md": "16px",
+                        "stack-lg": "24px",
+                        "gutter": "24px"
+                    },
+                    "fontFamily": {
+                        "display-lg": ["Inter"],
+                        "body-lg": ["Inter"],
+                        "body-md": ["Inter"],
+                        "headline-sm": ["Inter"],
+                        "label-bold": ["Inter"],
+                        "headline-md": ["Inter"],
+                        "body-sm": ["Inter"],
+                        "code-md": ["JetBrains Mono"]
+                    },
+                    "fontSize": {
+                        "display-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                        "body-lg": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                        "body-md": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                        "headline-sm": ["20px", {"lineHeight": "28px", "fontWeight": "600"}],
+                        "label-bold": ["12px", {"lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "600"}],
+                        "headline-md": ["24px", {"lineHeight": "32px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                        "body-sm": ["12px", {"lineHeight": "18px", "fontWeight": "400"}],
+                        "code-md": ["13px", {"lineHeight": "20px", "fontWeight": "400"}]
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            vertical-align: middle;
+        }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #c3c6d7; border-radius: 10px; }
+        .table-row-hover:hover { background-color: #f3f3fe; transition: background-color 0.15s ease-in-out; }
+    </style>
+</head>
+<body class="bg-background text-on-surface font-body-md overflow-hidden h-screen flex">
+<!-- SIDEBAR -->
+<aside class="fixed left-0 top-0 h-full w-[280px] bg-surface border-r border-outline-variant flex flex-col py-stack-lg px-stack-md z-50">
+<div class="mb-stack-lg px-2 flex items-center gap-3">
+<div class="w-10 h-10 bg-primary-container rounded-lg flex items-center justify-center text-on-primary-container">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">terminal</span>
+</div>
+<div>
+<h1 class="font-headline-sm text-headline-sm font-bold text-primary">Skysim Logger</h1>
+<p class="font-label-bold text-[10px] text-on-surface-variant uppercase tracking-widest">Admin Console</p>
+</div>
+</div>
+<nav class="flex-1 space-y-1">
+<a class="flex items-center gap-3 px-4 py-3 rounded-lg text-on-surface-variant hover:bg-surface-container-high transition-colors duration-200" href="#">
+<span class="material-symbols-outlined">dashboard</span>
+<span class="font-label-bold text-label-bold">Dashboard</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 rounded-lg text-primary font-bold border-r-4 border-primary bg-surface-container-high transition-transform duration-150 scale-[0.98]" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">analytics</span>
+<span class="font-label-bold text-label-bold">Flow Monitoring</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 rounded-lg text-on-surface-variant hover:bg-surface-container-high transition-colors duration-200" href="#">
+<span class="material-symbols-outlined">settings</span>
+<span class="font-label-bold text-label-bold">Settings</span>
+</a>
+</nav>
+<div class="pt-stack-lg mt-auto border-t border-outline-variant">
+<div class="flex items-center gap-3 px-2 py-3 mb-4">
+<img class="w-10 h-10 rounded-full border-2 border-primary-fixed" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA4ZpsfLZTcEF4zxjCjaKH6Prj_X6_VL05JPmmswY2hFJXQWubnq1cZa7ItEtfnE9q3LVAyZThJ4i_nXuwqQL7oktPPYArT1g4XZP8Nq_2_v2zxDcQ0WxAPdIVBOLi90g--2IVzn9DcxiHd3yzKmJYdFuF2PwSw9sIFU44hPqD246NwcGUf3UqpJSF-t9XwLI1PJEd1fhuNSC8cHmOeg-eZBi1ULQmreVoeY9IAIoxW_cBOGibXXNxshUeLEXmLcpYSmrSmNC5LbY1s"/>
+<div class="overflow-hidden">
+<p class="font-label-bold text-label-bold truncate">Skysim Operator</p>
+<p class="font-body-sm text-body-sm text-on-surface-variant">admin@skysim.io</p>
+</div>
+</div>
+<button class="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-on-surface-variant hover:bg-surface-container-high transition-colors duration-200">
+<span class="material-symbols-outlined">logout</span>
+<span class="font-label-bold text-label-bold">Logout</span>
+</button>
+</div>
+</aside>
+<!-- MAIN CONTENT -->
+<main class="ml-[280px] flex-1 flex flex-col h-screen overflow-hidden">
+<header class="flex justify-between items-center h-16 w-full px-container-padding-desktop bg-surface-container-lowest border-b border-outline-variant">
+<div class="flex flex-col">
+<h2 class="font-headline-md text-headline-md font-extrabold text-primary">Flow Monitoring</h2>
+<p class="text-body-sm text-on-surface-variant -mt-1">Search and monitor checkout and technical flows across services.</p>
+</div>
+<div class="flex items-center gap-4">
+<button class="p-2 text-on-surface-variant hover:text-primary transition-all relative">
+<span class="material-symbols-outlined">notifications</span>
+<span class="absolute top-2 right-2 w-2 h-2 bg-error rounded-full"></span>
+</button>
+<img class="w-8 h-8 rounded-full border border-outline-variant" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC9t_t4uUP2_uWo0rA3xKBcIvoglJlw5TAmB7yvJHLW9HRrePKY81TnV007W1fyZVHE8Ft-7dt5NLtwsQThC11Qb1GUpjYPHyEUn-zBdGRtLyjlP82ZmrkvntZTbD6dvHT2Npl28-PMhhIDXrpkhm9kstiPI5DJunzrFmpBBUmC1a6K8Fekx4FFWrm29TQ1kZWZK4KHaGeN_HdAJkuyzwCvmOhsRxyr45aBcEI98Zd0nEytDFsZUz1k4G96Pr2P01m2JJerGfate-Ia"/>
+</div>
+</header>
+<div class="flex-1 p-stack-lg overflow-y-auto custom-scrollbar">
+<!-- SEARCH & FILTERS -->
+<section class="bg-surface-container-lowest rounded-xl border border-outline-variant p-6 mb-stack-lg shadow-sm">
+<div class="space-y-6">
+<!-- Global Search -->
+<div class="relative">
+<label class="font-label-bold text-label-bold text-on-surface-variant mb-2 block">Search Flows</label>
+<div class="relative group">
+<span class="absolute left-4 top-1/2 -translate-y-1/2 material-symbols-outlined text-on-surface-variant group-focus-within:text-primary transition-colors">search</span>
+<input class="w-full pl-12 pr-4 py-4 bg-surface-container-low border border-outline-variant rounded-xl text-body-lg focus:ring-2 focus:ring-primary/20 focus:border-primary focus:bg-white transition-all outline-none" placeholder="Search by email, phone, order ID, payment ID, or flow ID" type="text"/>
+</div>
+</div>
+<!-- Filter Grid -->
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+<div class="flex flex-col gap-2">
+<label class="font-label-bold text-label-bold text-on-surface-variant">Status</label>
+<select class="w-full px-3 py-2.5 bg-white border border-outline-variant rounded-lg text-body-md focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all">
+<option>All Statuses</option>
+<option>SUCCESS</option>
+<option>FAILED</option>
+<option>RUNNING</option>
+<option>PARTIAL_FAILED</option>
+</select>
+</div>
+<div class="flex flex-col gap-2">
+<label class="font-label-bold text-label-bold text-on-surface-variant">Flow Type</label>
+<select class="w-full px-3 py-2.5 bg-white border border-outline-variant rounded-lg text-body-md focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all">
+<option>All Flows</option>
+<option>CHECKOUT_ESIM</option>
+<option>HTTP_ACTION</option>
+</select>
+</div>
+<div class="flex flex-col gap-2">
+<label class="font-label-bold text-label-bold text-on-surface-variant">Checkout Type</label>
+<select class="w-full px-3 py-2.5 bg-white border border-outline-variant rounded-lg text-body-md focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all">
+<option>All Types</option>
+<option>GUEST</option>
+<option>AUTHENTICATED</option>
+<option>—</option>
+</select>
+</div>
+<div class="flex flex-col gap-2">
+<label class="font-label-bold text-label-bold text-on-surface-variant">Date Range</label>
+<div class="relative">
+<input class="w-full pl-10 pr-3 py-2.5 bg-white border border-outline-variant rounded-lg text-body-md focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all" type="text" value="Oct 24, 2023 - Oct 25, 2023"/>
+<span class="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant material-symbols-outlined text-[18px]">calendar_today</span>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- DATA TABLE -->
+<div class="bg-surface-container-lowest rounded-2xl border border-outline-variant overflow-hidden shadow-sm flex flex-col">
+<div class="overflow-x-auto">
+<table class="w-full text-left border-collapse min-w-[1600px]">
+<thead>
+<tr class="bg-surface-container text-on-surface-variant border-b border-outline-variant">
+<th class="px-6 py-4 font-label-bold text-label-bold uppercase">Flow ID</th>
+<th class="px-6 py-4 font-label-bold text-label-bold uppercase">Flow Type</th>
+<th class="px-6 py-4 font-label-bold text-label-bold uppercase">Status</th>
+<th class="px-6 py-4 font-label-bold text-label-bold uppercase">Customer</th>
+<th class="px-6 py-4 font-label-bold text-label-bold uppercase">Order ID</th>
+<th class="px-6 py-4 font-label-bold text-label-bold uppercase">Payment ID</th>
+<th class="px-6 py-4 font-label-bold text-label-bold uppercase">Checkout Type</th>
+<th class="px-6 py-4 font-label-bold text-label-bold uppercase">Last Service</th>
+<th class="px-6 py-4 font-label-bold text-label-bold uppercase">Last Action</th>
+<th class="px-6 py-4 font-label-bold text-label-bold uppercase text-right">Updated At</th>
+<th class="px-6 py-4 font-label-bold text-label-bold uppercase text-right">Action</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-outline-variant/30">
+<!-- Row 1 -->
+<tr class="table-row-hover group">
+<td class="px-6 py-5 font-code-md text-code-md text-primary font-medium">FL-2849-XA</td>
+<td class="px-6 py-5 font-code-md text-body-sm">CHECKOUT_ESIM</td>
+<td class="px-6 py-5">
+<span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-[#10b9811a] text-[#059669]">
+<span class="w-1.5 h-1.5 rounded-full bg-[#059669] mr-1.5"></span>SUCCESS
+                                </span>
+</td>
+<td class="px-6 py-5">
+<div class="flex flex-col">
+<span class="font-body-md text-on-surface font-medium">j.doe@example.com</span>
+<span class="text-[11px] text-on-surface-variant">+1 (555) 0123</span>
+</div>
+</td>
+<td class="px-6 py-5 font-code-md text-code-md text-on-surface">ORD-99212</td>
+<td class="px-6 py-5 font-code-md text-code-md text-on-surface">PAY-XYZ-442</td>
+<td class="px-6 py-5 font-code-md text-body-sm">AUTHENTICATED</td>
+<td class="px-6 py-5">
+<span class="px-3 py-1 bg-primary/5 border border-primary/20 text-primary rounded-lg font-bold text-[11px] tracking-wide uppercase">PaymentService</span>
+</td>
+<td class="px-6 py-5 font-code-md text-body-sm text-on-surface-variant">PAYMENT_SUCCESS</td>
+<td class="px-6 py-5 font-body-sm text-body-sm text-on-surface-variant text-right">2023-10-25 14:22:01</td>
+<td class="px-6 py-5 text-right"><button class="text-primary hover:text-primary-container font-label-bold text-label-bold transition-colors">View Detail</button></td>
+</tr>
+<!-- Row 2 -->
+<tr class="table-row-hover group">
+<td class="px-6 py-5 font-code-md text-code-md text-primary font-medium">FL-2850-ZK</td>
+<td class="px-6 py-5 font-code-md text-body-sm">CHECKOUT_ESIM</td>
+<td class="px-6 py-5">
+<span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-[#ef44441a] text-[#dc2626]">
+<span class="w-1.5 h-1.5 rounded-full bg-[#dc2626] mr-1.5"></span>FAILED
+                                </span>
+</td>
+<td class="px-6 py-5">
+<div class="flex flex-col">
+<span class="font-body-md text-on-surface font-medium">m.smith@corp.io</span>
+<span class="text-[11px] text-on-surface-variant">+1 (555) 9988</span>
+</div>
+</td>
+<td class="px-6 py-5 font-code-md text-code-md text-on-surface">ORD-88711</td>
+<td class="px-6 py-5 font-code-md text-code-md text-on-surface">PAY-REF-001</td>
+<td class="px-6 py-5 font-code-md text-body-sm">GUEST</td>
+<td class="px-6 py-5">
+<span class="px-3 py-1 bg-error/5 border border-error/20 text-error rounded-lg font-bold text-[11px] tracking-wide uppercase">ProviderService</span>
+</td>
+<td class="px-6 py-5 font-code-md text-body-sm text-on-surface-variant">PROVIDER_REQUESTED</td>
+<td class="px-6 py-5 font-body-sm text-body-sm text-on-surface-variant text-right">2023-10-25 14:21:45</td>
+<td class="px-6 py-5 text-right"><button class="text-primary hover:text-primary-container font-label-bold text-label-bold transition-colors">View Detail</button></td>
+</tr>
+<!-- Row 3 -->
+<tr class="table-row-hover group">
+<td class="px-6 py-5 font-code-md text-code-md text-primary font-medium">FL-2851-BB</td>
+<td class="px-6 py-5 font-code-md text-body-sm">HTTP_ACTION</td>
+<td class="px-6 py-5">
+<span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-[#3b82f61a] text-[#2563eb] animate-pulse">
+<span class="w-1.5 h-1.5 rounded-full bg-[#2563eb] mr-1.5"></span>RUNNING
+                                </span>
+</td>
+<td class="px-6 py-5">
+<div class="flex flex-col">
+<span class="font-body-md text-on-surface font-medium">alice.v@gmail.com</span>
+<span class="text-[11px] text-on-surface-variant">+44 20 7946</span>
+</div>
+</td>
+<td class="px-6 py-5 font-code-md text-code-md text-on-surface">—</td>
+<td class="px-6 py-5 font-code-md text-code-md text-on-surface">—</td>
+<td class="px-6 py-5 font-code-md text-body-sm text-on-surface-variant">—</td>
+<td class="px-6 py-5">
+<span class="px-3 py-1 bg-secondary/5 border border-secondary/20 text-secondary rounded-lg font-bold text-[11px] tracking-wide uppercase">CoreService</span>
+</td>
+<td class="px-6 py-5 font-code-md text-body-sm text-on-surface-variant">HTTP_REQUEST</td>
+<td class="px-6 py-5 font-body-sm text-body-sm text-on-surface-variant text-right">2023-10-25 14:21:30</td>
+<td class="px-6 py-5 text-right"><button class="text-primary hover:text-primary-container font-label-bold text-label-bold transition-colors">View Detail</button></td>
+</tr>
+<!-- Row 4 -->
+<tr class="table-row-hover group">
+<td class="px-6 py-5 font-code-md text-code-md text-primary font-medium">FL-2852-QQ</td>
+<td class="px-6 py-5 font-code-md text-body-sm">CHECKOUT_ESIM</td>
+<td class="px-6 py-5">
+<span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-[#f59e0b1a] text-[#d97706]">
+<span class="w-1.5 h-1.5 rounded-full bg-[#d97706] mr-1.5"></span>PARTIAL_FAILED
+                                </span>
+</td>
+<td class="px-6 py-5">
+<div class="flex flex-col">
+<span class="font-body-md text-on-surface font-medium">b.wilson@web.de</span>
+<span class="text-[11px] text-on-surface-variant">+49 30 12345</span>
+</div>
+</td>
+<td class="px-6 py-5 font-code-md text-code-md text-on-surface">ORD-10029</td>
+<td class="px-6 py-5 font-code-md text-code-md text-on-surface">PAY-WLT-991</td>
+<td class="px-6 py-5 font-code-md text-body-sm">AUTHENTICATED</td>
+<td class="px-6 py-5">
+<span class="px-3 py-1 bg-tertiary-container/10 border border-tertiary-container/30 text-tertiary-container rounded-lg font-bold text-[11px] tracking-wide uppercase">NotificationService</span>
+</td>
+<td class="px-6 py-5 font-code-md text-body-sm text-on-surface-variant">EMAIL_SENT</td>
+<td class="px-6 py-5 font-body-sm text-body-sm text-on-surface-variant text-right">2023-10-25 14:20:12</td>
+<td class="px-6 py-5 text-right"><button class="text-primary hover:text-primary-container font-label-bold text-label-bold transition-colors">View Detail</button></td>
+</tr>
+</tbody>
+</table>
+</div>
+<!-- PAGINATION FOOTER -->
+<footer class="bg-surface-container px-6 py-4 border-t border-outline-variant flex items-center justify-between">
+<div class="text-body-sm text-on-surface-variant">
+                    Showing <span class="font-bold text-on-surface">1 - 10</span> of <span class="font-bold text-on-surface">1,248</span> flows
+                </div>
+<div class="flex items-center gap-1">
+<button class="p-2 border border-outline-variant rounded-lg hover:bg-white transition-all disabled:opacity-40" disabled="">
+<span class="material-symbols-outlined text-[20px]">first_page</span>
+</button>
+<button class="p-2 border border-outline-variant rounded-lg hover:bg-white transition-all disabled:opacity-40" disabled="">
+<span class="material-symbols-outlined text-[20px]">chevron_left</span>
+</button>
+<div class="flex gap-1 px-4">
+<button class="w-8 h-8 rounded-lg bg-primary text-on-primary text-label-bold">1</button>
+<button class="w-8 h-8 rounded-lg hover:bg-surface-container-high text-on-surface-variant text-label-bold transition-all">2</button>
+<button class="w-8 h-8 rounded-lg hover:bg-surface-container-high text-on-surface-variant text-label-bold transition-all">3</button>
+<span class="w-8 h-8 flex items-center justify-center text-on-surface-variant">...</span>
+<button class="w-8 h-8 rounded-lg hover:bg-surface-container-high text-on-surface-variant text-label-bold transition-all">125</button>
+</div>
+<button class="p-2 border border-outline-variant rounded-lg hover:bg-white transition-all">
+<span class="material-symbols-outlined text-[20px]">chevron_right</span>
+</button>
+<button class="p-2 border border-outline-variant rounded-lg hover:bg-white transition-all">
+<span class="material-symbols-outlined text-[20px]">last_page</span>
+</button>
+</div>
+<div class="flex items-center gap-3">
+<label class="text-body-sm text-on-surface-variant">Rows per page</label>
+<select class="bg-transparent border border-outline-variant rounded-lg px-2 py-1 text-body-sm focus:ring-1 focus:ring-primary outline-none">
+<option>10</option>
+<option>25</option>
+<option>50</option>
+<option>100</option>
+</select>
+</div>
+</footer>
+</div>
+</div>
+</main>
+<script>
+    const mainSearch = document.querySelector('input[type="text"][placeholder*="Search by email"]');
+    if (mainSearch) {
+        mainSearch.addEventListener('focus', function() {
+            this.parentElement.classList.add('shadow-md');
+        });
+        mainSearch.addEventListener('blur', function() {
+            this.parentElement.classList.remove('shadow-md');
+        });
+    }
+</script>
+</body></html>

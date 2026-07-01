@@ -42,11 +42,13 @@ builder.Services.AddSingleton(sp =>
     var producer = sp.GetRequiredService<IKafkaLogProducer>();
     var masker = sp.GetRequiredService<ISensitiveDataMasker>();
     var logger = sp.GetRequiredService<ILogger<LoggerMiddleware>>();
+    var serviceName = builder.Configuration["Logger:ServiceName"] ?? "sample-checkout-service";
     return new LoggerMiddleware(
         next: null!,
         producer,
         masker,
-        logger);
+        logger,
+        serviceName);
 });
 
 // Register BusinessActionLogger

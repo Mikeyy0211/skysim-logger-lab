@@ -152,4 +152,19 @@ public class SensitiveDataMasker : ISensitiveDataMasker
     {
         return SensitiveFields.Contains(fieldName);
     }
+
+    public string MaskSensitiveHeader(string headerName, string headerValue)
+    {
+        if (string.IsNullOrWhiteSpace(headerName) || string.IsNullOrWhiteSpace(headerValue))
+        {
+            return headerValue ?? "";
+        }
+
+        if (SensitiveFields.Contains(headerName))
+        {
+            return MaskedValue;
+        }
+
+        return headerValue;
+    }
 }

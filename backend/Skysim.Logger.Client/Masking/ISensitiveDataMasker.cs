@@ -7,4 +7,6 @@ public interface ISensitiveDataMasker
     string MaskJson(string json);
 
     LogEventMessage Mask(LogEventMessage message);
+
+    string MaskSensitiveHeader(string headerName, string headerValue);
 }

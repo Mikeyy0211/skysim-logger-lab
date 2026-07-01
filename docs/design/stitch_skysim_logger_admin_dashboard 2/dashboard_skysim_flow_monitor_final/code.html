@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Skysim Logger - Business Flow Dashboard</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&amp;family=JetBrains+Mono:wght@400&amp;family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "surface-container-lowest": "#ffffff",
+                        "primary-container": "#2563eb",
+                        "surface-tint": "#0053db",
+                        "primary": "#004ac6",
+                        "on-tertiary-fixed": "#360f00",
+                        "on-background": "#191b23",
+                        "secondary-fixed": "#d3e4fe",
+                        "tertiary-fixed": "#ffdbcd",
+                        "surface-container": "#ededf9",
+                        "on-secondary-container": "#54647a",
+                        "on-primary": "#ffffff",
+                        "on-error": "#ffffff",
+                        "error-container": "#ffdad6",
+                        "on-secondary": "#ffffff",
+                        "surface-variant": "#e1e2ed",
+                        "inverse-on-surface": "#f0f0fb",
+                        "background": "#faf8ff",
+                        "tertiary": "#943700",
+                        "on-error-container": "#93000a",
+                        "tertiary-container": "#bc4800",
+                        "secondary-fixed-dim": "#b7c8e1",
+                        "on-primary-fixed-variant": "#003ea8",
+                        "surface-dim": "#d9d9e5",
+                        "surface-container-high": "#e7e7f3",
+                        "secondary": "#505f76",
+                        "surface-container-highest": "#e1e2ed",
+                        "outline-variant": "#c3c6d7",
+                        "on-tertiary-fixed-variant": "#7d2d00",
+                        "inverse-primary": "#b4c5ff",
+                        "primary-fixed": "#dbe1ff",
+                        "on-surface-variant": "#434655",
+                        "primary-fixed-dim": "#b4c5ff",
+                        "inverse-surface": "#2e3039",
+                        "tertiary-fixed-dim": "#ffb596",
+                        "on-tertiary": "#ffffff",
+                        "error": "#ba1a1a",
+                        "on-tertiary-container": "#ffede6",
+                        "surface": "#faf8ff",
+                        "on-primary-fixed": "#00174b",
+                        "secondary-container": "#d0e1fb",
+                        "surface-bright": "#faf8ff",
+                        "on-primary-container": "#eeefff",
+                        "surface-container-low": "#f3f3fe",
+                        "outline": "#737686",
+                        "on-secondary-fixed": "#0b1c30",
+                        "on-surface": "#191b23",
+                        "on-secondary-fixed-variant": "#38485d"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "stack-md": "16px",
+                        "stack-lg": "24px",
+                        "container-padding-desktop": "32px",
+                        "gutter": "24px",
+                        "base": "4px",
+                        "stack-sm": "8px",
+                        "container-padding-mobile": "16px"
+                    },
+                    "fontFamily": {
+                        "headline-md": ["Inter"],
+                        "body-lg": ["Inter"],
+                        "display-lg": ["Inter"],
+                        "label-bold": ["Inter"],
+                        "code-md": ["JetBrains Mono"],
+                        "body-sm": ["Inter"],
+                        "headline-sm": ["Inter"],
+                        "body-md": ["Inter"]
+                    },
+                    "fontSize": {
+                        "headline-md": ["24px", {"lineHeight": "32px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                        "body-lg": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                        "display-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                        "label-bold": ["12px", {"lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "600"}],
+                        "code-md": ["13px", {"lineHeight": "20px", "fontWeight": "400"}],
+                        "body-sm": ["12px", {"lineHeight": "18px", "fontWeight": "400"}],
+                        "headline-sm": ["20px", {"lineHeight": "28px", "fontWeight": "600"}],
+                        "body-md": ["14px", {"lineHeight": "20px", "fontWeight": "400"}]
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        body { font-family: 'Inter', sans-serif; }
+    </style>
+</head>
+<body class="bg-background text-on-background min-h-screen">
+<!-- SideNavBar -->
+<aside class="fixed left-0 top-0 h-full w-[280px] bg-surface border-r border-outline-variant flex flex-col py-spacing-stack-lg px-spacing-stack-md z-50">
+<div class="mb-10 flex items-center gap-3 px-2">
+<div class="w-10 h-10 rounded-lg bg-primary flex items-center justify-center text-on-primary">
+<span class="material-symbols-outlined">data_object</span>
+</div>
+<div>
+<h1 class="font-headline-sm text-headline-sm font-bold text-primary">Skysim Logger</h1>
+<p class="font-label-bold text-label-bold text-on-surface-variant uppercase">Admin Console</p>
+</div>
+</div>
+<nav class="flex-1 space-y-2">
+<a class="flex items-center gap-3 px-4 py-3 rounded-lg text-primary font-bold border-r-4 border-primary bg-surface-container-high transition-all duration-200" href="#">
+<span class="material-symbols-outlined">dashboard</span>
+<span class="font-label-bold text-label-bold">Dashboard</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors duration-200" href="#">
+<span class="material-symbols-outlined">monitoring</span>
+<span class="font-label-bold text-label-bold">Flow Monitoring</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors duration-200" href="#">
+<span class="material-symbols-outlined">settings</span>
+<span class="font-label-bold text-label-bold">Settings</span>
+</a>
+</nav>
+<div class="pt-6 mt-6 border-t border-outline-variant">
+<div class="flex items-center gap-3 px-4 mb-6">
+<img alt="Administrator" class="w-10 h-10 rounded-full border border-outline-variant" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBhblKP6sr_eXVB_dKcHb-IG7PdZ6XsiBcSyR4vPSVJXvR2_-JmzSR4zGUKt32XfP_b7paFBAe4gb0JFoXV58WpFY550eqiju9UGPsQiXAptlhbk2h6IRnFRD8VJ9bKHDslSqCzgdBmRYq5ZikNQVhKiTYi3JsstCTlynN4HHYztecjy7F4vTYXWDpU7BmYdW675Zp9yKGiqN8nrpAhdkeDrQy3zmJZgm3Qem6WHbt-APJS2MGPK9BRIK-VFu8u3sgeu8kB9EEP7XT2"/>
+<div>
+<p class="font-label-bold text-label-bold text-on-surface">Skysim Operator</p>
+<p class="text-[10px] text-on-surface-variant">Active Now</p>
+</div>
+</div>
+<button class="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-on-surface-variant hover:text-error hover:bg-error-container/20 transition-colors duration-200">
+<span class="material-symbols-outlined">logout</span>
+<span class="font-label-bold text-label-bold">Logout</span>
+</button>
+</div>
+</aside>
+<!-- TopNavBar -->
+<header class="fixed top-0 right-0 left-[280px] h-16 bg-surface-container-lowest border-b border-outline-variant flex justify-between items-center px-container-padding-desktop z-40">
+<div class="flex items-center flex-1 max-w-xl">
+<div class="relative w-full focus-within:ring-2 focus-within:ring-primary rounded-lg transition-all">
+<span class="absolute inset-y-0 left-0 pl-3 flex items-center text-on-surface-variant">
+<span class="material-symbols-outlined text-[20px]">search</span>
+</span>
+<input class="block w-full pl-10 pr-3 py-2 border border-outline-variant rounded-lg bg-surface-container text-body-md font-body-md focus:outline-none focus:border-primary" placeholder="Search flows, customers, or order IDs..." type="text"/>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<button class="p-2 text-on-surface-variant hover:text-primary transition-all rounded-full hover:bg-surface-container">
+<span class="material-symbols-outlined">notifications</span>
+</button>
+</div>
+</header>
+<!-- Main Content -->
+<main class="ml-[280px] pt-16 p-spacing-stack-lg min-h-screen">
+<!-- Dashboard Header -->
+<div class="flex items-center justify-between mb-8">
+<div>
+<h2 class="font-headline-md text-headline-md font-extrabold text-primary">SkySim Flow Monitor</h2>
+<p class="font-body-md text-body-md text-on-surface-variant">Monitor checkout flows, service actions, and technical logs across services.</p>
+</div>
+<div class="flex gap-3">
+<button class="px-4 py-2 bg-surface text-on-surface border border-outline-variant rounded-lg font-label-bold text-label-bold hover:bg-surface-container-high transition-colors flex items-center gap-2">
+<span class="material-symbols-outlined text-[18px]">calendar_today</span>
+                    Last 24 Hours
+                </button>
+</div>
+</div>
+<!-- Metric Cards -->
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-gutter mb-8">
+<!-- Total Flows -->
+<div class="bg-surface-container-lowest p-5 rounded-2xl border border-outline-variant/30 shadow-sm">
+<p class="font-label-bold text-label-bold text-on-surface-variant mb-1 uppercase tracking-wider">Total Flows</p>
+<div class="flex items-baseline gap-2">
+<span class="font-display-lg text-display-lg text-on-surface">14,284</span>
+</div>
+<div class="mt-3 flex items-center text-emerald-600 font-label-bold text-[10px]">
+<span class="material-symbols-outlined text-[14px]">trending_up</span>
+<span class="">+8.4% vs prev 24h</span>
+</div>
+</div>
+<!-- Successful Flows -->
+<div class="bg-surface-container-lowest p-5 rounded-2xl border-l-4 border-l-emerald-500 border border-outline-variant/30 shadow-sm">
+<p class="font-label-bold text-label-bold text-on-surface-variant mb-1 uppercase tracking-wider">Successful Flows</p>
+<div class="flex items-baseline gap-2">
+<span class="font-display-lg text-display-lg text-emerald-600">99.1%</span>
+</div>
+<div class="mt-3 h-1.5 w-full bg-surface-container rounded-full overflow-hidden">
+<div class="bg-emerald-500 h-full w-[99.1%]"></div>
+</div>
+</div>
+<!-- Failed Flows -->
+<div class="bg-surface-container-lowest p-5 rounded-2xl border-l-4 border-l-error border border-outline-variant/30 shadow-sm">
+<p class="font-label-bold text-label-bold text-on-surface-variant mb-1 uppercase tracking-wider">Failed Flows</p>
+<div class="flex items-baseline gap-2">
+<span class="font-display-lg text-display-lg text-error">128</span>
+</div>
+<div class="mt-3 flex items-center text-error font-label-bold text-[10px]">
+<span class="material-symbols-outlined text-[14px]">warning</span>
+<span class="">Immediate review required</span>
+</div>
+</div>
+<!-- Checkout eSIM Flows -->
+<div class="bg-surface-container-lowest p-5 rounded-2xl border-l-4 border-l-primary border border-outline-variant/30 shadow-sm">
+<p class="font-label-bold text-label-bold text-on-surface-variant mb-1 uppercase tracking-wider">Checkout eSIM Flows</p>
+<div class="flex items-baseline gap-2">
+<span class="font-display-lg text-display-lg text-primary">2,412</span>
+</div>
+<div class="mt-3 flex items-center text-primary font-label-bold text-[10px]">
+<span class="material-symbols-outlined text-[14px]">shopping_cart</span>
+<span class="">High activity window</span>
+</div>
+</div>
+</div>
+<div class="space-y-8">
+<!-- Recent Failed Flows Table -->
+<div class="bg-surface-container-lowest rounded-2xl border border-outline-variant/30 overflow-hidden shadow-sm">
+<div class="p-6 border-b border-outline-variant/20 flex justify-between items-center bg-error-container/5">
+<div class="flex items-center gap-2 text-error">
+<span class="material-symbols-outlined">report_problem</span>
+<h3 class="font-headline-sm text-headline-sm">Recent Failed Flows</h3>
+</div>
+<a class="text-primary font-label-bold text-label-bold hover:underline" href="#">Investigate All Failures</a>
+</div>
+<div class="overflow-x-auto">
+<table class="w-full text-left whitespace-nowrap">
+<thead>
+<tr class="bg-surface-container-low border-b border-outline-variant/10">
+<th class="px-6 py-4 font-label-bold text-label-bold text-on-surface-variant uppercase">Flow ID</th>
+<th class="px-6 py-4 font-label-bold text-label-bold text-on-surface-variant uppercase">Customer</th>
+<th class="px-6 py-4 font-label-bold text-label-bold text-on-surface-variant uppercase">Order ID</th>
+<th class="px-6 py-4 font-label-bold text-label-bold text-on-surface-variant uppercase">Last Service</th>
+<th class="px-6 py-4 font-label-bold text-label-bold text-on-surface-variant uppercase">Failed Action</th>
+<th class="px-6 py-4 font-label-bold text-label-bold text-on-surface-variant uppercase">Status</th>
+<th class="px-6 py-4 font-label-bold text-label-bold text-on-surface-variant uppercase">Updated At</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-outline-variant/10">
+<tr class="hover:bg-surface-container transition-colors cursor-pointer">
+<td class="px-6 py-4 font-code-md text-code-md text-on-surface">flow_failed_001</td>
+<td class="px-6 py-4 font-body-md text-on-surface">john.doe@example.com / 0900000001</td>
+<td class="px-6 py-4 font-code-md text-on-surface">ORD-10001</td>
+<td class="px-6 py-4 font-body-md text-on-surface">PaymentService</td>
+<td class="px-6 py-4 font-body-md text-on-surface-variant">PAYMENT_REQUESTED</td>
+<td class="px-6 py-4"><span class="px-2 py-1 bg-error-container text-on-error-container rounded-full text-[11px] font-bold">FAILED</span></td>
+<td class="px-6 py-4 font-body-md text-on-surface-variant">2 mins ago</td>
+</tr>
+<tr class="hover:bg-surface-container transition-colors cursor-pointer">
+<td class="px-6 py-4 font-code-md text-code-md text-on-surface">flow_failed_002</td>
+<td class="px-6 py-4 font-body-md text-on-surface">+84 900000002</td>
+<td class="px-6 py-4 font-code-md text-on-surface">ORD-10002</td>
+<td class="px-6 py-4 font-body-md text-on-surface">ProviderService</td>
+<td class="px-6 py-4 font-body-md text-on-surface-variant">ESIM_ACTIVATED</td>
+<td class="px-6 py-4"><span class="px-2 py-1 bg-amber-100 text-amber-700 rounded-full text-[11px] font-bold">PARTIAL_FAILED</span></td>
+<td class="px-6 py-4 font-body-md text-on-surface-variant">5 mins ago</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<!-- Recent Checkout Flows Table -->
+<div class="bg-surface-container-lowest rounded-2xl border border-outline-variant/30 overflow-hidden shadow-sm">
+<div class="p-6 border-b border-outline-variant/20 flex justify-between items-center bg-primary/5">
+<div class="flex items-center gap-2 text-primary">
+<span class="material-symbols-outlined">shopping_cart_checkout</span>
+<h3 class="font-headline-sm text-headline-sm">Recent Checkout Flows</h3>
+</div>
+<a class="text-primary font-label-bold text-label-bold hover:underline" href="#">View Transaction Report</a>
+</div>
+<div class="overflow-x-auto">
+<table class="w-full text-left whitespace-nowrap">
+<thead>
+<tr class="bg-surface-container-low border-b border-outline-variant/10">
+<th class="px-6 py-4 font-label-bold text-label-bold text-on-surface-variant uppercase">Flow ID</th>
+<th class="px-6 py-4 font-label-bold text-label-bold text-on-surface-variant uppercase">Customer</th>
+<th class="px-6 py-4 font-label-bold text-label-bold text-on-surface-variant uppercase">Order ID</th>
+<th class="px-6 py-4 font-label-bold text-label-bold text-on-surface-variant uppercase">Checkout Type</th>
+<th class="px-6 py-4 font-label-bold text-label-bold text-on-surface-variant uppercase">Status</th>
+<th class="px-6 py-4 font-label-bold text-label-bold text-on-surface-variant uppercase">Last Service</th>
+<th class="px-6 py-4 font-label-bold text-label-bold text-on-surface-variant uppercase">Last Action</th>
+<th class="px-6 py-4 font-label-bold text-label-bold text-on-surface-variant uppercase">Updated At</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-outline-variant/10">
+<tr class="hover:bg-surface-container transition-colors cursor-pointer">
+<td class="px-6 py-4 font-code-md text-code-md text-on-surface">demo-business-flow-001</td>
+<td class="px-6 py-4 font-body-md text-on-surface">detail.demo@example.com / 0900000003</td>
+<td class="px-6 py-4 font-code-md text-on-surface">ORD-DEMO-001</td>
+<td class="px-6 py-4 font-body-md text-on-surface">GUEST</td>
+<td class="px-6 py-4"><span class="px-2 py-1 bg-emerald-100 text-emerald-700 rounded-full text-[11px] font-bold">SUCCESS</span></td>
+<td class="px-6 py-4 font-body-md text-on-surface">NotificationService</td>
+<td class="px-6 py-4 font-body-md text-on-surface-variant">EMAIL_SENT</td>
+<td class="px-6 py-4 font-body-md text-on-surface-variant">2 mins ago</td>
+</tr>
+<tr class="hover:bg-surface-container transition-colors cursor-pointer">
+<td class="px-6 py-4 font-code-md text-code-md text-on-surface">demo-business-auth-flow-001</td>
+<td class="px-6 py-4 font-body-md text-on-surface">auth.demo@example.com / 0900000004</td>
+<td class="px-6 py-4 font-code-md text-on-surface">ORD-DEMO-002</td>
+<td class="px-6 py-4 font-body-md text-on-surface">AUTHENTICATED</td>
+<td class="px-6 py-4">
+<span class="px-2 py-1 bg-primary-container text-on-primary-container rounded-full text-[11px] font-bold flex items-center w-fit gap-1">
+<span class="w-1.5 h-1.5 rounded-full bg-on-primary-container animate-pulse"></span> RUNNING
+                                    </span>
+</td>
+<td class="px-6 py-4 font-body-md text-on-surface">ProviderService</td>
+<td class="px-6 py-4 font-body-md text-on-surface-variant">ESIM_ACTIVATED</td>
+<td class="px-6 py-4 font-body-md text-on-surface-variant">5 mins ago</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</div>
+</main>
+<script>
+        document.querySelectorAll('tbody tr').forEach(row => {
+            row.addEventListener('click', () => {
+                const flowId = row.querySelector('td:first-child').innerText;
+                console.log(`Opening business context for flow: ${flowId}`);
+            });
+        });
+    </script>
+</body></html>

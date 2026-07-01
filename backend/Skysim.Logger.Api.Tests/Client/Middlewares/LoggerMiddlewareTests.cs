@@ -30,11 +30,7 @@ public class LoggerMiddlewareTests
             .Callback<LogEventMessage, CancellationToken>((msg, _) => capturedMessage = msg)
             .Returns(Task.CompletedTask);
 
-        var middleware = new LoggerMiddleware(
-            next: _ => Task.CompletedTask,
-            _producerMock.Object,
-            _masker,
-            _loggerMock.Object);
+        var middleware = CreateMiddleware();
 
         var context = CreateHttpContext("GET", "/api/test");
 
@@ -50,11 +46,14 @@ public class LoggerMiddlewareTests
         capturedMessage!.FlowType.Should().Be(FlowTypes.HttpAction);
         capturedMessage.ActionType.Should().Be(ActionTypes.HttpRequest);
         capturedMessage.Status.Should().Be(StatusTypes.Success);
-        capturedMessage.CorrelationId.Should().NotBeNullOrEmpty();
+        capturedMessage.FlowId.Should().NotBeNullOrEmpty();
+        capturedMessage.Method.Should().Be("GET");
+        capturedMessage.Path.Should().Be("/api/test");
+        capturedMessage.DurationMs.Should().BeGreaterThanOrEqualTo(0);
     }
 
     [Fact]
-    public async Task InvokeAsync_SetsCorrelationIdFromHeader()
+    public async Task InvokeAsync_SetsFlowIdFromXFlowIdHeader()
     {
         // Arrange
         LogEventMessage? capturedMessage = null;
@@ -63,11 +62,30 @@ public class LoggerMiddlewareTests
             .Callback<LogEventMessage, CancellationToken>((msg, _) => capturedMessage = msg)
             .Returns(Task.CompletedTask);
 
-        var middleware = new LoggerMiddleware(
-            next: _ => Task.CompletedTask,
-            _producerMock.Object,
-            _masker,
-            _loggerMock.Object);
+        var middleware = CreateMiddleware();
+
+        var context = CreateHttpContext("GET", "/api/test");
+        context.Request.Headers["X-Flow-Id"] = "my-flow-id";
+
+        // Act
+        await middleware.InvokeAsync(context);
+
+        // Assert
+        capturedMessage.Should().NotBeNull();
+        capturedMessage!.FlowId.Should().Be("my-flow-id");
+    }
+
+    [Fact]
+    public async Task InvokeAsync_SetsFlowIdFromXCorrelationIdHeader()
+    {
+        // Arrange
+        LogEventMessage? capturedMessage = null;
+        _producerMock
+            .Setup(p => p.PublishAsync(It.IsAny<LogEventMessage>(), It.IsAny<CancellationToken>()))
+            .Callback<LogEventMessage, CancellationToken>((msg, _) => capturedMessage = msg)
+            .Returns(Task.CompletedTask);
+
+        var middleware = CreateMiddleware();
 
         var context = CreateHttpContext("GET", "/api/test");
         context.Request.Headers["X-Correlation-Id"] = "my-correlation-id";
@@ -77,11 +95,11 @@ public class LoggerMiddlewareTests
 
         // Assert
         capturedMessage.Should().NotBeNull();
-        capturedMessage!.CorrelationId.Should().Be("my-correlation-id");
+        capturedMessage!.FlowId.Should().Be("my-correlation-id");
     }
 
     [Fact]
-    public async Task InvokeAsync_GeneratesCorrelationIdWhenMissing()
+    public async Task InvokeAsync_GeneratesFlowIdWhenMissing()
     {
         // Arrange
         LogEventMessage? capturedMessage = null;
@@ -90,44 +108,38 @@ public class LoggerMiddlewareTests
             .Callback<LogEventMessage, CancellationToken>((msg, _) => capturedMessage = msg)
             .Returns(Task.CompletedTask);
 
-        var middleware = new LoggerMiddleware(
-            next: _ => Task.CompletedTask,
-            _producerMock.Object,
-            _masker,
-            _loggerMock.Object);
+        var middleware = CreateMiddleware();
 
         var context = CreateHttpContext("GET", "/api/test");
+        context.TraceIdentifier = string.Empty;
 
         // Act
         await middleware.InvokeAsync(context);
 
         // Assert
         capturedMessage.Should().NotBeNull();
-        capturedMessage!.CorrelationId.Should().NotBeNullOrEmpty();
+        capturedMessage!.FlowId.Should().NotBeNullOrEmpty();
+        Guid.TryParse(capturedMessage.FlowId, out _).Should().BeTrue();
     }
 
     [Fact]
-    public async Task InvokeAsync_AddsCorrelationIdToResponseHeader()
+    public async Task InvokeAsync_AddsXFlowIdToResponseHeaderWhenGenerated()
     {
         // Arrange
         _producerMock
             .Setup(p => p.PublishAsync(It.IsAny<LogEventMessage>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
 
-        var middleware = new LoggerMiddleware(
-            next: _ => Task.CompletedTask,
-            _producerMock.Object,
-            _masker,
-            _loggerMock.Object);
+        var middleware = CreateMiddleware();
 
         var context = CreateHttpContext("GET", "/api/test");
-        context.TraceIdentifier = string.Empty; // Force middleware to generate new FlowId
+        context.TraceIdentifier = string.Empty;
 
         // Act
         await middleware.InvokeAsync(context);
 
-        // Assert — header is set when middleware generates a new FlowId
-        context.Response.Headers["X-Correlation-Id"].ToString().Should().NotBeNullOrEmpty();
+        // Assert
+        context.Response.Headers["X-Flow-Id"].ToString().Should().NotBeNullOrEmpty();
     }
 
     [Fact]
@@ -140,27 +152,21 @@ public class LoggerMiddlewareTests
             .Callback<LogEventMessage, CancellationToken>((msg, _) => capturedMessage = msg)
             .Returns(Task.CompletedTask);
 
-        var middleware = new LoggerMiddleware(
-            next: ctx =>
-            {
-                ctx.Response.StatusCode = 500;
-                return Task.CompletedTask;
-            },
-            _producerMock.Object,
-            _masker,
-            _loggerMock.Object);
+        var middleware = CreateMiddleware(ctx =>
+        {
+            ctx.Response.StatusCode = 500;
+            return Task.CompletedTask;
+        });
 
         var context = CreateHttpContext("GET", "/api/test");
 
         // Act
         await middleware.InvokeAsync(context);
 
-        // Assert — ErrorCode comes from exception.Message, not status code
-        // Status is Failed because statusCode >= 500 without an exception
+        // Assert
         capturedMessage.Should().NotBeNull();
         capturedMessage!.Status.Should().Be(StatusTypes.Failed);
-        capturedMessage.ErrorCode.Should().BeNull();
-        capturedMessage.Message.Should().Contain("500");
+        capturedMessage.StatusCode.Should().Be(500);
     }
 
     [Fact]
@@ -173,27 +179,22 @@ public class LoggerMiddlewareTests
             .Callback<LogEventMessage, CancellationToken>((msg, _) => capturedMessage = msg)
             .Returns(Task.CompletedTask);
 
-        var middleware = new LoggerMiddleware(
-            next: _ => throw new InvalidOperationException("Something went wrong"),
-            _producerMock.Object,
-            _masker,
-            _loggerMock.Object);
+        var middleware = CreateMiddleware(_ => throw new InvalidOperationException("Something went wrong"));
 
         var context = CreateHttpContext("GET", "/api/test");
 
-        // Act — the middleware catches the exception in the finally block and re-throws it
+        // Act & Assert
         await middleware.Invoking(m => m.InvokeAsync(context))
             .Should().ThrowAsync<InvalidOperationException>();
 
-        // Assert — ErrorCode and ErrorMessage come from the caught exception
         capturedMessage.Should().NotBeNull();
         capturedMessage!.Status.Should().Be(StatusTypes.Failed);
-        capturedMessage.ErrorCode.Should().Be("500");
+        capturedMessage.ErrorCode.Should().Be("InvalidOperationException");
         capturedMessage.ErrorMessage.Should().Be("Something went wrong");
     }
 
     [Fact]
-    public async Task InvokeAsync_RequestWithBody_CapturesRequestData()
+    public async Task InvokeAsync_RequestWithBody_CapturesRequestBody()
     {
         // Arrange
         LogEventMessage? capturedMessage = null;
@@ -202,26 +203,25 @@ public class LoggerMiddlewareTests
             .Callback<LogEventMessage, CancellationToken>((msg, _) => capturedMessage = msg)
             .Returns(Task.CompletedTask);
 
-        var middleware = new LoggerMiddleware(
-            next: _ => Task.CompletedTask,
-            _producerMock.Object,
-            _masker,
-            _loggerMock.Object);
+        var middleware = CreateMiddleware();
 
+        var bodyContent = """{"orderId":"ORD-001"}""";
         var context = CreateHttpContext("POST", "/api/orders");
-        context.Request.Body = CreateRequestBodyStream("""{"orderId":"ORD-001","password":"secret123"}""");
+        context.Request.Body = CreateRequestBodyStream(bodyContent);
         context.Request.ContentType = "application/json";
+        context.Request.ContentLength = bodyContent.Length;
 
         // Act
         await middleware.InvokeAsync(context);
 
         // Assert
         capturedMessage.Should().NotBeNull();
-        capturedMessage!.RequestData.HasValue.Should().BeTrue();
+        capturedMessage!.RequestBody.Should().NotBeNullOrEmpty();
+        capturedMessage.RequestBody.Should().Contain("ORD-001");
     }
 
     [Fact]
-    public async Task InvokeAsync_MasksSensitiveFieldsInRequestData()
+    public async Task InvokeAsync_MasksSensitiveFieldsInRequestBody()
     {
         // Arrange
         LogEventMessage? capturedMessage = null;
@@ -230,29 +230,25 @@ public class LoggerMiddlewareTests
             .Callback<LogEventMessage, CancellationToken>((msg, _) => capturedMessage = msg)
             .Returns(Task.CompletedTask);
 
-        var middleware = new LoggerMiddleware(
-            next: _ => Task.CompletedTask,
-            _producerMock.Object,
-            _masker,
-            _loggerMock.Object);
+        var middleware = CreateMiddleware();
 
+        var bodyContent = """{"email":"user@test.com","password":"secret123"}""";
         var context = CreateHttpContext("POST", "/api/orders");
-        context.Request.Body = CreateRequestBodyStream("""{"email":"user@test.com","password":"secret123"}""");
+        context.Request.Body = CreateRequestBodyStream(bodyContent);
         context.Request.ContentType = "application/json";
+        context.Request.ContentLength = bodyContent.Length;
 
         // Act
         await middleware.InvokeAsync(context);
 
-        // Assert — the masker runs in the middleware, masking the message in-place
+        // Assert
         capturedMessage.Should().NotBeNull();
-        capturedMessage!.RequestData.HasValue.Should().BeTrue();
-        var json = capturedMessage!.RequestData!.Value.GetRawText();
-        json.Should().Contain("***");
-        json.Should().NotContain("secret123");
+        capturedMessage!.RequestBody.Should().Contain("***");
+        capturedMessage!.RequestBody.Should().NotContain("secret123");
     }
 
     [Fact]
-    public async Task InvokeAsync_GetWithQueryString_CapturesRequestData()
+    public async Task InvokeAsync_CapturesQueryString()
     {
         // Arrange
         LogEventMessage? capturedMessage = null;
@@ -261,32 +257,17 @@ public class LoggerMiddlewareTests
             .Callback<LogEventMessage, CancellationToken>((msg, _) => capturedMessage = msg)
             .Returns(Task.CompletedTask);
 
-        var middleware = new LoggerMiddleware(
-            next: _ => Task.CompletedTask,
-            _producerMock.Object,
-            _masker,
-            _loggerMock.Object);
+        var middleware = CreateMiddleware();
 
         var context = CreateHttpContext("GET", "/api/test");
-        context.Request.QueryString = new QueryString("?status=active&token=abc-token&authorization=Bearer-secret");
-        context.Request.Headers["X-Flow-Id"] = "flow-from-query";
-        context.Request.Headers["X-Correlation-Id"] = "correlation-from-query";
+        context.Request.QueryString = new QueryString("?status=active&q=search");
 
         // Act
         await middleware.InvokeAsync(context);
 
         // Assert
         capturedMessage.Should().NotBeNull();
-        capturedMessage!.RequestData.HasValue.Should().BeTrue();
-        var requestJson = capturedMessage!.RequestData!.Value.GetRawText();
-        requestJson.Should().Contain(@"""status"":""active""");
-        requestJson.Should().Contain(@"""method"":""GET""");
-        requestJson.Should().Contain(@"""path"":""/api/test""");
-        requestJson.Should().Contain(@"""token"":""***""");
-        requestJson.Should().Contain(@"""authorization"":""***""");
-        requestJson.Should().NotContain("abc-token");
-        requestJson.Should().NotContain("Bearer-secret");
-        requestJson.Should().Contain("\"selectedHeaders\"");
+        capturedMessage!.QueryString.Should().Contain("status=active");
     }
 
     [Fact]
@@ -297,34 +278,26 @@ public class LoggerMiddlewareTests
             .Setup(p => p.PublishAsync(It.IsAny<LogEventMessage>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("Kafka unavailable"));
 
-        var middleware = new LoggerMiddleware(
-            next: _ => Task.CompletedTask,
-            _producerMock.Object,
-            _masker,
-            _loggerMock.Object);
+        var middleware = CreateMiddleware();
 
         var context = CreateHttpContext("GET", "/api/test");
 
         // Act
         Func<Task> act = () => middleware.InvokeAsync(context);
 
-        // Assert — should not throw despite producer failure
+        // Assert
         await act.Should().NotThrowAsync();
     }
 
     [Fact]
-    public async Task InvokeAsync_PublishFailure_LogsWarning()
+    public async Task InvokeAsync_PublishFailure_LogsError()
     {
         // Arrange
         _producerMock
             .Setup(p => p.PublishAsync(It.IsAny<LogEventMessage>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("Kafka unavailable"));
 
-        var middleware = new LoggerMiddleware(
-            next: _ => Task.CompletedTask,
-            _producerMock.Object,
-            _masker,
-            _loggerMock.Object);
+        var middleware = CreateMiddleware();
 
         var context = CreateHttpContext("GET", "/api/test");
 
@@ -334,16 +307,16 @@ public class LoggerMiddlewareTests
         // Assert
         _loggerMock.Verify(
             x => x.Log(
-                LogLevel.Warning,
+                LogLevel.Error,
                 It.IsAny<EventId>(),
                 It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains("Kafka publish failed")),
                 It.IsAny<Exception>(),
                 It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
-            Times.AtLeastOnce);
+            Times.Once);
     }
 
     [Fact]
-    public async Task InvokeAsync_CapturesDuration()
+    public async Task InvokeAsync_CapturesDurationMs()
     {
         // Arrange
         LogEventMessage? capturedMessage = null;
@@ -352,11 +325,7 @@ public class LoggerMiddlewareTests
             .Callback<LogEventMessage, CancellationToken>((msg, _) => capturedMessage = msg)
             .Returns(Task.CompletedTask);
 
-        var middleware = new LoggerMiddleware(
-            next: async _ => await Task.Delay(50),
-            _producerMock.Object,
-            _masker,
-            _loggerMock.Object);
+        var middleware = CreateMiddleware(async _ => await Task.Delay(50));
 
         var context = CreateHttpContext("GET", "/api/test");
 
@@ -365,7 +334,7 @@ public class LoggerMiddlewareTests
 
         // Assert
         capturedMessage.Should().NotBeNull();
-        capturedMessage!.Duration.Should().BeGreaterThanOrEqualTo(50);
+        capturedMessage!.DurationMs.Should().BeGreaterThanOrEqualTo(50);
     }
 
     [Fact]
@@ -378,11 +347,7 @@ public class LoggerMiddlewareTests
             .Callback<LogEventMessage, CancellationToken>((msg, _) => capturedMessage = msg)
             .Returns(Task.CompletedTask);
 
-        var middleware = new LoggerMiddleware(
-            next: _ => Task.CompletedTask,
-            _producerMock.Object,
-            _masker,
-            _loggerMock.Object);
+        var middleware = CreateMiddleware();
 
         var context = CreateHttpContext("GET", "/api/test");
 
@@ -405,11 +370,7 @@ public class LoggerMiddlewareTests
             .Callback<LogEventMessage, CancellationToken>((msg, _) => capturedMessage = msg)
             .Returns(Task.CompletedTask);
 
-        var middleware = new LoggerMiddleware(
-            next: _ => Task.CompletedTask,
-            _producerMock.Object,
-            _masker,
-            _loggerMock.Object);
+        var middleware = CreateMiddleware();
 
         var context = CreateHttpContext("GET", "/api/test");
         context.Request.Headers["X-Flow-Id"] = "my-flow-id-from-header";
@@ -420,69 +381,11 @@ public class LoggerMiddlewareTests
         // Assert
         capturedMessage.Should().NotBeNull();
         capturedMessage!.FlowId.Should().Be("my-flow-id-from-header");
-        capturedMessage.CorrelationId.Should().Be("my-flow-id-from-header");
-    }
-
-    [Fact]
-    public async Task InvokeAsync_WithoutHeaders_UsesTraceIdentifier()
-    {
-        // Arrange
-        LogEventMessage? capturedMessage = null;
-        _producerMock
-            .Setup(p => p.PublishAsync(It.IsAny<LogEventMessage>(), It.IsAny<CancellationToken>()))
-            .Callback<LogEventMessage, CancellationToken>((msg, _) => capturedMessage = msg)
-            .Returns(Task.CompletedTask);
-
-        var middleware = new LoggerMiddleware(
-            next: _ => Task.CompletedTask,
-            _producerMock.Object,
-            _masker,
-            _loggerMock.Object);
-
-        var context = CreateHttpContext("GET", "/api/test");
-        context.TraceIdentifier = "trace-12345";
-
-        // Act
-        await middleware.InvokeAsync(context);
-
-        // Assert
-        capturedMessage.Should().NotBeNull();
-        capturedMessage!.FlowId.Should().Be("trace-12345");
-    }
-
-    [Fact]
-    public async Task InvokeAsync_WithoutHeadersAndNoTraceId_GeneratesGuid()
-    {
-        // Arrange
-        LogEventMessage? capturedMessage = null;
-        _producerMock
-            .Setup(p => p.PublishAsync(It.IsAny<LogEventMessage>(), It.IsAny<CancellationToken>()))
-            .Callback<LogEventMessage, CancellationToken>((msg, _) => capturedMessage = msg)
-            .Returns(Task.CompletedTask);
-
-        var middleware = new LoggerMiddleware(
-            next: _ => Task.CompletedTask,
-            _producerMock.Object,
-            _masker,
-            _loggerMock.Object);
-
-        var context = CreateHttpContext("GET", "/api/test");
-
-        // Act
-        await middleware.InvokeAsync(context);
-
-        // Assert
-        capturedMessage.Should().NotBeNull();
-        capturedMessage!.FlowId.Should().NotBeNullOrEmpty();
     }
 
     [Theory]
     [InlineData("/swagger")]
     [InlineData("/swagger/index.html")]
-    [InlineData("/api/log-flows")]
-    [InlineData("/api/log-flows?page=1")]
-    [InlineData("/api/log-actions")]
-    [InlineData("/api/log-actions/123")]
     [InlineData("/favicon.ico")]
     [InlineData("/health")]
     [InlineData("/HEALTH")]
@@ -494,11 +397,7 @@ public class LoggerMiddlewareTests
             .Setup(p => p.PublishAsync(It.IsAny<LogEventMessage>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
 
-        var middleware = new LoggerMiddleware(
-            next: _ => Task.CompletedTask,
-            _producerMock.Object,
-            _masker,
-            _loggerMock.Object);
+        var middleware = CreateMiddleware();
 
         var context = CreateHttpContext("GET", path);
 
@@ -522,11 +421,7 @@ public class LoggerMiddlewareTests
             .Setup(p => p.PublishAsync(It.IsAny<LogEventMessage>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
 
-        var middleware = new LoggerMiddleware(
-            next: _ => Task.CompletedTask,
-            _producerMock.Object,
-            _masker,
-            _loggerMock.Object);
+        var middleware = CreateMiddleware();
 
         var context = CreateHttpContext("GET", path);
 
@@ -540,7 +435,7 @@ public class LoggerMiddlewareTests
     }
 
     [Fact]
-    public async Task InvokeAsync_404Response_IncludesStatusCodeOnly()
+    public async Task InvokeAsync_404Response_CapturesStatusCode()
     {
         // Arrange
         LogEventMessage? capturedMessage = null;
@@ -549,16 +444,12 @@ public class LoggerMiddlewareTests
             .Callback<LogEventMessage, CancellationToken>((msg, _) => capturedMessage = msg)
             .Returns(Task.CompletedTask);
 
-        var middleware = new LoggerMiddleware(
-            next: ctx =>
-            {
-                ctx.Response.StatusCode = StatusCodes.Status404NotFound;
-                ctx.Response.ContentType = "text/plain";
-                return ctx.Response.WriteAsync("not found");
-            },
-            _producerMock.Object,
-            _masker,
-            _loggerMock.Object);
+        var middleware = CreateMiddleware(ctx =>
+        {
+            ctx.Response.StatusCode = StatusCodes.Status404NotFound;
+            ctx.Response.ContentType = "text/plain";
+            return ctx.Response.WriteAsync("not found");
+        });
 
         var context = CreateHttpContext("GET", "/not-exist-test");
 
@@ -567,12 +458,11 @@ public class LoggerMiddlewareTests
 
         // Assert
         capturedMessage.Should().NotBeNull();
-        capturedMessage!.ResponseData.HasValue.Should().BeTrue();
-        capturedMessage!.ResponseData!.Value.GetRawText().Should().Contain(@"""statusCode"":404");
+        capturedMessage!.StatusCode.Should().Be(404);
     }
 
     [Fact]
-    public async Task InvokeAsync_ExceptionResponse_IncludesExceptionDetails()
+    public async Task InvokeAsync_LargeRequestBody_SkipsCapture()
     {
         // Arrange
         LogEventMessage? capturedMessage = null;
@@ -581,27 +471,24 @@ public class LoggerMiddlewareTests
             .Callback<LogEventMessage, CancellationToken>((msg, _) => capturedMessage = msg)
             .Returns(Task.CompletedTask);
 
-        var middleware = new LoggerMiddleware(
-            next: _ => throw new InvalidOperationException("handled exception"),
-            _producerMock.Object,
-            _masker,
-            _loggerMock.Object);
+        var middleware = CreateMiddleware();
 
-        var context = CreateHttpContext("GET", "/api/error");
+        var largeBody = new string('x', 50 * 1024); // 50KB body
+        var context = CreateHttpContext("POST", "/api/upload");
+        context.Request.Body = CreateRequestBodyStream(largeBody);
+        context.Request.ContentType = "application/json";
+        context.Request.ContentLength = largeBody.Length;
 
         // Act
-        Func<Task> act = () => middleware.InvokeAsync(context);
-        await act.Should().ThrowAsync<InvalidOperationException>();
+        await middleware.InvokeAsync(context);
 
         // Assert
         capturedMessage.Should().NotBeNull();
-        capturedMessage!.Status.Should().Be(StatusTypes.Failed);
-        capturedMessage.ErrorMessage.Should().Be("handled exception");
-        capturedMessage.Exception.Should().Contain("InvalidOperationException");
+        capturedMessage!.RequestBody.Should().BeNullOrEmpty();
     }
 
     [Fact]
-    public async Task InvokeAsync_AuthenticatedUser_ExtractsUserIdFromSubClaim()
+    public async Task InvokeAsync_ServiceNameFromConstructor()
     {
         // Arrange
         LogEventMessage? capturedMessage = null;
@@ -614,71 +501,27 @@ public class LoggerMiddlewareTests
             next: _ => Task.CompletedTask,
             _producerMock.Object,
             _masker,
-            _loggerMock.Object);
+            _loggerMock.Object,
+            "my-custom-service");
 
         var context = CreateHttpContext("GET", "/api/test");
-        SetupAuthenticatedUser(context, "sub", "user-123-sub");
 
         // Act
         await middleware.InvokeAsync(context);
 
         // Assert
         capturedMessage.Should().NotBeNull();
-        capturedMessage!.UserId.Should().Be("user-123-sub");
+        capturedMessage!.ServiceName.Should().Be("my-custom-service");
     }
 
-    [Fact]
-    public async Task InvokeAsync_AuthenticatedUser_ExtractsUserIdFromUserIdClaim()
+    private LoggerMiddleware CreateMiddleware(RequestDelegate? next = null)
     {
-        // Arrange
-        LogEventMessage? capturedMessage = null;
-        _producerMock
-            .Setup(p => p.PublishAsync(It.IsAny<LogEventMessage>(), It.IsAny<CancellationToken>()))
-            .Callback<LogEventMessage, CancellationToken>((msg, _) => capturedMessage = msg)
-            .Returns(Task.CompletedTask);
-
-        var middleware = new LoggerMiddleware(
-            next: _ => Task.CompletedTask,
+        return new LoggerMiddleware(
+            next: next ?? (_ => Task.CompletedTask),
             _producerMock.Object,
             _masker,
-            _loggerMock.Object);
-
-        var context = CreateHttpContext("GET", "/api/test");
-        SetupAuthenticatedUser(context, "userId", "user-456");
-
-        // Act
-        await middleware.InvokeAsync(context);
-
-        // Assert
-        capturedMessage.Should().NotBeNull();
-        capturedMessage!.UserId.Should().Be("user-456");
-    }
-
-    [Fact]
-    public async Task InvokeAsync_AnonymousUser_SetsUserIdToNull()
-    {
-        // Arrange
-        LogEventMessage? capturedMessage = null;
-        _producerMock
-            .Setup(p => p.PublishAsync(It.IsAny<LogEventMessage>(), It.IsAny<CancellationToken>()))
-            .Callback<LogEventMessage, CancellationToken>((msg, _) => capturedMessage = msg)
-            .Returns(Task.CompletedTask);
-
-        var middleware = new LoggerMiddleware(
-            next: _ => Task.CompletedTask,
-            _producerMock.Object,
-            _masker,
-            _loggerMock.Object);
-
-        var context = CreateHttpContext("GET", "/api/test");
-        // Default context is anonymous (no authentication set up)
-
-        // Act
-        await middleware.InvokeAsync(context);
-
-        // Assert
-        capturedMessage.Should().NotBeNull();
-        capturedMessage!.UserId.Should().BeNull();
+            _loggerMock.Object,
+            "test-service");
     }
 
     private static DefaultHttpContext CreateHttpContext(string method, string path)
@@ -696,12 +539,5 @@ public class LoggerMiddlewareTests
     {
         var bytes = System.Text.Encoding.UTF8.GetBytes(body);
         return new MemoryStream(bytes);
-    }
-
-    private static void SetupAuthenticatedUser(DefaultHttpContext context, string claimType, string claimValue)
-    {
-        var claims = new[] { new Claim(claimType, claimValue) };
-        var identity = new ClaimsIdentity(claims, "TestAuth");
-        context.User = new ClaimsPrincipal(identity);
     }
 }

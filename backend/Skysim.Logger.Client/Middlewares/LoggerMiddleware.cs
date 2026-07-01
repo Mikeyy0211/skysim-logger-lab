@@ -1,9 +1,5 @@
-using System.Security.Claims;
 using System.Text;
-using System.Text.Json;
-using System.Web;
 using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Http.Extensions;
 using Microsoft.Extensions.Logging;
 using Skysim.Logger.Client.Masking;
 using Skysim.Logger.Client.Producers;
@@ -14,431 +10,216 @@ using ActionTypes = Skysim.Logger.Contracts.Constants.ActionTypes;
 
 namespace Skysim.Logger.Client.Middlewares;
 
+/// <summary>
+/// HTTP middleware log request/response to Kafka.
+/// </summary>
 public class LoggerMiddleware
 {
-    private static readonly string[] SelectedRequestHeaders = ["x-flow-id", "x-correlation-id"];
-    private static readonly string[] LargeResponseContentTypes = ["application/octet-stream"];
-    private const int ResponseBodySizeLimit = 64 * 1024;
-
-    private static readonly string[] DefaultExcludedPathPrefixes =
-    [
-        "/swagger",
-        "/api/log-flows",
-        "/api/log-actions",
-        "/favicon.ico",
-        "/health"
-    ];
-
     private readonly RequestDelegate _next;
     private readonly IKafkaLogProducer _producer;
     private readonly ISensitiveDataMasker _masker;
     private readonly ILogger<LoggerMiddleware> _logger;
-    private readonly IReadOnlyList<string> _excludedPathPrefixes;
-
-    private static readonly HashSet<string> SensitiveFields = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "password",
-        "access_token",
-        "refresh_token",
-        "authorization",
-        "otp",
-        "cardNumber",
-        "cvv",
-        "paymentSecret",
-        "secret",
-        "token"
-    };
+    private readonly string _serviceName;
 
     public LoggerMiddleware(
         RequestDelegate next,
         IKafkaLogProducer producer,
         ISensitiveDataMasker masker,
         ILogger<LoggerMiddleware> logger,
-        IReadOnlyList<string>? excludedPathPrefixes = null)
+        string serviceName)
     {
         _next = next;
         _producer = producer;
         _masker = masker;
         _logger = logger;
-        _excludedPathPrefixes = excludedPathPrefixes ?? DefaultExcludedPathPrefixes;
+        _serviceName = serviceName;
     }
 
     public async Task InvokeAsync(HttpContext context)
     {
-        var requestPath = context.Request.Path.ToString().ToLowerInvariant();
-
-        if (IsExcludedPath(requestPath))
+        // Skip infrastructure paths
+        var path = context.Request.Path.Value?.ToLowerInvariant() ?? "";
+        if (path.StartsWith("/swagger") || path.StartsWith("/health") || path.StartsWith("/favicon"))
         {
             await _next(context);
             return;
         }
 
-        context.Request.EnableBuffering();
+        // ==== 1. Metadata: flowId + timestamp ====
+        var startedAt = DateTime.UtcNow;
+        var flowId = GetFlowId(context);
 
-        var requestTime = DateTime.UtcNow;
-        var flowId = GetOrCreateFlowId(context);
-        var requestBody = await ReadRequestBodyAsync(context.Request);
-        var selectedHeaders = CaptureSelectedHeaders(context.Request);
+        // ==== 2. Read HTTP context ====
+        var fullUrl = BuildFullUrl(context.Request);
+        var clientIp = GetClientIp(context);
+        var sourceService = GetSourceService(context);
+        var requestHeaders = GetMaskedRequestHeaders(context.Request);
+        var responseHeaders = GetMaskedResponseHeaders(context.Response);
 
-        // Replace response body with a buffering wrapper so we can read it back
-        var originalResponseBody = context.Response.Body;
-        await using var bufferingStream = new ResponseBodyBufferingStream(originalResponseBody);
-        context.Response.Body = bufferingStream;
+        // ==== 3. Buffer request body ====
+        var requestBody = await CaptureRequestBodyAsync(context.Request);
 
-        Exception? caughtException = null;
-        try
-        {
-            await _next(context);
-        }
-        catch (Exception ex)
-        {
-            context.Response.StatusCode = StatusCodes.Status500InternalServerError;
-            caughtException = ex;
-            throw;
-        }
-        finally
-        {
-            // Restore original response body so WriteAsync flushes to the real stream
-            context.Response.Body = originalResponseBody;
+        // ==== 4. Execute + capture response ====
+        var (statusCode, responseBody, exception) = await ExecuteAndCaptureResponseAsync(context);
 
-            var responseTime = DateTime.UtcNow;
-            var statusCode = context.Response.StatusCode;
-            var duration = (int)(responseTime - requestTime).TotalMilliseconds;
-            var responseBody = bufferingStream.GetBuffer();
+        // ==== 5. Build + mask + publish ====
+        var durationMs = (int)(DateTime.UtcNow - startedAt).TotalMilliseconds;
 
-            try
-            {
-                var message = BuildLogEventMessage(
-                    context,
-                    flowId,
-                    requestTime,
-                    responseTime,
-                    statusCode,
-                    duration,
-                    requestBody,
-                    responseBody,
-                    caughtException,
-                    selectedHeaders);
-
-                var maskedJson = _masker.MaskJson(JsonSerializer.Serialize(message, new JsonSerializerOptions
-                {
-                    PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-                }));
-                var maskedMessage = JsonSerializer.Deserialize<LogEventMessage>(maskedJson, new JsonSerializerOptions
-                {
-                    PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-                });
-
-                if (maskedMessage != null)
-                {
-                    _ = FireAndForgetPublishAsync(maskedMessage);
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(
-                    ex,
-                    "Failed to build log event message. FlowId={FlowId}",
-                    flowId);
-            }
-        }
-    }
-
-    private bool IsExcludedPath(string path)
-    {
-        foreach (var prefix in _excludedPathPrefixes)
-        {
-            if (path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private static string GetOrCreateFlowId(HttpContext context)
-    {
-        if (context.Request.Headers.TryGetValue("X-Flow-Id", out var flowIdHeader)
-            && !string.IsNullOrWhiteSpace(flowIdHeader))
-        {
-            return flowIdHeader.ToString();
-        }
-
-        if (context.Request.Headers.TryGetValue("X-Correlation-Id", out var correlationIdHeader)
-            && !string.IsNullOrWhiteSpace(correlationIdHeader))
-        {
-            return correlationIdHeader.ToString();
-        }
-
-        if (context.Request.Headers.TryGetValue("X-Request-ID", out var requestIdHeader)
-            && !string.IsNullOrWhiteSpace(requestIdHeader))
-        {
-            return requestIdHeader.ToString();
-        }
-
-        if (!string.IsNullOrWhiteSpace(context.TraceIdentifier))
-        {
-            return context.TraceIdentifier;
-        }
-
-        var generated = Guid.NewGuid().ToString("N");
-        context.Response.Headers["X-Correlation-ID"] = generated;
-        return generated;
-    }
-
-    private static string? ExtractUserId(HttpContext context)
-    {
-        if (context.User?.Identity?.IsAuthenticated != true)
-        {
-            return null;
-        }
-
-        var userId = context.User.FindFirst(ClaimTypes.NameIdentifier)?.Value
-            ?? context.User.FindFirst("sub")?.Value
-            ?? context.User.FindFirst("userId")?.Value;
-
-        return string.IsNullOrWhiteSpace(userId) ? null : userId;
-    }
-
-    private static async Task<byte[]?> ReadRequestBodyAsync(HttpRequest request)
-    {
-        if (!request.Body.CanSeek)
-        {
-            return null;
-        }
-
-        request.Body.Position = 0;
-        using var memoryStream = new MemoryStream();
-        await request.Body.CopyToAsync(memoryStream);
-        request.Body.Position = 0;
-
-        if (memoryStream.Length == 0)
-        {
-            return null;
-        }
-        return memoryStream.ToArray();
-    }
-
-    private static Dictionary<string, string> CaptureSelectedHeaders(HttpRequest request)
-    {
-        var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var headerName in SelectedRequestHeaders)
-        {
-            if (request.Headers.TryGetValue(headerName, out var value)
-                && !string.IsNullOrWhiteSpace(value))
-            {
-                headers[headerName] = value.ToString();
-            }
-        }
-        return headers;
-    }
-
-    private LogEventMessage BuildLogEventMessage(
-        HttpContext context,
-        string flowId,
-        DateTime requestTime,
-        DateTime responseTime,
-        int statusCode,
-        int duration,
-        byte[]? requestBody,
-        byte[] responseBody,
-        Exception? exception,
-        Dictionary<string, string> selectedHeaders)
-    {
-        var requestPath = context.Request.Path.ToString();
-        var queryString = context.Request.QueryString.HasValue
-            ? context.Request.QueryString.Value
-            : string.Empty;
-        var requestData = BuildRequestData(
-            context.Request.Method,
-            requestPath,
-            queryString,
-            requestBody,
-            context.Request.ContentType,
-            selectedHeaders);
-
-        var fullPath = string.IsNullOrEmpty(queryString)
-            ? requestPath
-            : $"{requestPath}{queryString}";
-
-        var status = MapStatus(statusCode, exception);
-        var errorCode = exception != null ? statusCode.ToString() : null;
-        var errorMessage = exception?.Message;
-        var exceptionText = exception != null ? exception.ToString() : null;
-
-        return new LogEventMessage
+        var message = new LogEventMessage
         {
             EventId = Guid.NewGuid(),
             FlowId = flowId,
             FlowType = FlowTypes.HttpAction,
             ActionType = ActionTypes.HttpRequest,
-            Status = status,
-            CreatedAt = requestTime,
-            RequestTime = requestTime,
-            ResponseTime = responseTime,
-            Duration = duration,
-            CorrelationId = flowId,
-            UserId = ExtractUserId(context),
-            ErrorCode = errorCode,
-            ErrorMessage = errorMessage,
-            Exception = exceptionText,
-            Message = $"{context.Request.Method} {fullPath} -> {statusCode}",
-            RequestData = requestData,
-            ResponseData = BuildResponseData(statusCode, responseBody, context.Response.ContentType)
+            Status = IsSuccess(statusCode, exception) ? StatusTypes.Success : StatusTypes.Failed,
+            ServiceName = _serviceName,
+            SourceService = sourceService,
+            CreatedAt = startedAt,
+            Method = context.Request.Method,
+            Path = context.Request.Path.Value,
+            QueryString = context.Request.QueryString.Value,
+            FullUrl = fullUrl,
+            StatusCode = statusCode,
+            DurationMs = durationMs,
+            ClientIp = clientIp,
+            RequestHeaders = requestHeaders,
+            ResponseHeaders = responseHeaders,
+            RequestBody = MaskIfNotEmpty(requestBody),
+            ResponseBody = MaskIfNotEmpty(responseBody),
+            ErrorCode = exception?.GetType().Name,
+            ErrorMessage = exception?.Message,
+            Message = $"{context.Request.Method} {fullUrl} -> {statusCode} ({durationMs}ms)"
         };
+
+        await PublishLogAsync(message);
+
+        if (exception != null)
+            throw exception;
     }
 
-    private static JsonElement? BuildRequestData(
-        string method,
-        string path,
-        string queryString,
-        byte[]? body,
-        string? contentType,
-        Dictionary<string, string> selectedHeaders)
+    // ==== Private helpers ====
+
+    private static string GetFlowId(HttpContext context)
     {
-        using var stream = new MemoryStream();
-        using var writer = new Utf8JsonWriter(stream);
+        var headers = context.Request.Headers;
 
-        writer.WriteStartObject();
-        writer.WriteString("method", method);
-        writer.WriteString("path", path);
+        if (headers.TryGetValue("X-Flow-Id", out var v) && !string.IsNullOrWhiteSpace(v))
+            return v.ToString();
+        if (headers.TryGetValue("X-Correlation-Id", out v) && !string.IsNullOrWhiteSpace(v))
+            return v.ToString();
+        if (headers.TryGetValue("X-Request-Id", out v) && !string.IsNullOrWhiteSpace(v))
+            return v.ToString();
 
-        if (!string.IsNullOrEmpty(queryString))
+        var generated = Guid.NewGuid().ToString("D");
+        context.Response.Headers["X-Flow-Id"] = generated;
+        return generated;
+    }
+
+    private static string BuildFullUrl(HttpRequest request)
+    {
+        var scheme = request.Scheme;
+        var host = request.Host.Value ?? "";
+        var path = request.Path.Value ?? "";
+        var queryString = request.QueryString.Value ?? "";
+        return $"{scheme}://{host}{path}{queryString}";
+    }
+
+    private static string GetClientIp(HttpContext context)
+    {
+        var forwardedFor = context.Request.Headers["X-Forwarded-For"].FirstOrDefault();
+        if (!string.IsNullOrWhiteSpace(forwardedFor))
         {
-            writer.WritePropertyName("query");
-            WriteMaskedQueryString(writer, queryString);
+            return forwardedFor.Split(',')[0].Trim();
         }
 
-        writer.WritePropertyName("selectedHeaders");
-        WriteHeaders(writer, selectedHeaders);
+        return context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+    }
 
-        if (body != null && body.Length > 0 && IsJsonContentType(contentType))
+    private static string? GetSourceService(HttpContext context)
+    {
+        if (context.Request.Headers.TryGetValue("X-Source-Service", out var v) && !string.IsNullOrWhiteSpace(v))
+            return v.ToString();
+
+        if (context.Request.Headers.TryGetValue("X-Caller-Service", out v) && !string.IsNullOrWhiteSpace(v))
+            return v.ToString();
+
+        return null;
+    }
+
+    private Dictionary<string, string> GetMaskedRequestHeaders(HttpRequest request)
+    {
+        var headers = new Dictionary<string, string>();
+        foreach (var header in request.Headers)
         {
-            writer.WritePropertyName("body");
-            try
-            {
-                using var bodyDocument = JsonDocument.Parse(body);
-                bodyDocument.RootElement.WriteTo(writer);
-            }
-            catch
-            {
-                writer.WriteStringValue(Encoding.UTF8.GetString(body));
-            }
+            headers[header.Key] = _masker.MaskSensitiveHeader(header.Key, header.Value.ToString());
         }
+        return headers;
+    }
 
-        writer.WriteEndObject();
-        writer.Flush();
-
-        try
+    private Dictionary<string, string> GetMaskedResponseHeaders(HttpResponse response)
+    {
+        var headers = new Dictionary<string, string>();
+        foreach (var header in response.Headers)
         {
-            using var doc = JsonDocument.Parse(stream.ToArray());
-            return doc.RootElement.Clone();
+            headers[header.Key] = _masker.MaskSensitiveHeader(header.Key, header.Value.ToString());
         }
-        catch
-        {
+        return headers;
+    }
+
+    private static async Task<string?> CaptureRequestBodyAsync(HttpRequest request)
+    {
+        if (!request.ContentLength.HasValue || request.ContentLength == 0)
             return null;
-        }
+
+        request.EnableBuffering();
+        request.Body.Position = 0;
+
+        using var ms = new MemoryStream();
+        await request.Body.CopyToAsync(ms);
+        request.Body.Position = 0;
+
+        return ms.Length > 32 * 1024 ? null : Encoding.UTF8.GetString(ms.ToArray());
     }
 
-    private static JsonElement? BuildResponseData(int statusCode, byte[] responseBody, string? contentType)
+    private async Task<(int statusCode, string? body, Exception? exception)> ExecuteAndCaptureResponseAsync(HttpContext context)
     {
-        if (!IsJsonContentType(contentType) || IsLargeBinaryContentType(contentType) || responseBody.Length > ResponseBodySizeLimit)
-        {
-            return CreateStatusCodeObject(statusCode);
-        }
+        var originalBody = context.Response.Body;
+        await using var buffer = new MemoryStream();
+        context.Response.Body = buffer;
+
+        Exception? exception = null;
+        int statusCode;
 
         try
         {
-            using var doc = JsonDocument.Parse(responseBody);
-            using var statusStream = new MemoryStream();
-            using var statusWriter = new Utf8JsonWriter(statusStream);
-
-            statusWriter.WriteStartObject();
-            statusWriter.WriteNumber("statusCode", statusCode);
-            statusWriter.WritePropertyName("body");
-            doc.RootElement.WriteTo(statusWriter);
-            statusWriter.WriteEndObject();
-            statusWriter.Flush();
-
-            using var mergedDoc = JsonDocument.Parse(statusStream.ToArray());
-            return mergedDoc.RootElement.Clone();
+            await _next(context);
+            statusCode = context.Response.StatusCode;
         }
-        catch
+        catch (Exception ex)
         {
-            return CreateStatusCodeObject(statusCode);
+            exception = ex;
+            statusCode = StatusCodes.Status500InternalServerError;
         }
-    }
-
-    private static void WriteMaskedQueryString(Utf8JsonWriter writer, string queryString)
-    {
-        var query = HttpUtility.ParseQueryString(queryString);
-        writer.WriteStartObject();
-
-        foreach (string? key in query.AllKeys)
+        finally
         {
-            if (string.IsNullOrEmpty(key))
-            {
-                continue;
-            }
-
-            var values = query.GetValues(key);
-            var value = values is { Length: > 0 } ? values[0] : string.Empty;
-            var maskedValue = SensitiveFields.Contains(key) ? "***" : value;
-
-            writer.WriteString(key, maskedValue);
+            buffer.Position = 0;
+            await buffer.CopyToAsync(originalBody);
+            context.Response.Body = originalBody;
         }
 
-        writer.WriteEndObject();
+        buffer.Position = 0;
+        return buffer.Length > 32 * 1024
+            ? (statusCode, null, exception)
+            : (statusCode, await new StreamReader(buffer, Encoding.UTF8, leaveOpen: true).ReadToEndAsync(), exception);
     }
 
-    private static void WriteHeaders(Utf8JsonWriter writer, Dictionary<string, string> headers)
-    {
-        writer.WriteStartObject();
+    private static bool IsSuccess(int statusCode, Exception? exception) =>
+        exception == null && statusCode >= 200 && statusCode < 300;
 
-        foreach (var kvp in headers)
-        {
-            writer.WriteString(kvp.Key, kvp.Value);
-        }
+    private string? MaskIfNotEmpty(string? value) =>
+        string.IsNullOrEmpty(value) ? null : _masker.MaskJson(value);
 
-        writer.WriteEndObject();
-    }
-
-    private static JsonElement? CreateStatusCodeObject(int statusCode)
-    {
-        using var stream = new MemoryStream();
-        using var writer = new Utf8JsonWriter(stream);
-
-        writer.WriteStartObject();
-        writer.WriteNumber("statusCode", statusCode);
-        writer.WriteEndObject();
-        writer.Flush();
-
-        using var doc = JsonDocument.Parse(stream.ToArray());
-        return doc.RootElement.Clone();
-    }
-
-    private static bool IsJsonContentType(string? contentType)
-    {
-        return !string.IsNullOrWhiteSpace(contentType)
-            && contentType.Contains("application/json", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static bool IsLargeBinaryContentType(string? contentType)
-    {
-        return !string.IsNullOrWhiteSpace(contentType)
-            && contentType.Contains("application/octet-stream", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static string MapStatus(int statusCode, Exception? exception)
-    {
-        if (exception != null || statusCode >= 500)
-        {
-            return StatusTypes.Failed;
-        }
-        return statusCode >= 200 && statusCode < 300 ? StatusTypes.Success : StatusTypes.Failed;
-    }
-
-    private async Task FireAndForgetPublishAsync(LogEventMessage message)
+    private async Task PublishLogAsync(LogEventMessage message)
     {
         try
         {
@@ -446,66 +227,8 @@ public class LoggerMiddleware
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(
-                ex,
-                "Kafka publish failed for LogEventMessage. EventId={EventId}, FlowId={FlowId}",
-                message.EventId,
-                message.FlowId);
+            _logger.LogError(ex, "Kafka publish failed. EventId={EventId} FlowId={FlowId}",
+                message.EventId, message.FlowId);
         }
-    }
-}
-
-/// <summary>
-/// A stream wrapper that buffers the response body in memory for later reading,
-/// while also writing to the underlying stream for actual response delivery.
-/// </summary>
-internal sealed class ResponseBodyBufferingStream : Stream
-{
-    private readonly Stream _innerStream;
-    private readonly MemoryStream _buffer = new();
-
-    public ResponseBodyBufferingStream(Stream innerStream)
-    {
-        _innerStream = innerStream;
-    }
-
-    public byte[] GetBuffer() => _buffer.ToArray();
-
-    public override bool CanRead => false;
-    public override bool CanSeek => false;
-    public override bool CanWrite => true;
-    public override long Length => _buffer.Length;
-    public override long Position
-    {
-        get => _buffer.Position;
-        set => _buffer.Position = value;
-    }
-
-    public override void Flush() => _innerStream.Flush();
-
-    public override int Read(byte[] buffer, int offset, int count) =>
-        throw new NotSupportedException();
-
-    public override long Seek(long offset, SeekOrigin origin) =>
-        throw new NotSupportedException();
-
-    public override void SetLength(long value) =>
-        throw new NotSupportedException();
-
-    public override void Write(byte[] buffer, int offset, int count)
-    {
-        _buffer.Write(buffer, offset, count);
-        _innerStream.Write(buffer, offset, count);
-    }
-
-    public override async Task FlushAsync(CancellationToken cancellationToken)
-    {
-        await _innerStream.FlushAsync(cancellationToken);
-    }
-
-    public override async Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
-    {
-        await _buffer.WriteAsync(buffer, offset, count, cancellationToken);
-        await _innerStream.WriteAsync(buffer, offset, count, cancellationToken);
     }
 }
