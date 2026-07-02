@@ -7,10 +7,11 @@ namespace Skysim.Logger.Client.Producers;
 
 public class KafkaLogProducer : IKafkaLogProducer, IDisposable
 {
-    private const string Topic = "skysim.action.logs";
+    private const string DefaultTopic = "skysim.action.logs";
     private const int FlushTimeoutSeconds = 5;
 
     private readonly string _bootstrapServers;
+    private readonly string _topic;
     private readonly Acks _acks;
     private readonly int _retryMaxAttempts;
     private readonly int _retryBaseDelayMs;
@@ -23,6 +24,7 @@ public class KafkaLogProducer : IKafkaLogProducer, IDisposable
 
     public KafkaLogProducer(
         string bootstrapServers,
+        string topic,
         string acks,
         int retryMaxAttempts,
         int retryBaseDelayMs,
@@ -30,6 +32,7 @@ public class KafkaLogProducer : IKafkaLogProducer, IDisposable
         ILogger<KafkaLogProducer> logger)
     {
         _bootstrapServers = bootstrapServers;
+        _topic = string.IsNullOrWhiteSpace(topic) ? DefaultTopic : topic;
         _acks = ParseAcks(acks);
         _retryMaxAttempts = retryMaxAttempts;
         _retryBaseDelayMs = retryBaseDelayMs;
@@ -39,13 +42,14 @@ public class KafkaLogProducer : IKafkaLogProducer, IDisposable
 
     internal KafkaLogProducer(
         string bootstrapServers,
+        string topic,
         string acks,
         int retryMaxAttempts,
         int retryBaseDelayMs,
         string serviceName,
         ILogger<KafkaLogProducer> logger,
         IProducer<string, byte[]> producer)
-        : this(bootstrapServers, acks, retryMaxAttempts, retryBaseDelayMs, serviceName, logger)
+        : this(bootstrapServers, topic, acks, retryMaxAttempts, retryBaseDelayMs, serviceName, logger)
     {
         _producer = producer;
     }
@@ -92,7 +96,7 @@ public class KafkaLogProducer : IKafkaLogProducer, IDisposable
             attempt++;
             try
             {
-                var result = await Producer.ProduceAsync(Topic, kafkaMessage, cancellationToken);
+                var result = await Producer.ProduceAsync(_topic, kafkaMessage, cancellationToken);
                 _logger.LogDebug(
                     "LogEventMessage delivered. Topic={Topic}, Partition={Partition}, "
                     + "Offset={Offset}, EventId={EventId}",
@@ -123,7 +127,7 @@ public class KafkaLogProducer : IKafkaLogProducer, IDisposable
                     + "FlowId={FlowId}, Topic={Topic}",
                     message.EventId,
                     message.FlowId,
-                    Topic);
+                    _topic);
                 return;
             }
         }
@@ -135,7 +139,7 @@ public class KafkaLogProducer : IKafkaLogProducer, IDisposable
                 + "FlowId={FlowId}, Topic={Topic}",
                 message.EventId,
                 message.FlowId,
-                Topic);
+                _topic);
         }
     }
 

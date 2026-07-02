@@ -38,6 +38,7 @@ public class KafkaLogProducerTests
 
         using var sut = new KafkaLogProducer(
             "localhost:9092",
+            "skysim.action.logs",
             "all",
             5,
             200,
@@ -60,6 +61,7 @@ public class KafkaLogProducerTests
 
         using var sut = new KafkaLogProducer(
             "localhost:9092",
+            "skysim.action.logs",
             "all",
             5,
             200,
@@ -82,6 +84,7 @@ public class KafkaLogProducerTests
 
         using var sut = new KafkaLogProducer(
             "localhost:9092",
+            "skysim.action.logs",
             "all",
             5,
             200,
@@ -104,6 +107,7 @@ public class KafkaLogProducerTests
 
         using var sut = new KafkaLogProducer(
             "localhost:9092",
+            "skysim.action.logs",
             "all",
             5,
             200,
@@ -126,6 +130,7 @@ public class KafkaLogProducerTests
 
         using var sut = new KafkaLogProducer(
             "localhost:9092",
+            "skysim.action.logs",
             "all",
             5,
             200,
@@ -150,6 +155,7 @@ public class KafkaLogProducerTests
 
         using var sut = new KafkaLogProducer(
             "localhost:9092",
+            "skysim.action.logs",
             "all",
             5,
             200,
@@ -174,6 +180,7 @@ public class KafkaLogProducerTests
 
         using var sut = new KafkaLogProducer(
             "localhost:9092",
+            "skysim.action.logs",
             "all",
             2,
             50,
@@ -204,6 +211,7 @@ public class KafkaLogProducerTests
 
         using var sut = new KafkaLogProducer(
             "localhost:9092",
+            "skysim.action.logs",
             "all",
             5,
             200,
@@ -225,6 +233,7 @@ public class KafkaLogProducerTests
 
         using var sut = new KafkaLogProducer(
             "localhost:9092",
+            "skysim.action.logs",
             "all",
             5,
             200,

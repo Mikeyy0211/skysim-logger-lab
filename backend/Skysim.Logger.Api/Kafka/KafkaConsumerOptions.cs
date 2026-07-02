@@ -25,5 +25,6 @@ public class ConsumerOptions
 public class ProducerOptions
 {
     public string BootstrapServers { get; set; } = "localhost:9092";
+    public string Topic { get; set; } = "skysim.action.logs";
     public string Acks { get; set; } = "all";
 }

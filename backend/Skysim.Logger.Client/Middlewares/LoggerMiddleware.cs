@@ -2,7 +2,6 @@ using System.Text;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Skysim.Logger.Client.Masking;
 using Skysim.Logger.Client.Producers;
 using Skysim.Logger.Contracts.Events;
 using StatusTypes = Skysim.Logger.Contracts.Constants.StatusTypes;
@@ -12,26 +11,23 @@ using ActionTypes = Skysim.Logger.Contracts.Constants.ActionTypes;
 namespace Skysim.Logger.Client.Middlewares;
 
 /// <summary>
-/// HTTP middleware log request/response to Kafka.
+/// HTTP middleware to log request/response to Kafka for UAT integration.
 /// </summary>
 public class LoggerMiddleware
 {
     private readonly RequestDelegate _next;
     private readonly IKafkaLogProducer _producer;
-    private readonly ISensitiveDataMasker _masker;
     private readonly ILogger<LoggerMiddleware> _logger;
     private readonly string _serviceName;
 
     public LoggerMiddleware(
         RequestDelegate next,
         IKafkaLogProducer producer,
-        ISensitiveDataMasker masker,
         ILogger<LoggerMiddleware> logger,
         IOptions<LoggerMiddlewareOptions> options)
     {
         _next = next;
         _producer = producer;
-        _masker = masker;
         _logger = logger;
         _serviceName = options.Value.ServiceName;
     }
@@ -50,12 +46,11 @@ public class LoggerMiddleware
         var startedAt = DateTime.UtcNow;
         var flowId = GetFlowId(context);
 
-        // ==== 2. Read HTTP context ====
+        // ==== 2. Read HTTP context (request phase) ====
         var fullUrl = BuildFullUrl(context.Request);
         var clientIp = GetClientIp(context);
         var sourceService = GetSourceService(context);
-        var requestHeaders = GetMaskedRequestHeaders(context.Request);
-        var responseHeaders = GetMaskedResponseHeaders(context.Response);
+        var requestHeaders = GetRequestHeaders(context.Request);
 
         // ==== 3. Buffer request body ====
         var requestBody = await CaptureRequestBodyAsync(context.Request);
@@ -63,7 +58,10 @@ public class LoggerMiddleware
         // ==== 4. Execute + capture response ====
         var (statusCode, responseBody, exception) = await ExecuteAndCaptureResponseAsync(context);
 
-        // ==== 5. Build + mask + publish ====
+        // ==== 5. Read response headers (after response is ready) ====
+        var responseHeaders = GetResponseHeaders(context.Response);
+
+        // ==== 6. Build and publish event ====
         var durationMs = (int)(DateTime.UtcNow - startedAt).TotalMilliseconds;
 
         var message = new LogEventMessage
@@ -85,8 +83,8 @@ public class LoggerMiddleware
             ClientIp = clientIp,
             RequestHeaders = requestHeaders,
             ResponseHeaders = responseHeaders,
-            RequestBody = MaskIfNotEmpty(requestBody),
-            ResponseBody = MaskIfNotEmpty(responseBody),
+            RequestBody = requestBody,
+            ResponseBody = responseBody,
             ErrorCode = exception?.GetType().Name,
             ErrorMessage = exception?.Message,
             Message = $"{context.Request.Method} {fullUrl} -> {statusCode} ({durationMs}ms)"
@@ -147,22 +145,22 @@ public class LoggerMiddleware
         return null;
     }
 
-    private Dictionary<string, string> GetMaskedRequestHeaders(HttpRequest request)
+    private static Dictionary<string, string> GetRequestHeaders(HttpRequest request)
     {
         var headers = new Dictionary<string, string>();
         foreach (var header in request.Headers)
         {
-            headers[header.Key] = _masker.MaskSensitiveHeader(header.Key, header.Value.ToString());
+            headers[header.Key] = header.Value.ToString();
         }
         return headers;
     }
 
-    private Dictionary<string, string> GetMaskedResponseHeaders(HttpResponse response)
+    private static Dictionary<string, string> GetResponseHeaders(HttpResponse response)
     {
         var headers = new Dictionary<string, string>();
         foreach (var header in response.Headers)
         {
-            headers[header.Key] = _masker.MaskSensitiveHeader(header.Key, header.Value.ToString());
+            headers[header.Key] = header.Value.ToString();
         }
         return headers;
     }
@@ -216,9 +214,6 @@ public class LoggerMiddleware
 
     private static bool IsSuccess(int statusCode, Exception? exception) =>
         exception == null && statusCode >= 200 && statusCode < 300;
-
-    private string? MaskIfNotEmpty(string? value) =>
-        string.IsNullOrEmpty(value) ? null : _masker.MaskJson(value);
 
     private async Task PublishLogAsync(LogEventMessage message)
     {

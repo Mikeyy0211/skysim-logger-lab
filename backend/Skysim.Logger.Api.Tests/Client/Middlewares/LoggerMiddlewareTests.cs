@@ -4,7 +4,6 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
-using Skysim.Logger.Client.Masking;
 using Skysim.Logger.Client.Middlewares;
 using Skysim.Logger.Client.Producers;
 using Xunit;
@@ -18,7 +17,6 @@ namespace Skysim.Logger.Api.Tests.Client.Middlewares;
 public class LoggerMiddlewareTests
 {
     private readonly Mock<IKafkaLogProducer> _producerMock = new();
-    private readonly SensitiveDataMasker _masker = new();
     private readonly Mock<ILogger<LoggerMiddleware>> _loggerMock = new();
 
     [Fact]
@@ -219,33 +217,6 @@ public class LoggerMiddlewareTests
         capturedMessage.Should().NotBeNull();
         capturedMessage!.RequestBody.Should().NotBeNullOrEmpty();
         capturedMessage.RequestBody.Should().Contain("ORD-001");
-    }
-
-    [Fact]
-    public async Task InvokeAsync_MasksSensitiveFieldsInRequestBody()
-    {
-        // Arrange
-        LogEventMessage? capturedMessage = null;
-        _producerMock
-            .Setup(p => p.PublishAsync(It.IsAny<LogEventMessage>(), It.IsAny<CancellationToken>()))
-            .Callback<LogEventMessage, CancellationToken>((msg, _) => capturedMessage = msg)
-            .Returns(Task.CompletedTask);
-
-        var middleware = CreateMiddleware();
-
-        var bodyContent = """{"email":"user@test.com","password":"secret123"}""";
-        var context = CreateHttpContext("POST", "/api/orders");
-        context.Request.Body = CreateRequestBodyStream(bodyContent);
-        context.Request.ContentType = "application/json";
-        context.Request.ContentLength = bodyContent.Length;
-
-        // Act
-        await middleware.InvokeAsync(context);
-
-        // Assert
-        capturedMessage.Should().NotBeNull();
-        capturedMessage!.RequestBody.Should().Contain("***");
-        capturedMessage!.RequestBody.Should().NotContain("secret123");
     }
 
     [Fact]
@@ -503,7 +474,6 @@ public class LoggerMiddlewareTests
         var middleware = new LoggerMiddleware(
             next: _ => Task.CompletedTask,
             _producerMock.Object,
-            _masker,
             _loggerMock.Object,
             options);
 
@@ -524,7 +494,6 @@ public class LoggerMiddlewareTests
         return new LoggerMiddleware(
             next: next ?? (_ => Task.CompletedTask),
             _producerMock.Object,
-            _masker,
             _loggerMock.Object,
             options);
     }

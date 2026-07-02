@@ -23,6 +23,7 @@ var bootstrapServers = kafkaSection["BootstrapServers"] ?? "localhost:9092";
 var producerAcks = kafkaSection.GetSection("Producer")["Acks"] ?? "all";
 var retryMaxAttempts = int.Parse(kafkaSection.GetSection("Producer")["RetryMaxAttempts"] ?? "3");
 var retryBaseDelayMs = int.Parse(kafkaSection.GetSection("Producer")["RetryBaseDelayMs"] ?? "100");
+var producerTopic = kafkaSection.GetSection("Producer")["Topic"] ?? "skysim.action.logs";
 
 // Register KafkaLogProducer
 builder.Services.AddSingleton<IKafkaLogProducer>(sp =>
@@ -31,6 +32,7 @@ builder.Services.AddSingleton<IKafkaLogProducer>(sp =>
     var serviceName = builder.Configuration["Logger:ServiceName"] ?? "sample-checkout-service";
     return new KafkaLogProducer(
         bootstrapServers,
+        producerTopic,
         producerAcks,
         retryMaxAttempts,
         retryBaseDelayMs,

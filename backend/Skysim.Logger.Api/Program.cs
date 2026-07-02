@@ -64,6 +64,7 @@ builder.Services.AddSingleton<Skysim.Logger.Client.Producers.IKafkaLogProducer>(
     var logger = sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<Skysim.Logger.Client.Producers.KafkaLogProducer>>();
     return new Skysim.Logger.Client.Producers.KafkaLogProducer(
         kafkaOptions.Producer.BootstrapServers,
+        kafkaOptions.Producer.Topic,
         kafkaOptions.Producer.Acks,
         kafkaOptions.Retry.MaxAttempts,
         kafkaOptions.Retry.InitialDelayMs,
