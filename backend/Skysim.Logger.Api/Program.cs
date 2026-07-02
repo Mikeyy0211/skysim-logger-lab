@@ -10,7 +10,9 @@ using Skysim.Logger.Api.Kafka;
 using Skysim.Logger.Api.Options;
 using Skysim.Logger.Api.Services.Query;
 using Skysim.Logger.Api.Validators;
+using Skysim.Logger.Client.Masking;
 using Skysim.Logger.Client.Middlewares;
+using Skysim.Logger.Client.Producers;
 using Skysim.Logger.Infrastructure.Data;
 using Skysim.Logger.Infrastructure.Repositories;
 using LogEventMessage = Skysim.Logger.Contracts.Events.LogEventMessage;
@@ -24,6 +26,9 @@ builder.Services.Configure<KafkaConsumerOptions>(
     builder.Configuration.GetSection("Kafka"));
 
 builder.Services.Configure<LoggerOptions>(
+    builder.Configuration.GetSection("Logger"));
+
+builder.Services.Configure<LoggerMiddlewareOptions>(
     builder.Configuration.GetSection("Logger"));
 
 builder.Services.Configure<JwtOptions>(

@@ -1,9 +1,10 @@
 using System.Text;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Skysim.Logger.Client.Masking;
 using Skysim.Logger.Client.Producers;
-using LogEventMessage = Skysim.Logger.Contracts.Events.LogEventMessage;
+using Skysim.Logger.Contracts.Events;
 using StatusTypes = Skysim.Logger.Contracts.Constants.StatusTypes;
 using FlowTypes = Skysim.Logger.Contracts.Constants.FlowTypes;
 using ActionTypes = Skysim.Logger.Contracts.Constants.ActionTypes;
@@ -26,13 +27,13 @@ public class LoggerMiddleware
         IKafkaLogProducer producer,
         ISensitiveDataMasker masker,
         ILogger<LoggerMiddleware> logger,
-        string serviceName)
+        IOptions<LoggerMiddlewareOptions> options)
     {
         _next = next;
         _producer = producer;
         _masker = masker;
         _logger = logger;
-        _serviceName = serviceName;
+        _serviceName = options.Value.ServiceName;
     }
 
     public async Task InvokeAsync(HttpContext context)

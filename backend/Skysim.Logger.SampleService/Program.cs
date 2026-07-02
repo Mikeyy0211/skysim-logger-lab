@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Options;
 using Skysim.Logger.Client.Masking;
 using Skysim.Logger.Client.Middlewares;
 using Skysim.Logger.Client.Producers;
@@ -16,17 +17,18 @@ builder.Services.AddLogging(logging =>
 // Register SensitiveDataMasker
 builder.Services.AddSingleton<ISensitiveDataMasker, SensitiveDataMasker>();
 
-// Register KafkaLogProducer
+// Configure Kafka settings
 var kafkaSection = builder.Configuration.GetSection("Kafka");
 var bootstrapServers = kafkaSection["BootstrapServers"] ?? "localhost:9092";
 var producerAcks = kafkaSection.GetSection("Producer")["Acks"] ?? "all";
 var retryMaxAttempts = int.Parse(kafkaSection.GetSection("Producer")["RetryMaxAttempts"] ?? "3");
 var retryBaseDelayMs = int.Parse(kafkaSection.GetSection("Producer")["RetryBaseDelayMs"] ?? "100");
-var serviceName = builder.Configuration["Logger:ServiceName"] ?? "sample-checkout-service";
 
+// Register KafkaLogProducer
 builder.Services.AddSingleton<IKafkaLogProducer>(sp =>
 {
     var logger = sp.GetRequiredService<ILogger<KafkaLogProducer>>();
+    var serviceName = builder.Configuration["Logger:ServiceName"] ?? "sample-checkout-service";
     return new KafkaLogProducer(
         bootstrapServers,
         producerAcks,
@@ -36,20 +38,9 @@ builder.Services.AddSingleton<IKafkaLogProducer>(sp =>
         logger);
 });
 
-// Register LoggerMiddleware
-builder.Services.AddSingleton(sp =>
-{
-    var producer = sp.GetRequiredService<IKafkaLogProducer>();
-    var masker = sp.GetRequiredService<ISensitiveDataMasker>();
-    var logger = sp.GetRequiredService<ILogger<LoggerMiddleware>>();
-    var serviceName = builder.Configuration["Logger:ServiceName"] ?? "sample-checkout-service";
-    return new LoggerMiddleware(
-        next: null!,
-        producer,
-        masker,
-        logger,
-        serviceName);
-});
+// Configure LoggerMiddlewareOptions
+builder.Services.Configure<LoggerMiddlewareOptions>(
+    builder.Configuration.GetSection("Logger"));
 
 // Register BusinessActionLogger
 builder.Services.AddScoped<IBusinessActionLogger, BusinessActionLogger>();

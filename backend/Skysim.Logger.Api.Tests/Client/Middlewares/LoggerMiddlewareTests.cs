@@ -2,6 +2,7 @@ using System.Security.Claims;
 using FluentAssertions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Moq;
 using Skysim.Logger.Client.Masking;
 using Skysim.Logger.Client.Middlewares;
@@ -497,12 +498,14 @@ public class LoggerMiddlewareTests
             .Callback<LogEventMessage, CancellationToken>((msg, _) => capturedMessage = msg)
             .Returns(Task.CompletedTask);
 
+        var middlewareOptions = new LoggerMiddlewareOptions { ServiceName = "my-custom-service" };
+        var options = Microsoft.Extensions.Options.Options.Create(middlewareOptions);
         var middleware = new LoggerMiddleware(
             next: _ => Task.CompletedTask,
             _producerMock.Object,
             _masker,
             _loggerMock.Object,
-            "my-custom-service");
+            options);
 
         var context = CreateHttpContext("GET", "/api/test");
 
@@ -516,12 +519,14 @@ public class LoggerMiddlewareTests
 
     private LoggerMiddleware CreateMiddleware(RequestDelegate? next = null)
     {
+        var middlewareOptions = new LoggerMiddlewareOptions { ServiceName = "test-service" };
+        var options = Microsoft.Extensions.Options.Options.Create(middlewareOptions);
         return new LoggerMiddleware(
             next: next ?? (_ => Task.CompletedTask),
             _producerMock.Object,
             _masker,
             _loggerMock.Object,
-            "test-service");
+            options);
     }
 
     private static DefaultHttpContext CreateHttpContext(string method, string path)
