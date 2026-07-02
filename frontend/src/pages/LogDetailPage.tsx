@@ -2,10 +2,10 @@ import { useState, useEffect } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { PageHeader } from '../components/PageHeader';
 import { StatusBadge } from '../components/StatusBadge';
+import { CheckoutTypeBadge } from '../components/CheckoutTypeBadge';
 import { MetricCard } from '../components/MetricCard';
 import { EmptyState } from '../components/EmptyState';
-import { getLogFlowById, getLogFlowActions } from '../services/logFlowService';
-import { getLogActionDetails } from '../services/logFlowService';
+import { getLogFlowById, getLogFlowActions, getLogActionDetails } from '../services/logFlowService';
 import type { LogFlowDetail } from '../types/logFlow';
 import type { LogAction, LogActionDetail } from '../types/logAction';
 
@@ -54,6 +54,44 @@ export function LogDetailPage() {
   const [flowNotFound, setFlowNotFound] = useState(false);
   const [actionsError, setActionsError] = useState<string | null>(null);
   const [detailsError, setDetailsError] = useState<string | null>(null);
+
+  function retryFlow() {
+    if (!flowId) return;
+    setIsLoadingFlow(true);
+    setFlowError(null);
+    setFlowNotFound(false);
+    setFlow(null);
+    getLogFlowById(flowId)
+      .then((data) => {
+        setFlow(data);
+        setIsLoadingFlow(false);
+      })
+      .catch((error) => {
+        if (error.response?.status === 404) {
+          setFlowNotFound(true);
+        } else {
+          setFlowError('Unable to load flow detail.');
+        }
+        setIsLoadingFlow(false);
+      });
+  }
+
+  function retryActions() {
+    if (!flowId) return;
+    setIsLoadingActions(true);
+    setActionsError(null);
+    setActions([]);
+    getLogFlowActions(flowId)
+      .then((data) => {
+        setActions(Array.isArray(data) ? data : []);
+        setIsLoadingActions(false);
+      })
+      .catch(() => {
+        setActionsError('Unable to load actions.');
+        setActions([]);
+        setIsLoadingActions(false);
+      });
+  }
 
   useEffect(() => {
     if (!flowId) return;
@@ -140,10 +178,31 @@ export function LogDetailPage() {
   if (isLoadingFlow) {
     return (
       <div className="p-6">
-        <div className="animate-pulse">
-          <div className="h-4 w-32 bg-gray-200 rounded mb-4"></div>
-          <div className="h-8 w-64 bg-gray-200 rounded mb-6"></div>
-          <div className="h-64 bg-gray-200 rounded"></div>
+        <div className="animate-pulse space-y-6">
+          <div className="h-4 w-24 bg-gray-200 rounded"></div>
+          <div>
+            <div className="h-8 w-48 bg-gray-200 rounded mb-2"></div>
+            <div className="h-4 w-32 bg-gray-200 rounded"></div>
+          </div>
+          <div className="bg-white rounded-lg border border-gray-200 p-6">
+            <div className="h-6 w-40 bg-gray-200 rounded mb-6"></div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {[...Array(6)].map((_, i) => (
+                <div key={i}>
+                  <div className="h-3 w-24 bg-gray-200 rounded mb-2"></div>
+                  <div className="h-4 w-40 bg-gray-200 rounded"></div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {[...Array(3)].map((_, i) => (
+              <div key={i} className="bg-white rounded-lg border border-gray-200 p-4">
+                <div className="h-3 w-24 bg-gray-200 rounded mb-2"></div>
+                <div className="h-8 w-12 bg-gray-200 rounded"></div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     );
@@ -178,8 +237,15 @@ export function LogDetailPage() {
           </svg>
           Back to Logs
         </Link>
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700">
-          {flowError ?? 'Unable to load flow detail.'}
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <p className="text-red-700 font-medium">Failed to load flow detail</p>
+          <p className="text-red-600 text-sm mt-1">{flowError ?? 'An unexpected error occurred.'}</p>
+          <button
+            onClick={retryFlow}
+            className="mt-3 px-4 py-2 bg-red-100 text-red-700 text-sm font-medium rounded-lg hover:bg-red-200 focus:outline-none focus:ring-2 focus:ring-red-500 transition-colors"
+          >
+            Retry
+          </button>
         </div>
       </div>
     );
@@ -214,19 +280,23 @@ export function LogDetailPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             <div>
               <p className="text-sm text-gray-500">Flow ID</p>
-              <p className="text-sm font-medium text-gray-900">{flow.flowId}</p>
+              <p className="text-sm font-mono font-medium text-gray-900 break-all">{flow.flowId}</p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-500">Status</p>
+              <div className="mt-1">
+                <StatusBadge status={flow.status} />
+              </div>
+            </div>
+            <div>
+              <p className="text-sm text-gray-500">Checkout Type</p>
+              <div className="mt-1">
+                <CheckoutTypeBadge checkoutType={flow.checkoutType} />
+              </div>
             </div>
             <div>
               <p className="text-sm text-gray-500">Flow Type</p>
               <p className="text-sm font-medium text-gray-900">{flow.flowType}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">Checkout Type</p>
-              <p className="text-sm font-medium text-gray-900">{formatFieldValue(flow.checkoutType)}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">Status</p>
-              <StatusBadge status={flow.status} />
             </div>
             <div>
               <p className="text-sm text-gray-500">Last Action</p>
@@ -237,22 +307,6 @@ export function LogDetailPage() {
               <p className="text-sm font-medium text-gray-900">{formatFieldValue(flow.lastMessage)}</p>
             </div>
             <div>
-              <p className="text-sm text-gray-500">Started At</p>
-              <p className="text-sm font-medium text-gray-900">{formatDate(flow.startedAt)}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">Completed At</p>
-              <p className="text-sm font-medium text-gray-900">{formatDate(flow.completedAt)}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">Updated At</p>
-              <p className="text-sm font-medium text-gray-900">{formatDate(flow.updatedAt)}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">Order ID</p>
-              <p className="text-sm font-medium text-gray-900">{formatFieldValue(flow.orderId)}</p>
-            </div>
-            <div>
               <p className="text-sm text-gray-500">Customer Email</p>
               <p className="text-sm font-medium text-gray-900">{formatFieldValue(flow.customerEmail)}</p>
             </div>
@@ -261,17 +315,23 @@ export function LogDetailPage() {
               <p className="text-sm font-medium text-gray-900">{formatFieldValue(flow.customerPhone)}</p>
             </div>
             <div>
-              <p className="text-sm text-gray-500">Payment ID</p>
-              <p className="text-sm font-medium text-gray-900">{formatFieldValue(flow.paymentId)}</p>
+              <p className="text-sm text-gray-500">Created At</p>
+              <p className="text-sm font-medium text-gray-900">{formatDate(flow.createdAt)}</p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-500">Updated At</p>
+              <p className="text-sm font-medium text-gray-900">{formatDate(flow.updatedAt)}</p>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
         <MetricCard title="Total Steps" value={flow.totalSteps} />
         <MetricCard title="Success Steps" value={flow.successSteps} />
         <MetricCard title="Failed Steps" value={flow.failedSteps} />
+        <MetricCard title="Last Service" value={formatFieldValue(flow.lastServiceName)} />
+        <MetricCard title="Last Action" value={formatFieldValue(flow.lastActionType)} />
       </div>
 
       <div className="bg-white rounded-lg border border-gray-200 shadow-sm mb-6">
@@ -283,85 +343,109 @@ export function LogDetailPage() {
             <div className="animate-pulse space-y-4">
               {[1, 2, 3].map((i) => (
                 <div key={i} className="flex gap-4">
-                  <div className="w-3 h-3 bg-gray-200 rounded-full"></div>
-                  <div className="flex-1">
-                    <div className="h-4 bg-gray-200 rounded w-1/4 mb-2"></div>
+                  <div className="w-3 h-3 bg-gray-200 rounded-full mt-1.5 flex-shrink-0"></div>
+                  <div className="flex-1 space-y-2">
+                    <div className="h-4 bg-gray-200 rounded w-1/4"></div>
                     <div className="h-3 bg-gray-200 rounded w-3/4"></div>
+                    <div className="h-3 bg-gray-200 rounded w-1/2"></div>
                   </div>
                 </div>
               ))}
             </div>
           ) : actionsError ? (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700 text-sm">
-              {actionsError}
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+              <p className="text-red-700 text-sm font-medium">Failed to load actions</p>
+              <p className="text-red-600 text-sm mt-1">{actionsError}</p>
+              <button
+                onClick={retryActions}
+                className="mt-3 px-4 py-2 bg-red-100 text-red-700 text-sm font-medium rounded-lg hover:bg-red-200 focus:outline-none focus:ring-2 focus:ring-red-500 transition-colors"
+              >
+                Retry
+              </button>
             </div>
           ) : actions.length === 0 ? (
-            <p className="text-sm text-gray-500">No actions found for this flow.</p>
+            <p className="text-sm text-gray-500 italic">No actions found for this flow.</p>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-3">
               {actions.map((action, index) => (
-                <div key={action.actionId} className="flex gap-4">
-                  <div className="flex flex-col items-center">
-                    <div className="w-3 h-3 rounded-full bg-blue-600"></div>
-                    {index < actions.length - 1 && (
-                      <div className="w-0.5 h-full bg-gray-200 mt-1"></div>
-                    )}
-                  </div>
-                  <div className="flex-1 pb-4">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-sm font-medium text-gray-900">{action.actionType}</span>
-                      <StatusBadge status={action.status} />
+                <div
+                  key={action.actionId}
+                  className="border border-gray-200 rounded-lg p-4 hover:border-gray-300 transition-colors"
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex items-start gap-3 flex-1 min-w-0">
+                      <div className="flex flex-col items-center mt-1 flex-shrink-0">
+                        <div className={`w-3 h-3 rounded-full ${index === 0 ? 'bg-blue-600' : 'bg-gray-300'}`}></div>
+                        {index < actions.length - 1 && (
+                          <div className="w-0.5 flex-1 bg-gray-200 mt-1" style={{ minHeight: '12px' }}></div>
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap mb-1">
+                          <span className="text-sm font-semibold text-gray-900">{action.actionType}</span>
+                          <StatusBadge status={action.status} />
+                        </div>
+                        {action.message && (
+                          <p className="text-sm text-gray-600 mb-2">{action.message}</p>
+                        )}
+                        <div className="flex items-center gap-x-4 gap-y-1 text-xs text-gray-500 flex-wrap">
+                          <span className="font-medium text-gray-600">{action.serviceName}</span>
+                          <span className="text-gray-300">|</span>
+                          <span>{formatDuration(action.durationMs)}</span>
+                          <span className="text-gray-300">|</span>
+                          <span>{formatDate(action.createdAt)}</span>
+                        </div>
+                      </div>
                     </div>
-                    <p className="text-sm text-gray-600 mb-1">{formatFieldValue(action.message)}</p>
-                    <div className="flex items-center gap-4 text-xs text-gray-500">
-                      <span>{action.serviceName}</span>
-                      <span>•</span>
-                      <span>{formatDuration(action.durationMs)}</span>
-                      <span>•</span>
-                      <span>{formatDate(action.createdAt)}</span>
-                      <span>•</span>
+                    <div className="flex-shrink-0">
                       <button
                         onClick={() => handleViewDetails(action.actionId)}
-                        className="text-blue-600 hover:text-blue-800 font-medium"
+                        className="px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
                       >
                         {selectedActionId === action.actionId ? 'Hide Details' : 'View Details'}
                       </button>
                     </div>
-                    {selectedActionId === action.actionId && (
-                      <div className="mt-3">
-                        {isLoadingDetails ? (
-                          <div className="animate-pulse bg-gray-50 rounded p-4">
-                            <div className="h-4 bg-gray-200 rounded w-1/3 mb-2"></div>
-                            <div className="h-3 bg-gray-200 rounded w-full"></div>
-                          </div>
-                        ) : detailsError ? (
-                          <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-red-700 text-sm">
-                            {detailsError}
-                          </div>
-                        ) : selectedActionDetails && selectedActionDetails.length > 0 ? (
-                          <div className="bg-gray-50 rounded-lg p-4">
-                            {selectedActionDetails.map((detail) => (
-                              <div key={detail.detailType} className="mb-3 last:mb-0">
-                                <h4 className="text-xs font-medium text-gray-700 mb-1">
-                                  {detail.detailType}
-                                  {detail.masked && (
-                                    <span className="ml-2 text-gray-400">(masked)</span>
-                                  )}
-                                </h4>
-                                <pre className="text-xs text-gray-600 overflow-x-auto bg-white p-2 rounded border border-gray-200">
-                                  {safeStringify(detail.payload)}
-                                </pre>
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <div className="text-sm text-gray-500 italic">
-                            No details available for this action.
-                          </div>
-                        )}
-                      </div>
-                    )}
                   </div>
+
+                  {selectedActionId === action.actionId && (
+                    <div className="mt-4 ml-6">
+                      {isLoadingDetails ? (
+                        <div className="animate-pulse bg-gray-50 rounded-lg p-4 space-y-2">
+                          <div className="h-3 bg-gray-200 rounded w-1/4"></div>
+                          <div className="h-3 bg-gray-200 rounded w-full"></div>
+                        </div>
+                      ) : detailsError ? (
+                        <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                          <p className="text-red-700 text-sm font-medium">Failed to load details</p>
+                          <p className="text-red-600 text-sm mt-1">{detailsError}</p>
+                          <button
+                            onClick={() => handleViewDetails(action.actionId)}
+                            className="mt-2 px-3 py-1 bg-red-100 text-red-700 text-xs font-medium rounded-lg hover:bg-red-200 focus:outline-none focus:ring-2 focus:ring-red-500 transition-colors"
+                          >
+                            Retry
+                          </button>
+                        </div>
+                      ) : selectedActionDetails && selectedActionDetails.length > 0 ? (
+                        <div className="bg-gray-50 rounded-lg p-4 space-y-4">
+                          {selectedActionDetails.map((detail) => (
+                            <div key={detail.detailType}>
+                              <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1">
+                                {detail.detailType}
+                                {detail.masked && (
+                                  <span className="ml-2 text-gray-400 font-normal normal-case tracking-normal">(masked)</span>
+                                )}
+                              </h4>
+                              <pre className="text-xs text-gray-700 overflow-x-auto bg-white p-3 rounded border border-gray-200 font-mono leading-relaxed max-h-64 overflow-y-auto">
+                                {safeStringify(detail.payload)}
+                              </pre>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-gray-400 italic">No details available for this action.</p>
+                      )}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
