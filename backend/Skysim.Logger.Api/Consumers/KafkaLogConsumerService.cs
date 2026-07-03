@@ -365,12 +365,17 @@ public class KafkaLogConsumerService : BackgroundService
         LogEventMessage message,
         CancellationToken ct)
     {
-        var hasPayload = message.RequestData.HasValue
-            || message.ResponseData.HasValue
-            || !string.IsNullOrEmpty(message.ErrorCode)
-            || !string.IsNullOrEmpty(message.Exception);
+        var requestObj = BuildRequestPayload(message);
+        var responseObj = BuildResponsePayload(message);
+        var errorObj = BuildErrorPayload(message);
+        var metadataObj = BuildMetadataPayload(message);
 
-        if (!hasPayload)
+        bool hasRequest = requestObj != null;
+        bool hasResponse = responseObj != null;
+        bool hasError = errorObj != null;
+        bool hasMetadata = metadataObj != null;
+
+        if (!hasRequest && !hasResponse && !hasError && !hasMetadata)
         {
             return;
         }
@@ -380,29 +385,160 @@ public class KafkaLogConsumerService : BackgroundService
             ActionId = actionId
         };
 
-        if (message.RequestData.HasValue)
+        if (hasRequest)
         {
-            detail.RequestPayload = _masker.MaskJson(message.RequestData.Value.GetRawText());
-        }
+            var maskedHeaders = _masker.MaskHeaders(message.RequestHeaders);
+            var maskedBody = _masker.MaskBody(message.RequestBody);
 
-        if (message.ResponseData.HasValue)
-        {
-            detail.ResponsePayload = _masker.MaskJson(message.ResponseData.Value.GetRawText());
-        }
-
-        if (!string.IsNullOrEmpty(message.ErrorCode) || !string.IsNullOrEmpty(message.Exception))
-        {
-            var errorObj = new
+            var maskedRequestObj = new
             {
-                errorCode = message.ErrorCode,
-                errorMessage = message.ErrorMessage,
-                exception = message.Exception
+                method = message.Method,
+                path = message.Path,
+                queryString = message.QueryString,
+                fullUrl = message.FullUrl,
+                clientIp = message.ClientIp,
+                sourceService = message.SourceService,
+                headers = maskedHeaders,
+                body = maskedBody
             };
 
+            detail.RequestPayload = JsonSerializer.Serialize(maskedRequestObj);
+        }
+
+        if (hasResponse)
+        {
+            var maskedHeaders = _masker.MaskHeaders(message.ResponseHeaders);
+            var maskedBody = _masker.MaskBody(message.ResponseBody);
+
+            var maskedResponseObj = new
+            {
+                statusCode = message.StatusCode,
+                headers = maskedHeaders,
+                body = maskedBody,
+                durationMs = message.DurationMs
+            };
+
+            detail.ResponsePayload = JsonSerializer.Serialize(maskedResponseObj);
+        }
+
+        if (hasError)
+        {
             detail.ErrorPayload = _masker.MaskJson(JsonSerializer.Serialize(errorObj));
         }
 
+        if (hasMetadata)
+        {
+            detail.Metadata = _masker.MaskJson(JsonSerializer.Serialize(metadataObj));
+        }
+
         await detailRepo.UpsertAsync(detail, ct);
+    }
+
+    private static object? BuildRequestPayload(LogEventMessage message)
+    {
+        bool hasData =
+            !string.IsNullOrEmpty(message.Method)
+            || !string.IsNullOrEmpty(message.Path)
+            || !string.IsNullOrEmpty(message.QueryString)
+            || !string.IsNullOrEmpty(message.FullUrl)
+            || !string.IsNullOrEmpty(message.ClientIp)
+            || !string.IsNullOrEmpty(message.SourceService)
+            || (message.RequestHeaders != null && message.RequestHeaders.Count > 0)
+            || !string.IsNullOrEmpty(message.RequestBody);
+
+        if (!hasData)
+        {
+            return null;
+        }
+
+        return new
+        {
+            method = message.Method,
+            path = message.Path,
+            queryString = message.QueryString,
+            fullUrl = message.FullUrl,
+            clientIp = message.ClientIp,
+            sourceService = message.SourceService,
+            headers = message.RequestHeaders,
+            body = message.RequestBody
+        };
+    }
+
+    private static object? BuildResponsePayload(LogEventMessage message)
+    {
+        bool hasData =
+            message.StatusCode.HasValue
+            || (message.ResponseHeaders != null && message.ResponseHeaders.Count > 0)
+            || !string.IsNullOrEmpty(message.ResponseBody)
+            || message.DurationMs.HasValue;
+
+        if (!hasData)
+        {
+            return null;
+        }
+
+        return new
+        {
+            statusCode = message.StatusCode,
+            headers = message.ResponseHeaders,
+            body = message.ResponseBody,
+            durationMs = message.DurationMs
+        };
+    }
+
+    private static object? BuildErrorPayload(LogEventMessage message)
+    {
+        bool hasData =
+            !string.IsNullOrEmpty(message.ErrorCode)
+            || !string.IsNullOrEmpty(message.ErrorMessage)
+            || !string.IsNullOrEmpty(message.Exception);
+
+        if (!hasData)
+        {
+            return null;
+        }
+
+        return new
+        {
+            errorCode = message.ErrorCode,
+            errorMessage = message.ErrorMessage,
+            exception = message.Exception
+        };
+    }
+
+    private static object? BuildMetadataPayload(LogEventMessage message)
+    {
+        bool hasAuthContext =
+            message.HasAuthorization
+            || !string.IsNullOrEmpty(message.AuthScheme)
+            || message.IsAuthenticated
+            || !string.IsNullOrEmpty(message.UserId)
+            || !string.IsNullOrEmpty(message.Username)
+            || !string.IsNullOrEmpty(message.UserEmail)
+            || (message.Roles != null && message.Roles.Count > 0)
+            || !string.IsNullOrEmpty(message.AuthResult)
+            || !string.IsNullOrEmpty(message.CorrelationId);
+
+        if (!hasAuthContext)
+        {
+            return null;
+        }
+
+        return new
+        {
+            flowType = message.FlowType,
+            actionType = message.ActionType,
+            status = message.Status,
+            hasAuthorization = message.HasAuthorization,
+            authScheme = message.AuthScheme,
+            isAuthenticated = message.IsAuthenticated,
+            userId = message.UserId,
+            username = message.Username,
+            userEmail = message.UserEmail,
+            roles = message.Roles,
+            authResult = message.AuthResult,
+            correlationId = message.CorrelationId
+        };
     }
 
     private static AutoOffsetReset ParseAutoOffsetReset(string value)

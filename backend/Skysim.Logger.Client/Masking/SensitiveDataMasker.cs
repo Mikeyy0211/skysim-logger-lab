@@ -162,9 +162,36 @@ public class SensitiveDataMasker : ISensitiveDataMasker
 
         if (SensitiveFields.Contains(headerName))
         {
+            if (headerName.Equals("Authorization", StringComparison.OrdinalIgnoreCase)
+                && headerValue.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+            {
+                return "Bearer ***";
+            }
             return MaskedValue;
         }
 
         return headerValue;
+    }
+
+    public Dictionary<string, string> MaskHeaders(Dictionary<string, string>? headers)
+    {
+        if (headers == null || headers.Count == 0)
+        {
+            return headers ?? new Dictionary<string, string>();
+        }
+
+        return headers.ToDictionary(
+            kvp => kvp.Key,
+            kvp => MaskSensitiveHeader(kvp.Key, kvp.Value));
+    }
+
+    public string MaskBody(string? body)
+    {
+        if (string.IsNullOrEmpty(body))
+        {
+            return body ?? string.Empty;
+        }
+
+        return MaskJson(body);
     }
 }

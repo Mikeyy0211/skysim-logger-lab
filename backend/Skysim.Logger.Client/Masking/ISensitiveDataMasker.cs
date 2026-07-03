@@ -9,4 +9,8 @@ public interface ISensitiveDataMasker
     LogEventMessage Mask(LogEventMessage message);
 
     string MaskSensitiveHeader(string headerName, string headerValue);
+
+    Dictionary<string, string> MaskHeaders(Dictionary<string, string>? headers);
+
+    string MaskBody(string? body);
 }
