@@ -24,7 +24,7 @@
 ## 4. Create PM environment configuration
 
 - [x] 4.1 Create `backend/Skysim.Logger.SampleService/appsettings.PM.json`
-- [x] 4.2 Add PM Kafka settings (BootstrapServers: 149.28.132.56:9092, Topic: system-event-log)
+- [x] 4.2 Add PM Kafka settings (BootstrapServers: 171.244.49.17:9092, Topic: system-event-log)
 - [x] 4.3 Add `appsettings.PM.json` to `.gitignore` or document it should not be committed
 
 ## 5. Add documentation
@@ -47,7 +47,7 @@
 
 ### PM Kafka Testing
 - [ ] SampleService starts with `ASPNETCORE_ENVIRONMENT=PM`
-- [ ] HTTP request to SampleService publishes message to `149.28.132.56:9092` topic `system-event-log`
+- [ ] HTTP request to SampleService publishes message to `171.244.49.17:9092` topic `system-event-log`
 - [ ] Verify message appears in PM's Kafka topic
 
 ### Extension Methods Testing

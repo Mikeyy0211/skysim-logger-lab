@@ -7,7 +7,7 @@ This document describes how to switch the `Skysim.Logger.SampleService` between 
 | Environment | BootstrapServers | Topic | Config File |
 |-------------|-----------------|-------|-------------|
 | Local (default) | `localhost:9092` | `skysim.action.logs` | `appsettings.json` |
-| PM | `149.28.132.56:9092` | `system-event-log` | `appsettings.PM.json` |
+| PM | `171.244.49.17:9092` | `system-event-log` | `appsettings.PM.json` |
 
 ## Switching Between Environments
 
@@ -67,7 +67,7 @@ Set the `ASPNETCORE_ENVIRONMENT` environment variable in the project's run confi
 ```json
 {
   "Kafka": {
-    "BootstrapServers": "149.28.132.56:9092",
+    "BootstrapServers": "171.244.49.17:9092",
     "Producer": {
       "Topic": "system-event-log"
     }

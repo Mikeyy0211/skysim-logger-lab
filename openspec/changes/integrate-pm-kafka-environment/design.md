@@ -1,7 +1,7 @@
 ## Context
 
 The LoggerMiddleware has been reviewed and accepted by PM. PM has provided a dedicated Kafka environment for testing:
-- BootstrapServers: `149.28.132.56:9092`
+- BootstrapServers: `171.244.49.17:9092`
 - Topic: `system-event-log`
 
 Currently, `KafkaLogProducer` hard-codes the topic as `skysim.action.logs`, making it impossible to switch environments without code changes. This prevents seamless testing against PM's Kafka environment.

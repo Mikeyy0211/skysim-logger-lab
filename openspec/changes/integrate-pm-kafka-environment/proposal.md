@@ -1,6 +1,6 @@
 ## Why
 
-The LoggerMiddleware design has been reviewed and accepted by PM. PM has provided a Kafka environment (BootstrapServers: 149.28.132.56:9092, Topic: system-event-log) for testing. Before PM integrates our middleware into their service tomorrow, we need to ensure the Logger module is fully configurable to support the PM Kafka environment without code changes.
+The LoggerMiddleware design has been reviewed and accepted by PM. PM has provided a Kafka environment (BootstrapServers: `171.244.49.17:9092`, Topic: `system-event-log`) for testing. Before PM integrates our middleware into their service tomorrow, we need to ensure the Logger module is fully configurable to support the PM Kafka environment without code changes.
 
 Currently, the Kafka topic name is hard-coded in `KafkaLogProducer` (`skysim.action.logs`), preventing seamless switching between local and PM Kafka environments.
 

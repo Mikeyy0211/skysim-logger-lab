@@ -26,14 +26,14 @@ The `KafkaLogProducer` SHALL read the Kafka topic name from configuration option
 
 ### Requirement: Logger.Client shall support PM Kafka environment via appsettings
 
-The `Skysim.Logger.Client` SHALL be usable with a PM-provided Kafka environment (BootstrapServers: `149.28.132.56:9092`, Topic: `system-event-log`) through standard .NET configuration without code changes.
+The `Skysim.Logger.Client` SHALL be usable with a PM-provided Kafka environment (BootstrapServers: `171.244.49.17:9092`, Topic: `system-event-log`) through standard .NET configuration without code changes.
 
 #### Scenario: SampleService runs against PM Kafka via appsettings.PM.json
 
 - **GIVEN** `appsettings.PM.json` is created with PM Kafka settings
 - **AND** the service is started with `ASPNETCORE_ENVIRONMENT=PM`
 - **WHEN** the service publishes a log event
-- **THEN** the event SHALL be published to `149.28.132.56:9092` with topic `system-event-log`
+- **THEN** the event SHALL be published to `171.244.49.17:9092` with topic `system-event-log`
 
 #### Scenario: Local development uses default local Kafka settings
 

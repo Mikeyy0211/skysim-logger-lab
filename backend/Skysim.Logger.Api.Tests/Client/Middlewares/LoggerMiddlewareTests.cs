@@ -11,6 +11,7 @@ using LogEventMessage = Skysim.Logger.Contracts.Events.LogEventMessage;
 using StatusTypes = Skysim.Logger.Contracts.Constants.StatusTypes;
 using FlowTypes = Skysim.Logger.Contracts.Constants.FlowTypes;
 using ActionTypes = Skysim.Logger.Contracts.Constants.ActionTypes;
+using AuthResultTypes = Skysim.Logger.Contracts.Constants.AuthResultTypes;
 
 namespace Skysim.Logger.Api.Tests.Client.Middlewares;
 
@@ -513,5 +514,384 @@ public class LoggerMiddlewareTests
     {
         var bytes = System.Text.Encoding.UTF8.GetBytes(body);
         return new MemoryStream(bytes);
+    }
+
+    // ==== Auth context tests ====
+
+    [Fact]
+    public async Task InvokeAsync_GuestRequest_SetsAuthFieldsCorrectly()
+    {
+        // Arrange
+        LogEventMessage? capturedMessage = null;
+        _producerMock
+            .Setup(p => p.PublishAsync(It.IsAny<LogEventMessage>(), It.IsAny<CancellationToken>()))
+            .Callback<LogEventMessage, CancellationToken>((msg, _) => capturedMessage = msg)
+            .Returns(Task.CompletedTask);
+
+        var middleware = CreateMiddleware();
+
+        var context = CreateHttpContext("GET", "/api/test");
+
+        // Act
+        await middleware.InvokeAsync(context);
+
+        // Assert
+        capturedMessage.Should().NotBeNull();
+        capturedMessage!.HasAuthorization.Should().BeFalse();
+        capturedMessage.AuthScheme.Should().BeNull();
+        capturedMessage.IsAuthenticated.Should().BeFalse();
+        capturedMessage.UserId.Should().BeNull();
+        capturedMessage.Username.Should().BeNull();
+        capturedMessage.UserEmail.Should().BeNull();
+        capturedMessage.Roles.Should().BeNull();
+        capturedMessage.AuthResult.Should().Be("NO_TOKEN");
+    }
+
+    [Fact]
+    public async Task InvokeAsync_TokenPresentButNotAuthenticated_SetsAuthResultTokenPresentNotAuthenticated()
+    {
+        // Arrange
+        LogEventMessage? capturedMessage = null;
+        _producerMock
+            .Setup(p => p.PublishAsync(It.IsAny<LogEventMessage>(), It.IsAny<CancellationToken>()))
+            .Callback<LogEventMessage, CancellationToken>((msg, _) => capturedMessage = msg)
+            .Returns(Task.CompletedTask);
+
+        var middleware = CreateMiddleware();
+
+        var context = CreateHttpContext("GET", "/api/test");
+        context.Request.Headers["Authorization"] = "Bearer some-invalid-token";
+
+        // Act
+        await middleware.InvokeAsync(context);
+
+        // Assert
+        capturedMessage.Should().NotBeNull();
+        capturedMessage!.HasAuthorization.Should().BeTrue();
+        capturedMessage.IsAuthenticated.Should().BeFalse();
+        capturedMessage.AuthResult.Should().Be("TOKEN_PRESENT_NOT_AUTHENTICATED");
+    }
+
+    [Fact]
+    public async Task InvokeAsync_RequestWithAuthorizationHeader_SetsHasAuthorizationTrue()
+    {
+        // Arrange
+        LogEventMessage? capturedMessage = null;
+        _producerMock
+            .Setup(p => p.PublishAsync(It.IsAny<LogEventMessage>(), It.IsAny<CancellationToken>()))
+            .Callback<LogEventMessage, CancellationToken>((msg, _) => capturedMessage = msg)
+            .Returns(Task.CompletedTask);
+
+        var middleware = CreateMiddleware();
+
+        var context = CreateHttpContext("GET", "/api/test");
+        context.Request.Headers["Authorization"] = "Bearer some-token-value";
+
+        // Act
+        await middleware.InvokeAsync(context);
+
+        // Assert
+        capturedMessage.Should().NotBeNull();
+        capturedMessage!.HasAuthorization.Should().BeTrue();
+        capturedMessage.AuthScheme.Should().Be("Bearer");
+    }
+
+    [Fact]
+    public async Task InvokeAsync_RequestWithBasicAuth_SetsAuthSchemeCorrectly()
+    {
+        // Arrange
+        LogEventMessage? capturedMessage = null;
+        _producerMock
+            .Setup(p => p.PublishAsync(It.IsAny<LogEventMessage>(), It.IsAny<CancellationToken>()))
+            .Callback<LogEventMessage, CancellationToken>((msg, _) => capturedMessage = msg)
+            .Returns(Task.CompletedTask);
+
+        var middleware = CreateMiddleware();
+
+        var context = CreateHttpContext("GET", "/api/test");
+        context.Request.Headers["Authorization"] = "Basic dXNlcm5hbWU6cGFzc3dvcmQ=";
+
+        // Act
+        await middleware.InvokeAsync(context);
+
+        // Assert
+        capturedMessage.Should().NotBeNull();
+        capturedMessage!.HasAuthorization.Should().BeTrue();
+        capturedMessage.AuthScheme.Should().Be("Basic");
+    }
+
+    [Fact]
+    public async Task InvokeAsync_AuthenticatedUser_SetsUserFieldsCorrectly()
+    {
+        // Arrange
+        LogEventMessage? capturedMessage = null;
+        _producerMock
+            .Setup(p => p.PublishAsync(It.IsAny<LogEventMessage>(), It.IsAny<CancellationToken>()))
+            .Callback<LogEventMessage, CancellationToken>((msg, _) => capturedMessage = msg)
+            .Returns(Task.CompletedTask);
+
+        var middleware = CreateMiddleware();
+
+        var context = CreateHttpContext("GET", "/api/test");
+        context.Request.Headers["Authorization"] = "Bearer valid-token";
+
+        var claims = new[]
+        {
+            new Claim(ClaimTypes.NameIdentifier, "user-123"),
+            new Claim("sub", "user-123"),
+            new Claim("preferred_username", "johndoe"),
+            new Claim(ClaimTypes.Email, "john@example.com"),
+            new Claim(ClaimTypes.Role, "Admin"),
+            new Claim(ClaimTypes.Role, "User")
+        };
+        var identity = new ClaimsIdentity(claims, "Bearer");
+        context.User = new ClaimsPrincipal(identity);
+
+        // Act
+        await middleware.InvokeAsync(context);
+
+        // Assert
+        capturedMessage.Should().NotBeNull();
+        capturedMessage!.IsAuthenticated.Should().BeTrue();
+        capturedMessage.UserId.Should().Be("user-123");
+        capturedMessage.Username.Should().Be("johndoe");
+        capturedMessage.UserEmail.Should().Be("john@example.com");
+        capturedMessage.Roles.Should().Contain("Admin");
+        capturedMessage.Roles.Should().Contain("User");
+        capturedMessage.AuthResult.Should().Be("AUTHENTICATED");
+    }
+
+    [Fact]
+    public async Task InvokeAsync_AuthenticatedUserWithSubClaim_SetsUserIdFromSub()
+    {
+        // Arrange
+        LogEventMessage? capturedMessage = null;
+        _producerMock
+            .Setup(p => p.PublishAsync(It.IsAny<LogEventMessage>(), It.IsAny<CancellationToken>()))
+            .Callback<LogEventMessage, CancellationToken>((msg, _) => capturedMessage = msg)
+            .Returns(Task.CompletedTask);
+
+        var middleware = CreateMiddleware();
+
+        var context = CreateHttpContext("GET", "/api/test");
+        context.Request.Headers["Authorization"] = "Bearer valid-token";
+
+        var claims = new[]
+        {
+            new Claim("sub", "user-456"),
+            new Claim("preferred_username", "janedoe")
+        };
+        var identity = new ClaimsIdentity(claims, "Bearer");
+        context.User = new ClaimsPrincipal(identity);
+
+        // Act
+        await middleware.InvokeAsync(context);
+
+        // Assert
+        capturedMessage.Should().NotBeNull();
+        capturedMessage!.UserId.Should().Be("user-456");
+        capturedMessage.Username.Should().Be("janedoe");
+    }
+
+    [Fact]
+    public async Task InvokeAsync_401Response_SetsAuthResultUnauthenticated()
+    {
+        // Arrange
+        LogEventMessage? capturedMessage = null;
+        _producerMock
+            .Setup(p => p.PublishAsync(It.IsAny<LogEventMessage>(), It.IsAny<CancellationToken>()))
+            .Callback<LogEventMessage, CancellationToken>((msg, _) => capturedMessage = msg)
+            .Returns(Task.CompletedTask);
+
+        var middleware = CreateMiddleware(ctx =>
+        {
+            ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            return Task.CompletedTask;
+        });
+
+        var context = CreateHttpContext("GET", "/api/test");
+        context.Request.Headers["Authorization"] = "Bearer some-token";
+
+        // Act
+        await middleware.InvokeAsync(context);
+
+        // Assert
+        capturedMessage.Should().NotBeNull();
+        capturedMessage!.AuthResult.Should().Be("UNAUTHENTICATED");
+        capturedMessage.StatusCode.Should().Be(401);
+    }
+
+    [Fact]
+    public async Task InvokeAsync_403Response_SetsAuthResultForbidden()
+    {
+        // Arrange
+        LogEventMessage? capturedMessage = null;
+        _producerMock
+            .Setup(p => p.PublishAsync(It.IsAny<LogEventMessage>(), It.IsAny<CancellationToken>()))
+            .Callback<LogEventMessage, CancellationToken>((msg, _) => capturedMessage = msg)
+            .Returns(Task.CompletedTask);
+
+        var middleware = CreateMiddleware(ctx =>
+        {
+            ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
+            return Task.CompletedTask;
+        });
+
+        var context = CreateHttpContext("GET", "/api/test");
+
+        // Act
+        await middleware.InvokeAsync(context);
+
+        // Assert
+        capturedMessage.Should().NotBeNull();
+        capturedMessage!.AuthResult.Should().Be("FORBIDDEN");
+        capturedMessage.StatusCode.Should().Be(403);
+    }
+
+    [Fact]
+    public async Task InvokeAsync_AuthorizationHeaderInRequestHeaders_IsMasked()
+    {
+        // Arrange
+        LogEventMessage? capturedMessage = null;
+        _producerMock
+            .Setup(p => p.PublishAsync(It.IsAny<LogEventMessage>(), It.IsAny<CancellationToken>()))
+            .Callback<LogEventMessage, CancellationToken>((msg, _) => capturedMessage = msg)
+            .Returns(Task.CompletedTask);
+
+        var middleware = CreateMiddleware();
+
+        var context = CreateHttpContext("GET", "/api/test");
+        context.Request.Headers["Authorization"] = "Bearer super-secret-token-12345";
+        context.Request.Headers["Content-Type"] = "application/json";
+
+        // Act
+        await middleware.InvokeAsync(context);
+
+        // Assert
+        capturedMessage.Should().NotBeNull();
+        capturedMessage!.RequestHeaders.Should().ContainKey("Authorization");
+        capturedMessage.RequestHeaders!["Authorization"].Should().Be("Bearer ***");
+        capturedMessage.RequestHeaders!["Content-Type"].Should().Be("application/json");
+    }
+
+    [Fact]
+    public async Task InvokeAsync_BasicAuthHeaderInRequestHeaders_IsMasked()
+    {
+        // Arrange
+        LogEventMessage? capturedMessage = null;
+        _producerMock
+            .Setup(p => p.PublishAsync(It.IsAny<LogEventMessage>(), It.IsAny<CancellationToken>()))
+            .Callback<LogEventMessage, CancellationToken>((msg, _) => capturedMessage = msg)
+            .Returns(Task.CompletedTask);
+
+        var middleware = CreateMiddleware();
+
+        var context = CreateHttpContext("GET", "/api/test");
+        context.Request.Headers["Authorization"] = "Basic dXNlcm5hbWU6cGFzc3dvcmQ=";
+
+        // Act
+        await middleware.InvokeAsync(context);
+
+        // Assert
+        capturedMessage.Should().NotBeNull();
+        capturedMessage!.RequestHeaders.Should().ContainKey("Authorization");
+        capturedMessage.RequestHeaders!["Authorization"].Should().Be("***");
+    }
+
+    [Fact]
+    public async Task InvokeAsync_AuthenticatedWithRoleClaim_SetsRolesCorrectly()
+    {
+        // Arrange
+        LogEventMessage? capturedMessage = null;
+        _producerMock
+            .Setup(p => p.PublishAsync(It.IsAny<LogEventMessage>(), It.IsAny<CancellationToken>()))
+            .Callback<LogEventMessage, CancellationToken>((msg, _) => capturedMessage = msg)
+            .Returns(Task.CompletedTask);
+
+        var middleware = CreateMiddleware();
+
+        var context = CreateHttpContext("GET", "/api/test");
+        context.Request.Headers["Authorization"] = "Bearer valid-token";
+
+        var claims = new[]
+        {
+            new Claim(ClaimTypes.NameIdentifier, "user-789"),
+            new Claim(ClaimTypes.Role, "Admin"),
+            new Claim("role", "PowerUser")
+        };
+        var identity = new ClaimsIdentity(claims, "Bearer");
+        context.User = new ClaimsPrincipal(identity);
+
+        // Act
+        await middleware.InvokeAsync(context);
+
+        // Assert
+        capturedMessage.Should().NotBeNull();
+        capturedMessage!.Roles.Should().NotBeNull();
+        capturedMessage.Roles.Should().HaveCount(2);
+        capturedMessage.Roles.Should().Contain("Admin");
+        capturedMessage.Roles.Should().Contain("PowerUser");
+    }
+
+    [Fact]
+    public async Task InvokeAsync_AuthenticatedWithoutRoles_RolesIsNull()
+    {
+        // Arrange
+        LogEventMessage? capturedMessage = null;
+        _producerMock
+            .Setup(p => p.PublishAsync(It.IsAny<LogEventMessage>(), It.IsAny<CancellationToken>()))
+            .Callback<LogEventMessage, CancellationToken>((msg, _) => capturedMessage = msg)
+            .Returns(Task.CompletedTask);
+
+        var middleware = CreateMiddleware();
+
+        var context = CreateHttpContext("GET", "/api/test");
+        context.Request.Headers["Authorization"] = "Bearer valid-token";
+
+        var claims = new[]
+        {
+            new Claim(ClaimTypes.NameIdentifier, "user-no-roles")
+        };
+        var identity = new ClaimsIdentity(claims, "Bearer");
+        context.User = new ClaimsPrincipal(identity);
+
+        // Act
+        await middleware.InvokeAsync(context);
+
+        // Assert
+        capturedMessage.Should().NotBeNull();
+        capturedMessage!.Roles.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task InvokeAsync_AuthenticatedWithUserIdClaim_SetsUserIdFromUserIdClaim()
+    {
+        // Arrange
+        LogEventMessage? capturedMessage = null;
+        _producerMock
+            .Setup(p => p.PublishAsync(It.IsAny<LogEventMessage>(), It.IsAny<CancellationToken>()))
+            .Callback<LogEventMessage, CancellationToken>((msg, _) => capturedMessage = msg)
+            .Returns(Task.CompletedTask);
+
+        var middleware = CreateMiddleware();
+
+        var context = CreateHttpContext("GET", "/api/test");
+        context.Request.Headers["Authorization"] = "Bearer valid-token";
+
+        var claims = new[]
+        {
+            new Claim("user_id", "uid-123"),
+            new Claim(ClaimTypes.NameIdentifier, "cid-456")
+        };
+        var identity = new ClaimsIdentity(claims, "Bearer");
+        context.User = new ClaimsPrincipal(identity);
+
+        // Act
+        await middleware.InvokeAsync(context);
+
+        // Assert
+        capturedMessage.Should().NotBeNull();
+        // ClaimTypes.NameIdentifier is checked first, so it should take precedence
+        capturedMessage!.UserId.Should().Be("cid-456");
     }
 }

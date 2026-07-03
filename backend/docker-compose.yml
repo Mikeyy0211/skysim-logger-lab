@@ -59,9 +59,11 @@ services:
     ports:
       - "8090:8080"
     environment:
-      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_NAME: skysim-local
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
       KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
+      KAFKA_CLUSTERS_1_NAME: skysim-uat
+      KAFKA_CLUSTERS_1_BOOTSTRAPSERVERS: 171.244.49.17:9092
 
 volumes:
   postgres_data:

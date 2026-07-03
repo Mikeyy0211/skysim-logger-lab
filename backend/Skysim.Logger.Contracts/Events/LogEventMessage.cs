@@ -127,4 +127,26 @@ public class LogEventMessage
 
     [JsonPropertyName("responseHeaders")]
     public Dictionary<string, string>? ResponseHeaders { get; set; }
+
+    // ==== Auth context fields ====
+    [JsonPropertyName("hasAuthorization")]
+    public bool HasAuthorization { get; set; }
+
+    [JsonPropertyName("authScheme")]
+    public string? AuthScheme { get; set; }
+
+    [JsonPropertyName("isAuthenticated")]
+    public bool IsAuthenticated { get; set; }
+
+    [JsonPropertyName("username")]
+    public string? Username { get; set; }
+
+    [JsonPropertyName("userEmail")]
+    public string? UserEmail { get; set; }
+
+    [JsonPropertyName("roles")]
+    public List<string>? Roles { get; set; }
+
+    [JsonPropertyName("authResult")]
+    public string? AuthResult { get; set; }
 }

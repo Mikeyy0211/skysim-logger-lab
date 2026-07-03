@@ -1,3 +1,5 @@
+using System.Runtime.ExceptionServices;
+using System.Security.Claims;
 using System.Text;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
@@ -7,6 +9,7 @@ using Skysim.Logger.Contracts.Events;
 using StatusTypes = Skysim.Logger.Contracts.Constants.StatusTypes;
 using FlowTypes = Skysim.Logger.Contracts.Constants.FlowTypes;
 using ActionTypes = Skysim.Logger.Contracts.Constants.ActionTypes;
+using AuthResultTypes = Skysim.Logger.Contracts.Constants.AuthResultTypes;
 
 namespace Skysim.Logger.Client.Middlewares;
 
@@ -15,6 +18,15 @@ namespace Skysim.Logger.Client.Middlewares;
 /// </summary>
 public class LoggerMiddleware
 {
+    private sealed record AuthContext(
+        bool HasAuthorization,
+        string? AuthScheme,
+        bool IsAuthenticated,
+        string? UserId,
+        string? Username,
+        string? UserEmail,
+        List<string>? Roles,
+        string? AuthResult);
     private readonly RequestDelegate _next;
     private readonly IKafkaLogProducer _producer;
     private readonly ILogger<LoggerMiddleware> _logger;
@@ -58,8 +70,9 @@ public class LoggerMiddleware
         // ==== 4. Execute + capture response ====
         var (statusCode, responseBody, exception) = await ExecuteAndCaptureResponseAsync(context);
 
-        // ==== 5. Read response headers (after response is ready) ====
+        // ==== 5. Read response headers and auth context (after response is ready) ====
         var responseHeaders = GetResponseHeaders(context.Response);
+        var authContext = GetAuthContext(context, statusCode);
 
         // ==== 6. Build and publish event ====
         var durationMs = (int)(DateTime.UtcNow - startedAt).TotalMilliseconds;
@@ -87,13 +100,21 @@ public class LoggerMiddleware
             ResponseBody = responseBody,
             ErrorCode = exception?.GetType().Name,
             ErrorMessage = exception?.Message,
-            Message = $"{context.Request.Method} {fullUrl} -> {statusCode} ({durationMs}ms)"
+            Message = $"{context.Request.Method} {fullUrl} -> {statusCode} ({durationMs}ms)",
+            UserId = authContext.UserId,
+            HasAuthorization = authContext.HasAuthorization,
+            AuthScheme = authContext.AuthScheme,
+            IsAuthenticated = authContext.IsAuthenticated,
+            Username = authContext.Username,
+            UserEmail = authContext.UserEmail,
+            Roles = authContext.Roles,
+            AuthResult = authContext.AuthResult
         };
 
         await PublishLogAsync(message);
 
         if (exception != null)
-            throw exception;
+            ExceptionDispatchInfo.Capture(exception).Throw();
     }
 
     // ==== Private helpers ====
@@ -110,7 +131,8 @@ public class LoggerMiddleware
             return v.ToString();
 
         var generated = Guid.NewGuid().ToString("D");
-        context.Response.Headers["X-Flow-Id"] = generated;
+        if (!context.Response.HasStarted)
+            context.Response.Headers["X-Flow-Id"] = generated;
         return generated;
     }
 
@@ -150,9 +172,31 @@ public class LoggerMiddleware
         var headers = new Dictionary<string, string>();
         foreach (var header in request.Headers)
         {
-            headers[header.Key] = header.Value.ToString();
+            if (header.Key.Equals("Authorization", StringComparison.OrdinalIgnoreCase))
+            {
+                var value = header.Value.ToString();
+                headers[header.Key] = MaskAuthorizationHeader(value);
+            }
+            else
+            {
+                headers[header.Key] = header.Value.ToString();
+            }
         }
         return headers;
+    }
+
+    private static string MaskAuthorizationHeader(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return value ?? string.Empty;
+
+        if (value.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+            return "Bearer ***";
+
+        if (value.StartsWith("bearer ", StringComparison.OrdinalIgnoreCase))
+            return "bearer ***";
+
+        return "***";
     }
 
     private static Dictionary<string, string> GetResponseHeaders(HttpResponse response)
@@ -214,6 +258,71 @@ public class LoggerMiddleware
 
     private static bool IsSuccess(int statusCode, Exception? exception) =>
         exception == null && statusCode >= 200 && statusCode < 300;
+
+    private static string? GetAuthScheme(string? authorizationHeader)
+    {
+        if (string.IsNullOrWhiteSpace(authorizationHeader))
+            return null;
+
+        var parts = authorizationHeader.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length > 0 ? parts[0] : null;
+    }
+
+    private static AuthContext GetAuthContext(HttpContext context, int statusCode)
+    {
+        var authHeader = context.Request.Headers.Authorization.FirstOrDefault();
+        var hasAuthorization = !string.IsNullOrWhiteSpace(authHeader);
+        var authScheme = GetAuthScheme(authHeader);
+
+        var user = context.User;
+        var isAuthenticated = user.Identity?.IsAuthenticated ?? false;
+
+        string? userId = null;
+        string? username = null;
+        string? email = null;
+        var roles = new List<string>();
+
+        if (isAuthenticated)
+        {
+            userId = user.FindFirstValue(ClaimTypes.NameIdentifier)
+                ?? user.FindFirstValue("sub")
+                ?? user.FindFirstValue("user_id");
+
+            username = user.FindFirstValue("preferred_username")
+                ?? user.Identity?.Name;
+
+            email = user.FindFirstValue(ClaimTypes.Email)
+                ?? user.FindFirstValue("email");
+
+            roles.AddRange(user.FindAll(ClaimTypes.Role).Select(c => c.Value));
+            roles.AddRange(user.FindAll("role").Select(c => c.Value));
+        }
+
+        var authResult = DetermineAuthResult(statusCode, hasAuthorization, isAuthenticated);
+
+        return new AuthContext(
+            hasAuthorization,
+            authScheme,
+            isAuthenticated,
+            userId,
+            username,
+            email,
+            roles.Count > 0 ? roles : null,
+            authResult);
+    }
+
+    private static string DetermineAuthResult(int statusCode, bool hasAuthorization, bool isAuthenticated)
+    {
+        if (statusCode == StatusCodes.Status401Unauthorized)
+            return AuthResultTypes.Unauthenticated;
+        if (statusCode == StatusCodes.Status403Forbidden)
+            return AuthResultTypes.Forbidden;
+        if (isAuthenticated)
+            return AuthResultTypes.Authenticated;
+        if (hasAuthorization)
+            return AuthResultTypes.TokenPresentNotAuthenticated;
+        return AuthResultTypes.NoToken;
+    }
 
     private async Task PublishLogAsync(LogEventMessage message)
     {
