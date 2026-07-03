@@ -103,7 +103,7 @@ public class SensitiveDataMasker : ISensitiveDataMasker
     {
         using var stream = new MemoryStream();
         using var writer = new Utf8JsonWriter(stream);
-
+        
         writer.WriteStartObject();
 
         foreach (var property in element.EnumerateObject())
