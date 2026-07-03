@@ -1,7 +1,10 @@
+using System.Collections.Generic;
 using System.Text;
+using System.Text.Json;
 using Confluent.Kafka;
 using Microsoft.Extensions.Logging;
-using LogEventMessage = Skysim.Logger.Contracts.Events.LogEventMessage;
+using Skysim.Logger.Contracts.Events;
+using Skysim.Logger.Contracts.Constants;
 
 namespace Skysim.Logger.Client.Producers;
 
@@ -65,6 +68,11 @@ public class KafkaLogProducer : IKafkaLogProducer, IDisposable
 
     public async Task PublishAsync(LogEventMessage message, CancellationToken cancellationToken = default)
     {
+        if (message is null)
+        {
+            return;
+        }
+
         if (string.IsNullOrWhiteSpace(message.ServiceName))
         {
             message.ServiceName = _serviceName;
@@ -88,6 +96,75 @@ public class KafkaLogProducer : IKafkaLogProducer, IDisposable
             Value = payload
         };
 
+        await ProduceAsync(kafkaMessage, message.EventId.ToString(), message.FlowId, cancellationToken);
+    }
+
+    public async Task PublishAsync(object payload, CancellationToken cancellationToken = default)
+    {
+        if (payload is null)
+        {
+            return;
+        }
+
+        byte[] jsonBytes;
+        try
+        {
+            jsonBytes = Encoding.UTF8.GetBytes(
+                System.Text.Json.JsonSerializer.Serialize(payload));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to serialize payload to JSON");
+            return;
+        }
+
+        string? flowId = null;
+        string? eventId = null;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(jsonBytes);
+            if (doc.RootElement.TryGetProperty("flowId", out var flowIdElement))
+                flowId = flowIdElement.ValueKind == JsonValueKind.String
+                    ? flowIdElement.GetString()
+                    : flowIdElement.ToString();
+
+            if (doc.RootElement.TryGetProperty("eventId", out var eventIdElement))
+                eventId = eventIdElement.ValueKind == JsonValueKind.String
+                    ? eventIdElement.GetString()
+                    : eventIdElement.ToString();
+        }
+        catch (JsonException)
+        {
+            // If we can't parse the JSON for key extraction, proceed without keys
+        }
+
+        var key = string.IsNullOrEmpty(flowId) ? eventId ?? Guid.NewGuid().ToString() : flowId;
+
+        var kafkaMessage = new Message<string, byte[]>
+        {
+            Key = key,
+            Value = jsonBytes
+        };
+
+        await ProduceAsync(kafkaMessage, eventId, flowId, cancellationToken);
+    }
+
+    public void Dispose()
+    {
+        if (_producer != null)
+        {
+            _producer.Flush(TimeSpan.FromSeconds(FlushTimeoutSeconds));
+            _producer.Dispose();
+        }
+    }
+
+    private async Task ProduceAsync(
+        Message<string, byte[]> kafkaMessage,
+        string? eventId,
+        string? flowId,
+        CancellationToken cancellationToken)
+    {
         var success = false;
         var attempt = 0;
 
@@ -103,7 +180,7 @@ public class KafkaLogProducer : IKafkaLogProducer, IDisposable
                     result.Topic,
                     result.Partition.Value,
                     result.Offset.Value,
-                    message.EventId);
+                    eventId ?? "unknown");
                 success = true;
             }
             catch (ProduceException<string, byte[]> ex) when (attempt < _retryMaxAttempts)
@@ -113,7 +190,7 @@ public class KafkaLogProducer : IKafkaLogProducer, IDisposable
                     ex,
                     "Kafka produce failed. EventId={EventId}, Attempt={Attempt}, "
                     + "DelayMs={DelayMs}",
-                    message.EventId,
+                    eventId ?? "unknown",
                     attempt,
                     (int)delay.TotalMilliseconds);
 
@@ -125,8 +202,8 @@ public class KafkaLogProducer : IKafkaLogProducer, IDisposable
                     ex,
                     "Kafka produce failed after all retries. EventId={EventId}, "
                     + "FlowId={FlowId}, Topic={Topic}",
-                    message.EventId,
-                    message.FlowId,
+                    eventId ?? "unknown",
+                    flowId ?? "unknown",
                     _topic);
                 return;
             }
@@ -137,18 +214,9 @@ public class KafkaLogProducer : IKafkaLogProducer, IDisposable
             _logger.LogWarning(
                 "Kafka produce failed after all retries. EventId={EventId}, "
                 + "FlowId={FlowId}, Topic={Topic}",
-                message.EventId,
-                message.FlowId,
+                eventId ?? "unknown",
+                flowId ?? "unknown",
                 _topic);
-        }
-    }
-
-    public void Dispose()
-    {
-        if (_producer != null)
-        {
-            _producer.Flush(TimeSpan.FromSeconds(FlushTimeoutSeconds));
-            _producer.Dispose();
         }
     }
 
