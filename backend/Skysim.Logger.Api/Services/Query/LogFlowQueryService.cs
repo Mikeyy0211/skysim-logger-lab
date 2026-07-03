@@ -232,6 +232,48 @@ public class LogFlowQueryService : ILogFlowQueryService
             .AnyAsync(f => f.FlowId == flowId, ct);
     }
 
+    /// <inheritdoc />
+    public async Task<DashboardMetricsDto> GetDashboardMetricsAsync(
+        CancellationToken ct = default)
+    {
+        await using var db = await _dbContextFactory.CreateDbContextAsync(ct);
+
+        var statusCounts = await db.LogFlows
+            .AsNoTracking()
+            .GroupBy(f => f.Status)
+            .Select(g => new { Status = g.Key, Count = g.LongCount() })
+            .ToListAsync(ct);
+
+        long success = 0;
+        long failed = 0;
+        long running = 0;
+        long partial = 0;
+
+        foreach (var row in statusCounts)
+        {
+            if (row.Status == StatusTypes.Success) success = row.Count;
+            else if (row.Status == StatusTypes.Failed) failed = row.Count;
+            else if (row.Status == StatusTypes.Running) running = row.Count;
+            else if (row.Status == StatusTypes.PartialFailed) partial = row.Count;
+        }
+
+        long total = success + failed + running + partial;
+
+        double? averageDurationMs = await db.LogFlows
+            .AsNoTracking()
+            .Where(f => f.CompletedAt != null)
+            .Select(f => (double?)(f.CompletedAt!.Value - f.StartedAt).TotalMilliseconds)
+            .AverageAsync(ct);
+
+        return new DashboardMetricsDto(
+            total,
+            success,
+            failed,
+            running,
+            partial,
+            averageDurationMs);
+    }
+
     /// <summary>
     /// Applies the unified search predicate across multiple fields using case-insensitive matching.
     /// </summary>

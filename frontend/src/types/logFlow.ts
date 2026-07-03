@@ -36,3 +36,12 @@ export interface LogFlowDetail extends LogFlowSummary {
   // LogFlowDetail uses the same fields as LogFlowSummary
   // The backend returns the full flow details via GET /api/log-flows/{flowId}
 }
+
+export interface DashboardMetrics {
+  totalFlows: number;
+  successFlows: number;
+  failedFlows: number;
+  runningFlows: number;
+  partialFailed: number;
+  averageDurationMs: number | null;
+}

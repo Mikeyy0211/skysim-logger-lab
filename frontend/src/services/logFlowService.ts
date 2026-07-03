@@ -1,5 +1,10 @@
 import { apiClient } from './api';
-import type { LogFlowListResponse, LogFlowSummary, LogFlowDetail } from '../types/logFlow';
+import type {
+  LogFlowListResponse,
+  LogFlowSummary,
+  LogFlowDetail,
+  DashboardMetrics,
+} from '../types/logFlow';
 import type { LogAction, LogActionDetail } from '../types/logAction';
 
 export interface LogFlowListParams {
@@ -40,6 +45,11 @@ export async function getLogFlowById(flowId: string): Promise<LogFlowDetail> {
   }
 
   return data as LogFlowDetail;
+}
+
+export async function getDashboardMetrics(): Promise<DashboardMetrics> {
+  const response = await apiClient.get<DashboardMetrics>('/api/dashboard/metrics');
+  return response.data;
 }
 
 export function normalizeLogAction(raw: unknown): LogAction {

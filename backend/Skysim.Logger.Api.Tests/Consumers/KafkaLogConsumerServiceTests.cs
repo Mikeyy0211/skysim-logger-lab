@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json;
 using FluentAssertions;
 using FluentValidation;
+using FluentValidation.TestHelper;
 using Skysim.Logger.Api.Kafka;
 using Skysim.Logger.Api.Validators;
 using Skysim.Logger.Api.Infrastructure.Persistence.Exceptions;
@@ -783,5 +784,466 @@ public class MapFlowFromMessageMergeTests
             flow.CompletedAt = DateTime.UtcNow;
         }
         flow.TotalSteps++;
+    }
+}
+
+// Test class specifically for NormalizeServiceName logic
+public class NormalizeServiceNameTests
+{
+    private static LogEventMessage CreateHttpActionMessage(string? serviceName = null)
+    {
+        return new LogEventMessage
+        {
+            EventId = Guid.NewGuid(),
+            FlowId = "test-flow-http",
+            FlowType = FlowTypes.HttpAction,
+            ServiceName = serviceName ?? string.Empty,
+            ActionType = ActionTypes.HttpRequest,
+            Status = StatusTypes.Success,
+            CreatedAt = DateTime.UtcNow
+        };
+    }
+
+    private static LogEventMessage CreateBusinessMessage(string? serviceName = null)
+    {
+        return new LogEventMessage
+        {
+            EventId = Guid.NewGuid(),
+            FlowId = "test-flow-business",
+            FlowType = FlowTypes.CheckoutEsim,
+            ServiceName = serviceName ?? string.Empty,
+            ActionType = ActionTypes.OrderCreated,
+            Status = StatusTypes.Success,
+            CreatedAt = DateTime.UtcNow
+        };
+    }
+
+    [Fact]
+    public void NormalizeServiceName_ServiceNameAlreadySet_DoesNotOverwrite()
+    {
+        // Arrange
+        var message = CreateHttpActionMessage("existing-service");
+
+        // Act
+        NormalizeServiceName(message);
+
+        // Assert
+        message.ServiceName.Should().Be("existing-service");
+    }
+
+    [Fact]
+    public void NormalizeServiceName_HttpActionWithXSourceService_UsesXSourceService()
+    {
+        // Arrange
+        var message = CreateHttpActionMessage();
+        message.RequestHeaders = new Dictionary<string, string>
+        {
+            { "X-Source-Service", "portal-service" }
+        };
+
+        // Act
+        NormalizeServiceName(message);
+
+        // Assert
+        message.ServiceName.Should().Be("portal-service");
+    }
+
+    [Fact]
+    public void NormalizeServiceName_HttpActionWithXCallerService_UsesXCallerService()
+    {
+        // Arrange
+        var message = CreateHttpActionMessage();
+        message.RequestHeaders = new Dictionary<string, string>
+        {
+            { "X-Caller-Service", "admin-service" }
+        };
+
+        // Act
+        NormalizeServiceName(message);
+
+        // Assert
+        message.ServiceName.Should().Be("admin-service");
+    }
+
+    [Fact]
+    public void NormalizeServiceName_HttpActionWithXSourceServiceAndXCallerService_PrefersXSourceService()
+    {
+        // Arrange
+        var message = CreateHttpActionMessage();
+        message.RequestHeaders = new Dictionary<string, string>
+        {
+            { "X-Source-Service", "source-svc" },
+            { "X-Caller-Service", "caller-svc" }
+        };
+
+        // Act
+        NormalizeServiceName(message);
+
+        // Assert
+        message.ServiceName.Should().Be("source-svc");
+    }
+
+    [Fact]
+    public void NormalizeServiceName_HttpActionWithXForwardedPrefix_ParsesToServiceName()
+    {
+        // Arrange
+        var message = CreateHttpActionMessage();
+        message.RequestHeaders = new Dictionary<string, string>
+        {
+            { "X-Forwarded-Prefix", "/apis/partner" }
+        };
+
+        // Act
+        NormalizeServiceName(message);
+
+        // Assert
+        message.ServiceName.Should().Be("partner-service");
+    }
+
+    [Fact]
+    public void NormalizeServiceName_HttpActionWithPath_ParsesToServiceName()
+    {
+        // Arrange
+        var message = CreateHttpActionMessage();
+        message.Path = "/apis/partner/order/create";
+        message.FullUrl = "http://171.244.49.17:8211/apis/partner/order/create";
+
+        // Act
+        NormalizeServiceName(message);
+
+        // Assert
+        message.ServiceName.Should().Be("partner-service");
+    }
+
+    [Fact]
+    public void NormalizeServiceName_HttpActionWithFullUrlOnly_ParsesToServiceName()
+    {
+        // Arrange
+        var message = CreateHttpActionMessage();
+        message.FullUrl = "http://171.244.49.17:8211/apis/partner/order/create";
+
+        // Act
+        NormalizeServiceName(message);
+
+        // Assert
+        message.ServiceName.Should().Be("partner-service");
+    }
+
+    [Fact]
+    public void NormalizeServiceName_HttpActionCannotResolve_ReturnsUnknownService()
+    {
+        // Arrange
+        var message = CreateHttpActionMessage();
+        message.Path = "/unknown/path";
+        message.FullUrl = "http://unknown.com/unknown/path";
+
+        // Act
+        NormalizeServiceName(message);
+
+        // Assert
+        message.ServiceName.Should().Be("unknown-service");
+    }
+
+    [Fact]
+    public void NormalizeServiceName_HttpActionNoHeadersNoPath_ReturnsUnknownService()
+    {
+        // Arrange
+        var message = CreateHttpActionMessage();
+
+        // Act
+        NormalizeServiceName(message);
+
+        // Assert
+        message.ServiceName.Should().Be("unknown-service");
+    }
+
+    [Fact]
+    public void NormalizeServiceName_NonHttpActionWithEmptyServiceName_DoesNotModify()
+    {
+        // Arrange
+        var message = CreateBusinessMessage();
+
+        // Act
+        NormalizeServiceName(message);
+
+        // Assert - serviceName should remain empty for non-HTTP_ACTION
+        message.ServiceName.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void NormalizeServiceName_CaseInsensitiveHeaderLookup_Works()
+    {
+        // Arrange
+        var message = CreateHttpActionMessage();
+        message.RequestHeaders = new Dictionary<string, string>
+        {
+            { "x-source-service", "lowercase-service" }
+        };
+
+        // Act
+        NormalizeServiceName(message);
+
+        // Assert
+        message.ServiceName.Should().Be("lowercase-service");
+    }
+
+    [Fact]
+    public void NormalizeServiceName_XForwardedPrefixWithTrailingSlash_ParsesCorrectly()
+    {
+        // Arrange
+        var message = CreateHttpActionMessage();
+        message.RequestHeaders = new Dictionary<string, string>
+        {
+            { "X-Forwarded-Prefix", "/apis/partner/" }
+        };
+
+        // Act
+        NormalizeServiceName(message);
+
+        // Assert
+        message.ServiceName.Should().Be("partner-service");
+    }
+
+    [Fact]
+    public void NormalizeServiceName_HeaderWithEmptyValue_FallsThroughToNextStrategy()
+    {
+        // Arrange
+        var message = CreateHttpActionMessage();
+        message.RequestHeaders = new Dictionary<string, string>
+        {
+            { "X-Source-Service", "" },
+            { "X-Forwarded-Prefix", "/apis/partner" }
+        };
+
+        // Act
+        NormalizeServiceName(message);
+
+        // Assert
+        message.ServiceName.Should().Be("partner-service");
+    }
+
+    [Fact]
+    public void Validate_NormalizedHttpActionMessage_PassesValidation()
+    {
+        // Arrange - simulate what happens in the consumer after normalization
+        var message = CreateHttpActionMessage();
+        message.RequestHeaders = new Dictionary<string, string>
+        {
+            { "X-Forwarded-Prefix", "/apis/partner" }
+        };
+
+        NormalizeServiceName(message);
+
+        var validator = new LogEventMessageValidator();
+
+        // Act
+        var result = validator.TestValidate(message);
+
+        // Assert
+        result.ShouldNotHaveValidationErrorFor(x => x.ServiceName);
+    }
+
+    [Fact]
+    public void Validate_NonHttpActionWithoutServiceName_FailsValidation()
+    {
+        // Arrange - non-HTTP_ACTION should fail if serviceName is empty
+        var message = CreateBusinessMessage();
+        message.ServiceName = string.Empty;
+
+        var validator = new LogEventMessageValidator();
+
+        // Act
+        var result = validator.TestValidate(message);
+
+        // Assert
+        result.ShouldHaveValidationErrorFor(x => x.ServiceName);
+    }
+
+    [Fact]
+    public void PortalSimgetgoCheckoutMessage_NormalizesCorrectly()
+    {
+        // Arrange - simulates actual portal simgetgo checkout message
+        var message = new LogEventMessage
+        {
+            EventId = Guid.NewGuid(),
+            FlowId = "portal-flow-001",
+            FlowType = FlowTypes.HttpAction,
+            ServiceName = string.Empty, // empty from portal
+            ActionType = ActionTypes.HttpRequest,
+            Status = StatusTypes.Success,
+            CreatedAt = DateTime.UtcNow,
+            Path = "/apis/partner/order/create",
+            FullUrl = "http://171.244.49.17:8211/apis/partner/order/create",
+            RequestHeaders = new Dictionary<string, string>
+            {
+                { "X-Forwarded-Prefix", "/apis/partner" },
+                { "X-Forwarded-Path", "/apis/partner/order/create" }
+            }
+        };
+
+        // Act
+        NormalizeServiceName(message);
+
+        // Assert
+        message.ServiceName.Should().Be("partner-service");
+
+        var validator = new LogEventMessageValidator();
+        var result = validator.TestValidate(message);
+        result.ShouldNotHaveValidationErrorFor(x => x.ServiceName);
+    }
+
+    // Mirror the static methods from KafkaLogConsumerService for testing
+    private static void NormalizeServiceName(LogEventMessage message)
+    {
+        if (!string.IsNullOrEmpty(message.ServiceName))
+        {
+            return;
+        }
+
+        if (message.FlowType != FlowTypes.HttpAction)
+        {
+            return;
+        }
+
+        var headers = message.RequestHeaders ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        if (TryGetHeader(headers, "X-Source-Service", out var sourceService) && !string.IsNullOrEmpty(sourceService))
+        {
+            message.ServiceName = sourceService;
+            return;
+        }
+
+        if (TryGetHeader(headers, "X-Caller-Service", out var callerService) && !string.IsNullOrEmpty(callerService))
+        {
+            message.ServiceName = callerService;
+            return;
+        }
+
+        if (TryGetHeader(headers, "X-Forwarded-Prefix", out var forwardedPrefix) && !string.IsNullOrEmpty(forwardedPrefix))
+        {
+            message.ServiceName = ParseServiceNameFromPrefix(forwardedPrefix);
+            return;
+        }
+
+        if (!string.IsNullOrEmpty(message.Path))
+        {
+            message.ServiceName = ParseServiceNameFromPath(message.Path);
+            if (!string.IsNullOrEmpty(message.ServiceName))
+            {
+                return;
+            }
+        }
+
+        if (!string.IsNullOrEmpty(message.FullUrl))
+        {
+            message.ServiceName = ParseServiceNameFromPath(message.FullUrl);
+            return;
+        }
+
+        message.ServiceName = "unknown-service";
+    }
+
+    private static bool TryGetHeader(Dictionary<string, string> headers, string key, out string value)
+    {
+        if (headers.TryGetValue(key, out var headerValue))
+        {
+            value = headerValue;
+            return true;
+        }
+
+        foreach (var kvp in headers)
+        {
+            if (string.Equals(kvp.Key, key, StringComparison.OrdinalIgnoreCase))
+            {
+                value = kvp.Value;
+                return true;
+            }
+        }
+
+        value = string.Empty;
+        return false;
+    }
+
+    private static string ParseServiceNameFromPrefix(string prefix)
+    {
+        var trimmed = prefix.TrimEnd('/').TrimStart('/');
+        var segments = trimmed.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (segments.Length == 0)
+        {
+            return "unknown-service";
+        }
+
+        var lastSegment = segments[^1];
+        return lastSegment.ToLowerInvariant() switch
+        {
+            "partner" => "partner-service",
+            "admin" => "admin-service",
+            "user" => "user-service",
+            "payment" => "payment-service",
+            _ => lastSegment.ToLowerInvariant() + "-service"
+        };
+    }
+
+    private static string ParseServiceNameFromPath(string pathOrUrl)
+    {
+        if (string.IsNullOrEmpty(pathOrUrl))
+        {
+            return string.Empty;
+        }
+
+        string path = pathOrUrl;
+
+        // If it's a full URL (contains ://), extract just the path portion
+        if (pathOrUrl.Contains("://"))
+        {
+            var afterScheme = pathOrUrl.Substring(pathOrUrl.IndexOf("://") + 3);
+            var slashIndex = afterScheme.IndexOf('/');
+            if (slashIndex < 0)
+            {
+                return "unknown-service";
+            }
+            path = afterScheme.Substring(slashIndex);
+        }
+
+        var segments = path.TrimStart('/').Split('/', StringSplitOptions.RemoveEmptyEntries);
+
+        if (segments.Length == 0)
+        {
+            return string.Empty;
+        }
+
+        var prefixSegment = segments[0];
+
+        if (prefixSegment.Equals("apis", StringComparison.OrdinalIgnoreCase) && segments.Length > 1)
+        {
+            prefixSegment = segments[1];
+        }
+
+        if (prefixSegment.Equals("partner", StringComparison.OrdinalIgnoreCase))
+        {
+            return "partner-service";
+        }
+
+        if (prefixSegment.Equals("admin", StringComparison.OrdinalIgnoreCase))
+        {
+            return "admin-service";
+        }
+
+        if (prefixSegment.Equals("user", StringComparison.OrdinalIgnoreCase))
+        {
+            return "user-service";
+        }
+
+        if (prefixSegment.Equals("payment", StringComparison.OrdinalIgnoreCase))
+        {
+            return "payment-service";
+        }
+
+        if (prefixSegment.StartsWith("api", StringComparison.OrdinalIgnoreCase))
+        {
+            return prefixSegment.ToLowerInvariant() + "-service";
+        }
+
+        return prefixSegment.ToLowerInvariant() + "-service";
     }
 }

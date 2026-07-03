@@ -38,4 +38,11 @@ public interface ILogFlowQueryService
     Task<bool> FlowExistsAsync(
         string flowId,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Retrieves aggregate dashboard metrics across all log flows.
+    /// </summary>
+    /// <param name="ct">Cancellation token to cancel the operation.</param>
+    /// <returns>Aggregated counts by status and the average duration of completed flows.</returns>
+    Task<DashboardMetricsDto> GetDashboardMetricsAsync(CancellationToken ct = default);
 }

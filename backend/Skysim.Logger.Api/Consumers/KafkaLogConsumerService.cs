@@ -160,6 +160,8 @@ public class KafkaLogConsumerService : BackgroundService
             return;
         }
 
+        NormalizeServiceName(message);
+
         using var validationScope = _scopeFactory.CreateScope();
         var validator = validationScope.ServiceProvider.GetRequiredService<IValidator<LogEventMessage>>();
         var validationResult = await validator.ValidateAsync(message, ct);
@@ -539,6 +541,160 @@ public class KafkaLogConsumerService : BackgroundService
             authResult = message.AuthResult,
             correlationId = message.CorrelationId
         };
+    }
+
+    private static void NormalizeServiceName(LogEventMessage message)
+    {
+        if (!string.IsNullOrEmpty(message.ServiceName))
+        {
+            return;
+        }
+
+        if (message.FlowType != FlowTypes.HttpAction)
+        {
+            return;
+        }
+
+        var headers = message.RequestHeaders ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        if (TryGetHeader(headers, "X-Source-Service", out var sourceService) && !string.IsNullOrEmpty(sourceService))
+        {
+            message.ServiceName = sourceService;
+            return;
+        }
+
+        if (TryGetHeader(headers, "X-Caller-Service", out var callerService) && !string.IsNullOrEmpty(callerService))
+        {
+            message.ServiceName = callerService;
+            return;
+        }
+
+        if (TryGetHeader(headers, "X-Forwarded-Prefix", out var forwardedPrefix) && !string.IsNullOrEmpty(forwardedPrefix))
+        {
+            message.ServiceName = ParseServiceNameFromPrefix(forwardedPrefix);
+            return;
+        }
+
+        if (!string.IsNullOrEmpty(message.Path))
+        {
+            message.ServiceName = ParseServiceNameFromPath(message.Path);
+            if (!string.IsNullOrEmpty(message.ServiceName))
+            {
+                return;
+            }
+        }
+
+        if (!string.IsNullOrEmpty(message.FullUrl))
+        {
+            message.ServiceName = ParseServiceNameFromPath(message.FullUrl);
+            return;
+        }
+
+        message.ServiceName = "unknown-service";
+    }
+
+    private static bool TryGetHeader(Dictionary<string, string> headers, string key, out string value)
+    {
+        if (headers.TryGetValue(key, out var headerValue))
+        {
+            value = headerValue;
+            return true;
+        }
+
+        foreach (var kvp in headers)
+        {
+            if (string.Equals(kvp.Key, key, StringComparison.OrdinalIgnoreCase))
+            {
+                value = kvp.Value;
+                return true;
+            }
+        }
+
+        value = string.Empty;
+        return false;
+    }
+
+    private static string ParseServiceNameFromPrefix(string prefix)
+    {
+        var trimmed = prefix.TrimEnd('/').TrimStart('/');
+        var segments = trimmed.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (segments.Length == 0)
+        {
+            return "unknown-service";
+        }
+
+        var lastSegment = segments[^1];
+        return lastSegment.ToLowerInvariant() switch
+        {
+            "partner" => "partner-service",
+            "admin" => "admin-service",
+            "user" => "user-service",
+            "payment" => "payment-service",
+            _ => lastSegment.ToLowerInvariant() + "-service"
+        };
+    }
+
+    private static string ParseServiceNameFromPath(string pathOrUrl)
+    {
+        if (string.IsNullOrEmpty(pathOrUrl))
+        {
+            return string.Empty;
+        }
+
+        string path = pathOrUrl;
+
+        // If it's a full URL (contains ://), extract just the path portion
+        if (pathOrUrl.Contains("://"))
+        {
+            var afterScheme = pathOrUrl.Substring(pathOrUrl.IndexOf("://") + 3);
+            var slashIndex = afterScheme.IndexOf('/');
+            if (slashIndex < 0)
+            {
+                return "unknown-service";
+            }
+            path = afterScheme.Substring(slashIndex);
+        }
+
+        var segments = path.TrimStart('/').Split('/', StringSplitOptions.RemoveEmptyEntries);
+
+        if (segments.Length == 0)
+        {
+            return string.Empty;
+        }
+
+        var prefixSegment = segments[0];
+
+        if (prefixSegment.Equals("apis", StringComparison.OrdinalIgnoreCase) && segments.Length > 1)
+        {
+            prefixSegment = segments[1];
+        }
+
+        if (prefixSegment.Equals("partner", StringComparison.OrdinalIgnoreCase))
+        {
+            return "partner-service";
+        }
+
+        if (prefixSegment.Equals("admin", StringComparison.OrdinalIgnoreCase))
+        {
+            return "admin-service";
+        }
+
+        if (prefixSegment.Equals("user", StringComparison.OrdinalIgnoreCase))
+        {
+            return "user-service";
+        }
+
+        if (prefixSegment.Equals("payment", StringComparison.OrdinalIgnoreCase))
+        {
+            return "payment-service";
+        }
+
+        if (prefixSegment.StartsWith("api", StringComparison.OrdinalIgnoreCase))
+        {
+            return prefixSegment.ToLowerInvariant() + "-service";
+        }
+
+        return prefixSegment.ToLowerInvariant() + "-service";
     }
 
     private static AutoOffsetReset ParseAutoOffsetReset(string value)

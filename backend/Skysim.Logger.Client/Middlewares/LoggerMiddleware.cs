@@ -1,6 +1,7 @@
 using System.Runtime.ExceptionServices;
 using System.Security.Claims;
 using System.Text;
+using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -9,28 +10,21 @@ using Skysim.Logger.Contracts.Events;
 using StatusTypes = Skysim.Logger.Contracts.Constants.StatusTypes;
 using FlowTypes = Skysim.Logger.Contracts.Constants.FlowTypes;
 using ActionTypes = Skysim.Logger.Contracts.Constants.ActionTypes;
-using AuthResultTypes = Skysim.Logger.Contracts.Constants.AuthResultTypes;
 
 namespace Skysim.Logger.Client.Middlewares;
 
-/// <summary>
-/// HTTP middleware to log request/response to Kafka for UAT integration.
-/// </summary>
 public class LoggerMiddleware
 {
-    private sealed record AuthContext(
-        bool HasAuthorization,
-        string? AuthScheme,
-        bool IsAuthenticated,
-        string? UserId,
-        string? Username,
-        string? UserEmail,
-        List<string>? Roles,
-        string? AuthResult);
     private readonly RequestDelegate _next;
     private readonly IKafkaLogProducer _producer;
     private readonly ILogger<LoggerMiddleware> _logger;
     private readonly string _serviceName;
+
+    private static readonly string[] SensitiveFields =
+    [
+        "password", "access_token", "refresh_token", "authorization",
+        "otp", "cardNumber", "cvv", "paymentSecret", "secret", "token"
+    ];
 
     public LoggerMiddleware(
         RequestDelegate next,
@@ -46,7 +40,6 @@ public class LoggerMiddleware
 
     public async Task InvokeAsync(HttpContext context)
     {
-        // Skip infrastructure paths
         var path = context.Request.Path.Value?.ToLowerInvariant() ?? "";
         if (path.StartsWith("/swagger") || path.StartsWith("/health") || path.StartsWith("/favicon"))
         {
@@ -54,28 +47,15 @@ public class LoggerMiddleware
             return;
         }
 
-        // ==== 1. Metadata: flowId + timestamp ====
         var startedAt = DateTime.UtcNow;
         var flowId = GetFlowId(context);
-
-        // ==== 2. Read HTTP context (request phase) ====
-        var fullUrl = BuildFullUrl(context.Request);
-        var clientIp = GetClientIp(context);
-        var sourceService = GetSourceService(context);
-        var requestHeaders = GetRequestHeaders(context.Request);
-
-        // ==== 3. Buffer request body ====
         var requestBody = await CaptureRequestBodyAsync(context.Request);
 
-        // ==== 4. Execute + capture response ====
         var (statusCode, responseBody, exception) = await ExecuteAndCaptureResponseAsync(context);
 
-        // ==== 5. Read response headers and auth context (after response is ready) ====
-        var responseHeaders = GetResponseHeaders(context.Response);
-        var authContext = GetAuthContext(context, statusCode);
-
-        // ==== 6. Build and publish event ====
         var durationMs = (int)(DateTime.UtcNow - startedAt).TotalMilliseconds;
+
+        var auth = GetAuthContext(context, statusCode);
 
         var message = new LogEventMessage
         {
@@ -83,32 +63,31 @@ public class LoggerMiddleware
             FlowId = flowId,
             FlowType = FlowTypes.HttpAction,
             ActionType = ActionTypes.HttpRequest,
-            Status = IsSuccess(statusCode, exception) ? StatusTypes.Success : StatusTypes.Failed,
+            Status = exception == null && statusCode >= 200 && statusCode < 300 ? StatusTypes.Success : StatusTypes.Failed,
             ServiceName = _serviceName,
-            SourceService = sourceService,
             CreatedAt = startedAt,
             Method = context.Request.Method,
             Path = context.Request.Path.Value,
             QueryString = context.Request.QueryString.Value,
-            FullUrl = fullUrl,
+            FullUrl = BuildFullUrl(context.Request),
             StatusCode = statusCode,
             DurationMs = durationMs,
-            ClientIp = clientIp,
-            RequestHeaders = requestHeaders,
-            ResponseHeaders = responseHeaders,
-            RequestBody = requestBody,
-            ResponseBody = responseBody,
+            ClientIp = GetClientIp(context),
+            RequestHeaders = GetMaskedRequestHeaders(context.Request),
+            ResponseHeaders = GetResponseHeaders(context.Response),
+            RequestBody = MaskSensitiveJson(requestBody),
+            ResponseBody = MaskSensitiveJson(responseBody),
             ErrorCode = exception?.GetType().Name,
             ErrorMessage = exception?.Message,
-            Message = $"{context.Request.Method} {fullUrl} -> {statusCode} ({durationMs}ms)",
-            UserId = authContext.UserId,
-            HasAuthorization = authContext.HasAuthorization,
-            AuthScheme = authContext.AuthScheme,
-            IsAuthenticated = authContext.IsAuthenticated,
-            Username = authContext.Username,
-            UserEmail = authContext.UserEmail,
-            Roles = authContext.Roles,
-            AuthResult = authContext.AuthResult
+            Message = $"{context.Request.Method} {context.Request.Path} -> {statusCode} ({durationMs}ms)",
+            UserId = auth.userId,
+            HasAuthorization = auth.hasAuthorization,
+            AuthScheme = auth.authScheme,
+            IsAuthenticated = auth.isAuthenticated,
+            Username = auth.username,
+            UserEmail = auth.email,
+            Roles = auth.roles,
+            AuthResult = auth.authResult
         };
 
         await PublishLogAsync(message);
@@ -117,18 +96,15 @@ public class LoggerMiddleware
             ExceptionDispatchInfo.Capture(exception).Throw();
     }
 
-    // ==== Private helpers ====
-
     private static string GetFlowId(HttpContext context)
     {
         var headers = context.Request.Headers;
-
         if (headers.TryGetValue("X-Flow-Id", out var v) && !string.IsNullOrWhiteSpace(v))
-            return v.ToString();
+            return v.ToString()!;
         if (headers.TryGetValue("X-Correlation-Id", out v) && !string.IsNullOrWhiteSpace(v))
-            return v.ToString();
+            return v.ToString()!;
         if (headers.TryGetValue("X-Request-Id", out v) && !string.IsNullOrWhiteSpace(v))
-            return v.ToString();
+            return v.ToString()!;
 
         var generated = Guid.NewGuid().ToString("D");
         if (!context.Response.HasStarted)
@@ -136,76 +112,34 @@ public class LoggerMiddleware
         return generated;
     }
 
-    private static string BuildFullUrl(HttpRequest request)
-    {
-        var scheme = request.Scheme;
-        var host = request.Host.Value ?? "";
-        var path = request.Path.Value ?? "";
-        var queryString = request.QueryString.Value ?? "";
-        return $"{scheme}://{host}{path}{queryString}";
-    }
+    private static string BuildFullUrl(HttpRequest request) =>
+        $"{request.Scheme}://{request.Host.Value}{request.Path.Value}{request.QueryString.Value}";
 
     private static string GetClientIp(HttpContext context)
     {
-        var forwardedFor = context.Request.Headers["X-Forwarded-For"].FirstOrDefault();
-        if (!string.IsNullOrWhiteSpace(forwardedFor))
-        {
-            return forwardedFor.Split(',')[0].Trim();
-        }
-
+        var forwarded = context.Request.Headers["X-Forwarded-For"].FirstOrDefault();
+        if (!string.IsNullOrWhiteSpace(forwarded))
+            return forwarded.Split(',')[0].Trim();
         return context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
     }
 
-    private static string? GetSourceService(HttpContext context)
-    {
-        if (context.Request.Headers.TryGetValue("X-Source-Service", out var v) && !string.IsNullOrWhiteSpace(v))
-            return v.ToString();
-
-        if (context.Request.Headers.TryGetValue("X-Caller-Service", out v) && !string.IsNullOrWhiteSpace(v))
-            return v.ToString();
-
-        return null;
-    }
-
-    private static Dictionary<string, string> GetRequestHeaders(HttpRequest request)
+    private static Dictionary<string, string> GetMaskedRequestHeaders(HttpRequest request)
     {
         var headers = new Dictionary<string, string>();
-        foreach (var header in request.Headers)
+        foreach (var h in request.Headers)
         {
-            if (header.Key.Equals("Authorization", StringComparison.OrdinalIgnoreCase))
-            {
-                var value = header.Value.ToString();
-                headers[header.Key] = MaskAuthorizationHeader(value);
-            }
-            else
-            {
-                headers[header.Key] = header.Value.ToString();
-            }
+            headers[h.Key] = h.Key.Equals("Authorization", StringComparison.OrdinalIgnoreCase)
+                ? MaskAuthHeader(h.Value.ToString())
+                : (IsSensitive(h.Key) ? "***" : h.Value.ToString());
         }
         return headers;
-    }
-
-    private static string MaskAuthorizationHeader(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-            return value ?? string.Empty;
-
-        if (value.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
-            return "Bearer ***";
-
-        if (value.StartsWith("bearer ", StringComparison.OrdinalIgnoreCase))
-            return "bearer ***";
-
-        return "***";
     }
 
     private static Dictionary<string, string> GetResponseHeaders(HttpResponse response)
     {
         var headers = new Dictionary<string, string>();
-        foreach (var header in response.Headers)
-        {
-            headers[header.Key] = header.Value.ToString();
-        }
+        foreach (var h in response.Headers)
+            headers[h.Key] = h.Value.ToString();
         return headers;
     }
 
@@ -233,16 +167,8 @@ public class LoggerMiddleware
         Exception? exception = null;
         int statusCode;
 
-        try
-        {
-            await _next(context);
-            statusCode = context.Response.StatusCode;
-        }
-        catch (Exception ex)
-        {
-            exception = ex;
-            statusCode = StatusCodes.Status500InternalServerError;
-        }
+        try { await _next(context); statusCode = context.Response.StatusCode; }
+        catch (Exception ex) { exception = ex; statusCode = StatusCodes.Status500InternalServerError; }
         finally
         {
             buffer.Position = 0;
@@ -256,23 +182,11 @@ public class LoggerMiddleware
             : (statusCode, await new StreamReader(buffer, Encoding.UTF8, leaveOpen: true).ReadToEndAsync(), exception);
     }
 
-    private static bool IsSuccess(int statusCode, Exception? exception) =>
-        exception == null && statusCode >= 200 && statusCode < 300;
-
-    private static string? GetAuthScheme(string? authorizationHeader)
-    {
-        if (string.IsNullOrWhiteSpace(authorizationHeader))
-            return null;
-
-        var parts = authorizationHeader.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
-        return parts.Length > 0 ? parts[0] : null;
-    }
-
-    private static AuthContext GetAuthContext(HttpContext context, int statusCode)
+    private static (bool hasAuthorization, string? authScheme, bool isAuthenticated, string? userId, string? username, string? email, List<string>? roles, string? authResult) GetAuthContext(HttpContext context, int statusCode)
     {
         var authHeader = context.Request.Headers.Authorization.FirstOrDefault();
         var hasAuthorization = !string.IsNullOrWhiteSpace(authHeader);
-        var authScheme = GetAuthScheme(authHeader);
+        var authScheme = hasAuthorization ? authHeader!.Split(' ', 2)[0] : null;
 
         var user = context.User;
         var isAuthenticated = user.Identity?.IsAuthenticated ?? false;
@@ -280,60 +194,102 @@ public class LoggerMiddleware
         string? userId = null;
         string? username = null;
         string? email = null;
-        var roles = new List<string>();
+        List<string>? roles = null;
 
         if (isAuthenticated)
         {
-            userId = user.FindFirstValue(ClaimTypes.NameIdentifier)
-                ?? user.FindFirstValue("sub")
-                ?? user.FindFirstValue("user_id");
-
-            username = user.FindFirstValue("preferred_username")
-                ?? user.Identity?.Name;
-
-            email = user.FindFirstValue(ClaimTypes.Email)
-                ?? user.FindFirstValue("email");
-
-            roles.AddRange(user.FindAll(ClaimTypes.Role).Select(c => c.Value));
-            roles.AddRange(user.FindAll("role").Select(c => c.Value));
+            userId = user.FindFirstValue(ClaimTypes.NameIdentifier) ?? user.FindFirstValue("sub") ?? user.FindFirstValue("user_id");
+            username = user.FindFirstValue("preferred_username") ?? user.Identity?.Name;
+            email = user.FindFirstValue(ClaimTypes.Email) ?? user.FindFirstValue("email");
+            var allRoles = user.FindAll(ClaimTypes.Role).Select(c => c.Value)
+                .Concat(user.FindAll("role").Select(c => c.Value))
+                .ToList();
+            roles = allRoles.Count > 0 ? allRoles : null;
         }
 
-        var authResult = DetermineAuthResult(statusCode, hasAuthorization, isAuthenticated);
+        var authResult = statusCode switch
+        {
+            401 => "UNAUTHENTICATED",
+            403 => "FORBIDDEN",
+            _ when isAuthenticated => "AUTHENTICATED",
+            _ when hasAuthorization => "TOKEN_PRESENT_NOT_AUTHENTICATED",
+            _ => "NO_TOKEN"
+        };
 
-        return new AuthContext(
-            hasAuthorization,
-            authScheme,
-            isAuthenticated,
-            userId,
-            username,
-            email,
-            roles.Count > 0 ? roles : null,
-            authResult);
+        return (hasAuthorization, authScheme, isAuthenticated, userId, username, email, roles, authResult);
     }
 
-    private static string DetermineAuthResult(int statusCode, bool hasAuthorization, bool isAuthenticated)
+    private static string MaskAuthHeader(string? value)
     {
-        if (statusCode == StatusCodes.Status401Unauthorized)
-            return AuthResultTypes.Unauthenticated;
-        if (statusCode == StatusCodes.Status403Forbidden)
-            return AuthResultTypes.Forbidden;
-        if (isAuthenticated)
-            return AuthResultTypes.Authenticated;
-        if (hasAuthorization)
-            return AuthResultTypes.TokenPresentNotAuthenticated;
-        return AuthResultTypes.NoToken;
+        if (string.IsNullOrWhiteSpace(value)) return "";
+        if (value.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)) return "Bearer ***";
+        if (value.StartsWith("bearer ", StringComparison.OrdinalIgnoreCase)) return "bearer ***";
+        return "***";
+    }
+
+    private static bool IsSensitive(string fieldName) =>
+        SensitiveFields.Contains(fieldName, StringComparer.OrdinalIgnoreCase);
+
+    private static string? MaskSensitiveJson(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return json;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            return MaskElement(doc.RootElement).GetRawText();
+        }
+        catch (JsonException) { return json; }
+    }
+
+    private static JsonElement MaskElement(JsonElement element)
+    {
+        return element.ValueKind switch
+        {
+            JsonValueKind.Object => MaskObject(element),
+            JsonValueKind.Array => MaskArray(element),
+            _ => element
+        };
+    }
+
+    private static JsonElement MaskObject(JsonElement element)
+    {
+        using var ms = new MemoryStream();
+        using var writer = new Utf8JsonWriter(ms);
+
+        writer.WriteStartObject();
+        foreach (var prop in element.EnumerateObject())
+        {
+            writer.WritePropertyName(prop.Name);
+            if (IsSensitive(prop.Name)) writer.WriteStringValue("***");
+            else MaskElement(prop.Value).WriteTo(writer);
+        }
+        writer.WriteEndObject();
+        writer.Flush();
+
+        ms.Position = 0;
+        using var doc = JsonDocument.Parse(ms);
+        return doc.RootElement.Clone();
+    }
+
+    private static JsonElement MaskArray(JsonElement element)
+    {
+        using var ms = new MemoryStream();
+        using var writer = new Utf8JsonWriter(ms);
+
+        writer.WriteStartArray();
+        foreach (var item in element.EnumerateArray()) MaskElement(item).WriteTo(writer);
+        writer.WriteEndArray();
+        writer.Flush();
+
+        ms.Position = 0;
+        using var doc = JsonDocument.Parse(ms);
+        return doc.RootElement.Clone();
     }
 
     private async Task PublishLogAsync(LogEventMessage message)
     {
-        try
-        {
-            await _producer.PublishAsync(message);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Kafka publish failed. EventId={EventId} FlowId={FlowId}",
-                message.EventId, message.FlowId);
-        }
+        try { await _producer.PublishAsync(message); }
+        catch (Exception ex) { _logger.LogError(ex, "Kafka publish failed. EventId={EventId} FlowId={FlowId}", message.EventId, message.FlowId); }
     }
 }

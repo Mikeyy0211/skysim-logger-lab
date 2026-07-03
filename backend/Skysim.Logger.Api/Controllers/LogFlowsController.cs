@@ -84,6 +84,21 @@ public class LogFlowsController : ApiControllerBase
     }
 
     /// <summary>
+    /// Retrieves aggregate dashboard metrics across all log flows.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation.</param>
+    /// <returns>Aggregated counts by status and the average duration of completed flows.</returns>
+    /// <response code="200">Returns the dashboard metrics.</response>
+    [HttpGet("/api/dashboard/metrics")]
+    [ProducesResponseType(typeof(DashboardMetricsDto), StatusCodes.Status200OK)]
+    public async Task<ActionResult<DashboardMetricsDto>> GetDashboardMetrics(
+        CancellationToken cancellationToken)
+    {
+        var metrics = await _flowQueryService.GetDashboardMetricsAsync(cancellationToken);
+        return Ok(metrics);
+    }
+
+    /// <summary>
     /// Retrieves a paginated list of actions for a specific flow.
     /// </summary>
     /// <param name="flowId">The unique identifier of the flow.</param>
