@@ -15,6 +15,24 @@ public class LoggerMiddleware
 {
     private const string BearerScheme = "Bearer";
 
+    private static readonly string[] UserIdClaimTypes =
+    [
+        ClaimTypes.NameIdentifier,
+        "sub",
+        "user_id",
+        "userId",
+        "UserId",
+        "nameid",
+        "id"
+    ];
+
+    private static readonly string[] RoleClaimTypes =
+    [
+        ClaimTypes.Role,
+        "role",
+        "roles"
+    ];
+
     private static readonly string[] SensitiveFields =
     [
         "password",
@@ -33,15 +51,6 @@ public class LoggerMiddleware
     private readonly IKafkaLogProducer _producer;
     private readonly ILogger<LoggerMiddleware> _logger;
     private readonly string _serviceName;
-
-    // JWT validation inputs read from LoggerMiddlewareOptions.
-    // Values come from configuration / environment variables. Never commit a real JwtKey.
-    private readonly string _jwtKey;
-    private readonly string _jwtIssuer;
-    private readonly string _jwtAudience;
-    private readonly string? _jwtSubject;
-
-    // Pre-built once in the constructor to avoid re-allocating on every request.
     private readonly TokenValidationParameters? _jwtParameters;
 
     public LoggerMiddleware(
@@ -53,26 +62,24 @@ public class LoggerMiddleware
         _next = next;
         _producer = producer;
         _logger = logger;
+        _serviceName = options.Value.ServiceName;
 
-        var optionsValue = options.Value;
-        _serviceName = optionsValue.ServiceName;
-        _jwtKey = optionsValue.JwtKey ?? string.Empty;
-        _jwtIssuer = optionsValue.JwtIssuer ?? string.Empty;
-        _jwtAudience = optionsValue.JwtAudience ?? string.Empty;
-        _jwtSubject = string.IsNullOrWhiteSpace(optionsValue.JwtSubject) ? null : optionsValue.JwtSubject;
+        var jwtKey = options.Value.JwtKey ?? string.Empty;
+        var jwtIssuer = options.Value.JwtIssuer ?? string.Empty;
+        var jwtAudience = options.Value.JwtAudience ?? string.Empty;
 
-        if (!string.IsNullOrWhiteSpace(_jwtKey)
-            && !string.IsNullOrWhiteSpace(_jwtIssuer)
-            && !string.IsNullOrWhiteSpace(_jwtAudience))
+        if (!string.IsNullOrWhiteSpace(jwtKey)
+            && !string.IsNullOrWhiteSpace(jwtIssuer)
+            && !string.IsNullOrWhiteSpace(jwtAudience))
         {
             _jwtParameters = new TokenValidationParameters
             {
                 ValidateIssuer = true,
-                ValidIssuer = _jwtIssuer,
+                ValidIssuer = jwtIssuer,
                 ValidateAudience = true,
-                ValidAudience = _jwtAudience,
+                ValidAudience = jwtAudience,
                 ValidateIssuerSigningKey = true,
-                IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_jwtKey)),
+                IssuerSigningKey = new SymmetricSecurityKey(GetJwtKeyBytes(jwtKey)),
                 ValidateLifetime = true,
                 ClockSkew = TimeSpan.FromSeconds(30)
             };
@@ -300,22 +307,13 @@ public class LoggerMiddleware
 
         if (isAuthenticated)
         {
-            userAuthenticated = TryReadUserFromPrincipal(user, out userId, out username, out email, out roles);
+            userAuthenticated = ReadUserFromPrincipal(user, out userId, out username, out email, out roles);
         }
 
-        // Fallback: validate/decode JWT from raw Authorization header when HttpContext.User
-        // has not been populated (e.g. before UseAuthentication runs) or did not yield userId.
-        // Raw token is used in memory only and is never published.
         var tokenValidated = false;
         if (!userAuthenticated && token != null)
         {
-            tokenValidated = TryValidateJwt(
-                token,
-                out var jwtUserId,
-                out var jwtUsername,
-                out var jwtEmail,
-                out var jwtRoles);
-
+            tokenValidated = TryValidateJwt(token, out var jwtUserId, out var jwtUsername, out var jwtEmail, out var jwtRoles);
             if (tokenValidated)
             {
                 userId ??= jwtUserId;
@@ -325,7 +323,7 @@ public class LoggerMiddleware
             }
         }
 
-        var authResult = ResolveAuthResult(statusCode, isAuthenticated, hasAuthorization, tokenValidated);
+        var authResult = ResolveAuthResult(statusCode, userAuthenticated, hasAuthorization, tokenValidated);
 
         return (
             hasAuthorization,
@@ -339,17 +337,14 @@ public class LoggerMiddleware
         );
     }
 
-    private static bool TryReadUserFromPrincipal(
+    private static bool ReadUserFromPrincipal(
         ClaimsPrincipal user,
         out string? userId,
         out string? username,
         out string? email,
         out List<string>? roles)
     {
-        userId = user.FindFirstValue(ClaimTypes.NameIdentifier)
-            ?? user.FindFirstValue("sub")
-            ?? user.FindFirstValue("user_id")
-            ?? user.FindFirstValue("id");
+        userId = FirstNonEmptyClaim(user, UserIdClaimTypes);
 
         username = user.FindFirstValue("preferred_username")
             ?? user.FindFirstValue("username")
@@ -365,19 +360,26 @@ public class LoggerMiddleware
         return !string.IsNullOrEmpty(userId);
     }
 
+    private static string? FirstNonEmptyClaim(ClaimsPrincipal user, IReadOnlyList<string> claimTypes)
+    {
+        foreach (var type in claimTypes)
+        {
+            var value = user.FindFirstValue(type);
+            if (!string.IsNullOrWhiteSpace(value))
+                return value;
+        }
+        return null;
+    }
+
     private static List<string>? ExtractRoles(ClaimsPrincipal user)
     {
         var collected = new List<string>();
 
         foreach (var claim in user.Claims)
         {
-            if (!IsRoleClaimType(claim.Type))
+            if (!IsRoleClaimType(claim.Type) || string.IsNullOrWhiteSpace(claim.Value))
                 continue;
 
-            if (string.IsNullOrWhiteSpace(claim.Value))
-                continue;
-
-            // Comma-separated roles string (e.g. "Admin,User") is parsed into individual entries.
             foreach (var part in claim.Value.Split(',', StringSplitOptions.RemoveEmptyEntries))
             {
                 var trimmed = part.Trim();
@@ -391,9 +393,12 @@ public class LoggerMiddleware
 
     private static bool IsRoleClaimType(string claimType)
     {
-        return claimType == ClaimTypes.Role
-            || claimType.Equals("role", StringComparison.OrdinalIgnoreCase)
-            || claimType.Equals("roles", StringComparison.OrdinalIgnoreCase);
+        foreach (var roleType in RoleClaimTypes)
+        {
+            if (claimType.Equals(roleType, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        return false;
     }
 
     private bool TryValidateJwt(
@@ -414,28 +419,9 @@ public class LoggerMiddleware
         try
         {
             var handler = new JwtSecurityTokenHandler();
-            var principal = handler.ValidateToken(token, _jwtParameters, out var validatedToken);
+            var principal = handler.ValidateToken(token, _jwtParameters, out _);
 
-            if (validatedToken is not JwtSecurityToken jwtToken)
-                return false;
-
-            if (!string.IsNullOrEmpty(_jwtSubject))
-            {
-                var subjectClaim = jwtToken.Claims
-                    .FirstOrDefault(c => c.Type.Equals("sub", StringComparison.OrdinalIgnoreCase)
-                                         || c.Type.Equals("subject", StringComparison.OrdinalIgnoreCase));
-
-                if (subjectClaim == null || !string.Equals(subjectClaim.Value, _jwtSubject, StringComparison.Ordinal))
-                {
-                    _logger.LogDebug("JWT validation failed: subject claim mismatch.");
-                    return false;
-                }
-            }
-
-            userId = principal.FindFirstValue(ClaimTypes.NameIdentifier)
-                ?? principal.FindFirstValue("sub")
-                ?? principal.FindFirstValue("user_id")
-                ?? principal.FindFirstValue("id");
+            userId = FirstNonEmptyClaim(principal, UserIdClaimTypes);
 
             username = principal.FindFirstValue("preferred_username")
                 ?? principal.FindFirstValue("username")
@@ -452,8 +438,6 @@ public class LoggerMiddleware
         }
         catch (Exception ex) when (ex is SecurityTokenException || ex is ArgumentException || ex is FormatException)
         {
-            // Log only the exception type name to guarantee that the raw token
-            // (which is held in `token`) never reaches log output or downstream sinks.
             _logger.LogDebug("JWT validation failed. ExceptionType={ExceptionType}", ex.GetType().Name);
             return false;
         }
@@ -510,6 +494,18 @@ public class LoggerMiddleware
             return "Bearer ***";
 
         return "***";
+    }
+
+    private static byte[] GetJwtKeyBytes(string jwtKey)
+    {
+        try
+        {
+            return Convert.FromBase64String(jwtKey);
+        }
+        catch (FormatException)
+        {
+            return Encoding.UTF8.GetBytes(jwtKey);
+        }
     }
 
     private static bool IsSensitive(string fieldName)
