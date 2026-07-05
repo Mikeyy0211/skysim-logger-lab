@@ -22,6 +22,7 @@ public class LoggerMiddleware
         "user_id",
         "userId",
         "UserId",
+        "Id",
         "nameid",
         "id"
     ];
@@ -351,7 +352,8 @@ public class LoggerMiddleware
             ?? user.Identity?.Name;
 
         email = user.FindFirstValue(ClaimTypes.Email)
-            ?? user.FindFirstValue("email");
+            ?? user.FindFirstValue("email")
+            ?? user.FindFirstValue("Email");
 
         roles = ExtractRoles(user);
         if (roles != null && roles.Count == 0)
@@ -428,7 +430,8 @@ public class LoggerMiddleware
                 ?? principal.Identity?.Name;
 
             email = principal.FindFirstValue(ClaimTypes.Email)
-                ?? principal.FindFirstValue("email");
+                ?? principal.FindFirstValue("email")
+                ?? principal.FindFirstValue("Email");
 
             roles = ExtractRoles(principal);
             if (roles != null && roles.Count == 0)
