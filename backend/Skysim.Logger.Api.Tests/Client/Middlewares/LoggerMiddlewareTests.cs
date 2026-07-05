@@ -1,6 +1,5 @@
 using System.Text;
 using System.Text.Json;
-using System.Security.Claims;
 using FluentAssertions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
@@ -13,7 +12,6 @@ using LogEventMessage = Skysim.Logger.Contracts.Events.LogEventMessage;
 using StatusTypes = Skysim.Logger.Contracts.Constants.StatusTypes;
 using FlowTypes = Skysim.Logger.Contracts.Constants.FlowTypes;
 using ActionTypes = Skysim.Logger.Contracts.Constants.ActionTypes;
-using AuthResultTypes = Skysim.Logger.Contracts.Constants.AuthResultTypes;
 
 namespace Skysim.Logger.Api.Tests.Client.Middlewares;
 
@@ -532,6 +530,135 @@ public class LoggerMiddlewareTests
         message!.ServiceName.Should().Be("my-custom-service");
     }
 
+    [Fact]
+    public async Task InvokeAsync_AuthorizationHeaderInRequestHeaders_IsRaw_ForConsumerToMask()
+    {
+        // The middleware no longer masks Authorization. It must publish the raw value
+        // so the Logger Service Consumer can decode the token / mask sensitive data.
+        // Arrange
+        object? capturedPayload = null;
+        _producerMock
+            .Setup(p => p.PublishAsync(It.IsAny<object>(), It.IsAny<CancellationToken>()))
+            .Callback<object, CancellationToken>((payload, _) => capturedPayload = payload)
+            .Returns(Task.CompletedTask);
+
+        var middleware = CreateMiddleware();
+
+        var context = CreateHttpContext("GET", "/api/test");
+        context.Request.Headers["Authorization"] = "Bearer super-secret-token-12345";
+        context.Request.Headers["Content-Type"] = "application/json";
+
+        // Act
+        await middleware.InvokeAsync(context);
+
+        // Assert
+        capturedPayload.Should().NotBeNull();
+        var json = JsonSerializer.Serialize(capturedPayload!);
+        var message = JsonSerializer.Deserialize<LogEventMessage>(json, LogEventMessage.JsonOptions);
+        message.Should().NotBeNull();
+        message!.RequestHeaders.Should().ContainKey("Authorization");
+        message.RequestHeaders!["Authorization"].Should().Be("Bearer super-secret-token-12345");
+        message.RequestHeaders!["Content-Type"].Should().Be("application/json");
+    }
+
+    [Fact]
+    public async Task InvokeAsync_BasicAuthHeaderInRequestHeaders_IsRaw_ForConsumerToMask()
+    {
+        // Arrange
+        object? capturedPayload = null;
+        _producerMock
+            .Setup(p => p.PublishAsync(It.IsAny<object>(), It.IsAny<CancellationToken>()))
+            .Callback<object, CancellationToken>((payload, _) => capturedPayload = payload)
+            .Returns(Task.CompletedTask);
+
+        var middleware = CreateMiddleware();
+
+        var context = CreateHttpContext("GET", "/api/test");
+        context.Request.Headers["Authorization"] = "Basic dXNlcm5hbWU6cGFzc3dvcmQ=";
+
+        // Act
+        await middleware.InvokeAsync(context);
+
+        // Assert
+        capturedPayload.Should().NotBeNull();
+        var json = JsonSerializer.Serialize(capturedPayload!);
+        var message = JsonSerializer.Deserialize<LogEventMessage>(json, LogEventMessage.JsonOptions);
+        message.Should().NotBeNull();
+        message!.RequestHeaders.Should().ContainKey("Authorization");
+        message.RequestHeaders!["Authorization"].Should().Be("Basic dXNlcm5hbWU6cGFzc3dvcmQ=");
+    }
+
+    [Fact]
+    public async Task InvokeAsync_AllRequestHeaders_AreCaptured()
+    {
+        // The middleware captures every request header (no hard-coded allowlist).
+        // Arrange
+        object? capturedPayload = null;
+        _producerMock
+            .Setup(p => p.PublishAsync(It.IsAny<object>(), It.IsAny<CancellationToken>()))
+            .Callback<object, CancellationToken>((payload, _) => capturedPayload = payload)
+            .Returns(Task.CompletedTask);
+
+        var middleware = CreateMiddleware();
+
+        var context = CreateHttpContext("GET", "/api/test");
+        context.Request.Headers["X-Custom-Header"] = "custom-value";
+        context.Request.Headers["X-Another"] = "another-value";
+
+        // Act
+        await middleware.InvokeAsync(context);
+
+        // Assert
+        capturedPayload.Should().NotBeNull();
+        var json = JsonSerializer.Serialize(capturedPayload!);
+        var message = JsonSerializer.Deserialize<LogEventMessage>(json, LogEventMessage.JsonOptions);
+        message.Should().NotBeNull();
+        message!.RequestHeaders.Should().NotBeNull();
+        var headers = message.RequestHeaders!;
+        headers.Should().ContainKey("X-Custom-Header");
+        headers["X-Custom-Header"].Should().Be("custom-value");
+        headers.Should().ContainKey("X-Another");
+        headers["X-Another"].Should().Be("another-value");
+    }
+
+    [Fact]
+    public async Task InvokeAsync_DoesNotPublishAuthDerivedFields()
+    {
+        // The middleware no longer publishes userId/userEmail/username/roles/authResult/etc.
+        // Those values will be derived by the Logger Service Consumer instead.
+        // Arrange
+        object? capturedPayload = null;
+        _producerMock
+            .Setup(p => p.PublishAsync(It.IsAny<object>(), It.IsAny<CancellationToken>()))
+            .Callback<object, CancellationToken>((payload, _) => capturedPayload = payload)
+            .Returns(Task.CompletedTask);
+
+        var middleware = CreateMiddleware();
+
+        var context = CreateHttpContext("GET", "/api/test");
+        context.Request.Headers["Authorization"] = "Bearer some-token";
+
+        // Act
+        await middleware.InvokeAsync(context);
+
+        // Assert
+        capturedPayload.Should().NotBeNull();
+        var json = JsonSerializer.Serialize(capturedPayload!);
+
+        // JSON properties are case-insensitive here (default in JsonNamingPolicy).
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+
+        root.TryGetProperty("userId", out _).Should().BeFalse();
+        root.TryGetProperty("userEmail", out _).Should().BeFalse();
+        root.TryGetProperty("username", out _).Should().BeFalse();
+        root.TryGetProperty("roles", out _).Should().BeFalse();
+        root.TryGetProperty("authResult", out _).Should().BeFalse();
+        root.TryGetProperty("isAuthenticated", out _).Should().BeFalse();
+        root.TryGetProperty("authScheme", out _).Should().BeFalse();
+        root.TryGetProperty("hasAuthorization", out _).Should().BeFalse();
+    }
+
     private LoggerMiddleware CreateMiddleware(RequestDelegate? next = null)
     {
         var middlewareOptions = new LoggerMiddlewareOptions { ServiceName = "test-service" };
@@ -558,423 +685,5 @@ public class LoggerMiddlewareTests
     {
         var bytes = System.Text.Encoding.UTF8.GetBytes(body);
         return new MemoryStream(bytes);
-    }
-
-    // ==== Auth context tests ====
-
-    [Fact]
-    public async Task InvokeAsync_GuestRequest_SetsAuthFieldsCorrectly()
-    {
-        // Arrange
-        object? capturedPayload = null;
-        _producerMock
-            .Setup(p => p.PublishAsync(It.IsAny<object>(), It.IsAny<CancellationToken>()))
-            .Callback<object, CancellationToken>((payload, _) => capturedPayload = payload)
-            .Returns(Task.CompletedTask);
-
-        var middleware = CreateMiddleware();
-
-        var context = CreateHttpContext("GET", "/api/test");
-
-        // Act
-        await middleware.InvokeAsync(context);
-
-        // Assert
-        capturedPayload.Should().NotBeNull();
-        var json = JsonSerializer.Serialize(capturedPayload!);
-        var message = JsonSerializer.Deserialize<LogEventMessage>(json, LogEventMessage.JsonOptions);
-        message.Should().NotBeNull();
-        message!.HasAuthorization.Should().BeFalse();
-        message.AuthScheme.Should().BeNull();
-        message.IsAuthenticated.Should().BeFalse();
-        message.UserId.Should().BeNull();
-        message.Username.Should().BeNull();
-        message.UserEmail.Should().BeNull();
-        message.Roles.Should().BeNull();
-        message.AuthResult.Should().Be("NO_TOKEN");
-    }
-
-    [Fact]
-    public async Task InvokeAsync_TokenPresentButNotAuthenticated_SetsAuthResultTokenPresentNotAuthenticated()
-    {
-        // Arrange
-        object? capturedPayload = null;
-        _producerMock
-            .Setup(p => p.PublishAsync(It.IsAny<object>(), It.IsAny<CancellationToken>()))
-            .Callback<object, CancellationToken>((payload, _) => capturedPayload = payload)
-            .Returns(Task.CompletedTask);
-
-        var middleware = CreateMiddleware();
-
-        var context = CreateHttpContext("GET", "/api/test");
-        context.Request.Headers["Authorization"] = "Bearer some-invalid-token";
-
-        // Act
-        await middleware.InvokeAsync(context);
-
-        // Assert
-        capturedPayload.Should().NotBeNull();
-        var json = JsonSerializer.Serialize(capturedPayload!);
-        var message = JsonSerializer.Deserialize<LogEventMessage>(json, LogEventMessage.JsonOptions);
-        message.Should().NotBeNull();
-        message!.HasAuthorization.Should().BeTrue();
-        message.IsAuthenticated.Should().BeFalse();
-        message.AuthResult.Should().Be("TOKEN_PRESENT_NOT_AUTHENTICATED");
-    }
-
-    [Fact]
-    public async Task InvokeAsync_RequestWithAuthorizationHeader_SetsHasAuthorizationTrue()
-    {
-        // Arrange
-        object? capturedPayload = null;
-        _producerMock
-            .Setup(p => p.PublishAsync(It.IsAny<object>(), It.IsAny<CancellationToken>()))
-            .Callback<object, CancellationToken>((payload, _) => capturedPayload = payload)
-            .Returns(Task.CompletedTask);
-
-        var middleware = CreateMiddleware();
-
-        var context = CreateHttpContext("GET", "/api/test");
-        context.Request.Headers["Authorization"] = "Bearer some-token-value";
-
-        // Act
-        await middleware.InvokeAsync(context);
-
-        // Assert
-        capturedPayload.Should().NotBeNull();
-        var json = JsonSerializer.Serialize(capturedPayload!);
-        var message = JsonSerializer.Deserialize<LogEventMessage>(json, LogEventMessage.JsonOptions);
-        message.Should().NotBeNull();
-        message!.HasAuthorization.Should().BeTrue();
-        message.AuthScheme.Should().Be("Bearer");
-    }
-
-    [Fact]
-    public async Task InvokeAsync_RequestWithBasicAuth_SetsAuthSchemeCorrectly()
-    {
-        // Arrange
-        object? capturedPayload = null;
-        _producerMock
-            .Setup(p => p.PublishAsync(It.IsAny<object>(), It.IsAny<CancellationToken>()))
-            .Callback<object, CancellationToken>((payload, _) => capturedPayload = payload)
-            .Returns(Task.CompletedTask);
-
-        var middleware = CreateMiddleware();
-
-        var context = CreateHttpContext("GET", "/api/test");
-        context.Request.Headers["Authorization"] = "Basic dXNlcm5hbWU6cGFzc3dvcmQ=";
-
-        // Act
-        await middleware.InvokeAsync(context);
-
-        // Assert
-        capturedPayload.Should().NotBeNull();
-        var json = JsonSerializer.Serialize(capturedPayload!);
-        var message = JsonSerializer.Deserialize<LogEventMessage>(json, LogEventMessage.JsonOptions);
-        message.Should().NotBeNull();
-        message!.HasAuthorization.Should().BeTrue();
-        message.AuthScheme.Should().Be("Basic");
-    }
-
-    [Fact]
-    public async Task InvokeAsync_AuthenticatedUser_SetsUserFieldsCorrectly()
-    {
-        // Arrange
-        object? capturedPayload = null;
-        _producerMock
-            .Setup(p => p.PublishAsync(It.IsAny<object>(), It.IsAny<CancellationToken>()))
-            .Callback<object, CancellationToken>((payload, _) => capturedPayload = payload)
-            .Returns(Task.CompletedTask);
-
-        var middleware = CreateMiddleware();
-
-        var context = CreateHttpContext("GET", "/api/test");
-        context.Request.Headers["Authorization"] = "Bearer valid-token";
-
-        var claims = new[]
-        {
-            new Claim(ClaimTypes.NameIdentifier, "user-123"),
-            new Claim("sub", "user-123"),
-            new Claim("preferred_username", "johndoe"),
-            new Claim(ClaimTypes.Email, "john@example.com"),
-            new Claim(ClaimTypes.Role, "Admin"),
-            new Claim(ClaimTypes.Role, "User")
-        };
-        var identity = new ClaimsIdentity(claims, "Bearer");
-        context.User = new ClaimsPrincipal(identity);
-
-        // Act
-        await middleware.InvokeAsync(context);
-
-        // Assert
-        capturedPayload.Should().NotBeNull();
-        var json = JsonSerializer.Serialize(capturedPayload!);
-        var message = JsonSerializer.Deserialize<LogEventMessage>(json, LogEventMessage.JsonOptions);
-        message.Should().NotBeNull();
-        message!.IsAuthenticated.Should().BeTrue();
-        message.UserId.Should().Be("user-123");
-        message.Username.Should().Be("johndoe");
-        message.UserEmail.Should().Be("john@example.com");
-        message.Roles.Should().Contain("Admin");
-        message.Roles.Should().Contain("User");
-        message.AuthResult.Should().Be("AUTHENTICATED");
-    }
-
-    [Fact]
-    public async Task InvokeAsync_AuthenticatedUserWithSubClaim_SetsUserIdFromSub()
-    {
-        // Arrange
-        object? capturedPayload = null;
-        _producerMock
-            .Setup(p => p.PublishAsync(It.IsAny<object>(), It.IsAny<CancellationToken>()))
-            .Callback<object, CancellationToken>((payload, _) => capturedPayload = payload)
-            .Returns(Task.CompletedTask);
-
-        var middleware = CreateMiddleware();
-
-        var context = CreateHttpContext("GET", "/api/test");
-        context.Request.Headers["Authorization"] = "Bearer valid-token";
-
-        var claims = new[]
-        {
-            new Claim("sub", "user-456"),
-            new Claim("preferred_username", "janedoe")
-        };
-        var identity = new ClaimsIdentity(claims, "Bearer");
-        context.User = new ClaimsPrincipal(identity);
-
-        // Act
-        await middleware.InvokeAsync(context);
-
-        // Assert
-        capturedPayload.Should().NotBeNull();
-        var json = JsonSerializer.Serialize(capturedPayload!);
-        var message = JsonSerializer.Deserialize<LogEventMessage>(json, LogEventMessage.JsonOptions);
-        message.Should().NotBeNull();
-        message!.UserId.Should().Be("user-456");
-        message.Username.Should().Be("janedoe");
-    }
-
-    [Fact]
-    public async Task InvokeAsync_401Response_SetsAuthResultUnauthenticated()
-    {
-        // Arrange
-        object? capturedPayload = null;
-        _producerMock
-            .Setup(p => p.PublishAsync(It.IsAny<object>(), It.IsAny<CancellationToken>()))
-            .Callback<object, CancellationToken>((payload, _) => capturedPayload = payload)
-            .Returns(Task.CompletedTask);
-
-        var middleware = CreateMiddleware(ctx =>
-        {
-            ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
-            return Task.CompletedTask;
-        });
-
-        var context = CreateHttpContext("GET", "/api/test");
-        context.Request.Headers["Authorization"] = "Bearer some-token";
-
-        // Act
-        await middleware.InvokeAsync(context);
-
-        // Assert
-        capturedPayload.Should().NotBeNull();
-        var json = JsonSerializer.Serialize(capturedPayload!);
-        var message = JsonSerializer.Deserialize<LogEventMessage>(json, LogEventMessage.JsonOptions);
-        message.Should().NotBeNull();
-        message!.AuthResult.Should().Be("UNAUTHENTICATED");
-        message.StatusCode.Should().Be(401);
-    }
-
-    [Fact]
-    public async Task InvokeAsync_403Response_SetsAuthResultForbidden()
-    {
-        // Arrange
-        object? capturedPayload = null;
-        _producerMock
-            .Setup(p => p.PublishAsync(It.IsAny<object>(), It.IsAny<CancellationToken>()))
-            .Callback<object, CancellationToken>((payload, _) => capturedPayload = payload)
-            .Returns(Task.CompletedTask);
-
-        var middleware = CreateMiddleware(ctx =>
-        {
-            ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
-            return Task.CompletedTask;
-        });
-
-        var context = CreateHttpContext("GET", "/api/test");
-
-        // Act
-        await middleware.InvokeAsync(context);
-
-        // Assert
-        capturedPayload.Should().NotBeNull();
-        var json = JsonSerializer.Serialize(capturedPayload!);
-        var message = JsonSerializer.Deserialize<LogEventMessage>(json, LogEventMessage.JsonOptions);
-        message.Should().NotBeNull();
-        message!.AuthResult.Should().Be("FORBIDDEN");
-        message.StatusCode.Should().Be(403);
-    }
-
-    [Fact]
-    public async Task InvokeAsync_AuthorizationHeaderInRequestHeaders_IsMasked()
-    {
-        // Arrange
-        object? capturedPayload = null;
-        _producerMock
-            .Setup(p => p.PublishAsync(It.IsAny<object>(), It.IsAny<CancellationToken>()))
-            .Callback<object, CancellationToken>((payload, _) => capturedPayload = payload)
-            .Returns(Task.CompletedTask);
-
-        var middleware = CreateMiddleware();
-
-        var context = CreateHttpContext("GET", "/api/test");
-        context.Request.Headers["Authorization"] = "Bearer super-secret-token-12345";
-        context.Request.Headers["Content-Type"] = "application/json";
-
-        // Act
-        await middleware.InvokeAsync(context);
-
-        // Assert
-        capturedPayload.Should().NotBeNull();
-        var json = JsonSerializer.Serialize(capturedPayload!);
-        var message = JsonSerializer.Deserialize<LogEventMessage>(json, LogEventMessage.JsonOptions);
-        message.Should().NotBeNull();
-        message!.RequestHeaders.Should().ContainKey("Authorization");
-        message.RequestHeaders!["Authorization"].Should().Be("Bearer ***");
-        message.RequestHeaders!["Content-Type"].Should().Be("application/json");
-    }
-
-    [Fact]
-    public async Task InvokeAsync_BasicAuthHeaderInRequestHeaders_IsMasked()
-    {
-        // Arrange
-        object? capturedPayload = null;
-        _producerMock
-            .Setup(p => p.PublishAsync(It.IsAny<object>(), It.IsAny<CancellationToken>()))
-            .Callback<object, CancellationToken>((payload, _) => capturedPayload = payload)
-            .Returns(Task.CompletedTask);
-
-        var middleware = CreateMiddleware();
-
-        var context = CreateHttpContext("GET", "/api/test");
-        context.Request.Headers["Authorization"] = "Basic dXNlcm5hbWU6cGFzc3dvcmQ=";
-
-        // Act
-        await middleware.InvokeAsync(context);
-
-        // Assert
-        capturedPayload.Should().NotBeNull();
-        var json = JsonSerializer.Serialize(capturedPayload!);
-        var message = JsonSerializer.Deserialize<LogEventMessage>(json, LogEventMessage.JsonOptions);
-        message.Should().NotBeNull();
-        message!.RequestHeaders.Should().ContainKey("Authorization");
-        message.RequestHeaders!["Authorization"].Should().Be("***");
-    }
-
-    [Fact]
-    public async Task InvokeAsync_AuthenticatedWithRoleClaim_SetsRolesCorrectly()
-    {
-        // Arrange
-        object? capturedPayload = null;
-        _producerMock
-            .Setup(p => p.PublishAsync(It.IsAny<object>(), It.IsAny<CancellationToken>()))
-            .Callback<object, CancellationToken>((payload, _) => capturedPayload = payload)
-            .Returns(Task.CompletedTask);
-
-        var middleware = CreateMiddleware();
-
-        var context = CreateHttpContext("GET", "/api/test");
-        context.Request.Headers["Authorization"] = "Bearer valid-token";
-
-        var claims = new[]
-        {
-            new Claim(ClaimTypes.NameIdentifier, "user-789"),
-            new Claim(ClaimTypes.Role, "Admin"),
-            new Claim("role", "PowerUser")
-        };
-        var identity = new ClaimsIdentity(claims, "Bearer");
-        context.User = new ClaimsPrincipal(identity);
-
-        // Act
-        await middleware.InvokeAsync(context);
-
-        // Assert
-        capturedPayload.Should().NotBeNull();
-        var json = JsonSerializer.Serialize(capturedPayload!);
-        var message = JsonSerializer.Deserialize<LogEventMessage>(json, LogEventMessage.JsonOptions);
-        message.Should().NotBeNull();
-        message!.Roles.Should().NotBeNull();
-        message.Roles.Should().HaveCount(2);
-        message.Roles.Should().Contain("Admin");
-        message.Roles.Should().Contain("PowerUser");
-    }
-
-    [Fact]
-    public async Task InvokeAsync_AuthenticatedWithoutRoles_RolesIsNull()
-    {
-        // Arrange
-        object? capturedPayload = null;
-        _producerMock
-            .Setup(p => p.PublishAsync(It.IsAny<object>(), It.IsAny<CancellationToken>()))
-            .Callback<object, CancellationToken>((payload, _) => capturedPayload = payload)
-            .Returns(Task.CompletedTask);
-
-        var middleware = CreateMiddleware();
-
-        var context = CreateHttpContext("GET", "/api/test");
-        context.Request.Headers["Authorization"] = "Bearer valid-token";
-
-        var claims = new[]
-        {
-            new Claim(ClaimTypes.NameIdentifier, "user-no-roles")
-        };
-        var identity = new ClaimsIdentity(claims, "Bearer");
-        context.User = new ClaimsPrincipal(identity);
-
-        // Act
-        await middleware.InvokeAsync(context);
-
-        // Assert
-        capturedPayload.Should().NotBeNull();
-        var json = JsonSerializer.Serialize(capturedPayload!);
-        var message = JsonSerializer.Deserialize<LogEventMessage>(json, LogEventMessage.JsonOptions);
-        message.Should().NotBeNull();
-        message!.Roles.Should().BeNull();
-    }
-
-    [Fact]
-    public async Task InvokeAsync_AuthenticatedWithUserIdClaim_SetsUserIdFromUserIdClaim()
-    {
-        // Arrange
-        object? capturedPayload = null;
-        _producerMock
-            .Setup(p => p.PublishAsync(It.IsAny<object>(), It.IsAny<CancellationToken>()))
-            .Callback<object, CancellationToken>((payload, _) => capturedPayload = payload)
-            .Returns(Task.CompletedTask);
-
-        var middleware = CreateMiddleware();
-
-        var context = CreateHttpContext("GET", "/api/test");
-        context.Request.Headers["Authorization"] = "Bearer valid-token";
-
-        var claims = new[]
-        {
-            new Claim("user_id", "uid-123"),
-            new Claim(ClaimTypes.NameIdentifier, "cid-456")
-        };
-        var identity = new ClaimsIdentity(claims, "Bearer");
-        context.User = new ClaimsPrincipal(identity);
-
-        // Act
-        await middleware.InvokeAsync(context);
-
-        // Assert
-        capturedPayload.Should().NotBeNull();
-        var json = JsonSerializer.Serialize(capturedPayload!);
-        var message = JsonSerializer.Deserialize<LogEventMessage>(json, LogEventMessage.JsonOptions);
-        message.Should().NotBeNull();
-        // ClaimTypes.NameIdentifier is checked first, so it should take precedence
-        message!.UserId.Should().Be("cid-456");
     }
 }

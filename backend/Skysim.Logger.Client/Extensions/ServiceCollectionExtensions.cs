@@ -13,14 +13,6 @@ public static class ServiceCollectionExtensions
         {
             var section = configuration.GetSection(LoggerMiddlewareOptions.SectionName);
             section.Bind(opts);
-
-            var jwtSection = configuration.GetSection("Jwt");
-            opts.JwtKey = configuration["LoggerMiddleware:JwtKey"]
-                ?? jwtSection["Key"]
-                ?? string.Empty;
-            opts.JwtIssuer = jwtSection["Issuer"] ?? jwtSection["IssuerSigningKey"] ?? string.Empty;
-            opts.JwtAudience = jwtSection["Audience"] ?? string.Empty;
-            opts.JwtSubject = jwtSection["Subject"] ?? string.Empty;
         });
 
         var kafkaSection = configuration.GetSection("Kafka");

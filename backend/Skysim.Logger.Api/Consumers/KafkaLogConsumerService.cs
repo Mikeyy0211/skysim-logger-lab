@@ -9,6 +9,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Polly;
 using Skysim.Logger.Contracts.Events;
+using Skysim.Logger.Api.Auth;
 using Skysim.Logger.Api.Infrastructure.Persistence.Exceptions;
 using Skysim.Logger.Api.Kafka;
 using Skysim.Logger.Client.Masking;
@@ -29,6 +30,7 @@ public class KafkaLogConsumerService : BackgroundService
     private readonly IDlqPublisher _dlqPublisher;
     private readonly ILogger<KafkaLogConsumerService> _logger;
     private readonly ISensitiveDataMasker _masker;
+    private readonly IJwtAuthContextExtractor _authExtractor;
 
     private IConsumer<byte[], byte[]>? _consumer;
 
@@ -37,13 +39,15 @@ public class KafkaLogConsumerService : BackgroundService
         IOptions<KafkaConsumerOptions> options,
         IDlqPublisher dlqPublisher,
         ILogger<KafkaLogConsumerService> logger,
-        ISensitiveDataMasker masker)
+        ISensitiveDataMasker masker,
+        IJwtAuthContextExtractor authExtractor)
     {
         _scopeFactory = scopeFactory;
         _options = options.Value;
         _dlqPublisher = dlqPublisher;
         _logger = logger;
         _masker = masker;
+        _authExtractor = authExtractor;
     }
 
     private ResiliencePipeline CreateDbRetryPolicy()
@@ -161,6 +165,7 @@ public class KafkaLogConsumerService : BackgroundService
         }
 
         NormalizeServiceName(message);
+        EnrichWithAuthContextIfNeeded(message);
 
         using var validationScope = _scopeFactory.CreateScope();
         var validator = validationScope.ServiceProvider.GetRequiredService<IValidator<LogEventMessage>>();
@@ -541,6 +546,32 @@ public class KafkaLogConsumerService : BackgroundService
             authResult = message.AuthResult,
             correlationId = message.CorrelationId
         };
+    }
+
+    private void EnrichWithAuthContextIfNeeded(LogEventMessage message)
+    {
+        // Only extract from request headers when the message is an HTTP request,
+        // and the producer didn't already populate userId (e.g. business events).
+        if (message.ActionType != ActionTypes.HttpRequest)
+            return;
+
+        if (message.FlowType != FlowTypes.HttpAction)
+            return;
+
+        if (!string.IsNullOrEmpty(message.UserId))
+            return;
+
+        try
+        {
+            _authExtractor.Extract(message);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(
+                ex,
+                "Auth context extraction failed. EventId={EventId}",
+                message.EventId);
+        }
     }
 
     private static void NormalizeServiceName(LogEventMessage message)

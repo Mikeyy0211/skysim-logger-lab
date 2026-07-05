@@ -511,13 +511,20 @@ public class KafkaLogConsumerServicePersistenceTests
         var options = new KafkaConsumerOptions();
         var loggerMock = new Mock<ILogger<KafkaLogConsumerService>>();
         var masker = new SensitiveDataMasker();
+        var authExtractor = new NoopAuthExtractor();
 
         return new KafkaLogConsumerService(
             scopeFactoryMock.Object,
             Mock.Of<Microsoft.Extensions.Options.IOptions<KafkaConsumerOptions>>(o => o.Value == options),
             Mock.Of<IDlqPublisher>(),
             loggerMock.Object,
-            masker);
+            masker,
+            authExtractor);
+    }
+
+    private sealed class NoopAuthExtractor : Skysim.Logger.Api.Auth.IJwtAuthContextExtractor
+    {
+        public void Extract(LogEventMessage message) { /* no-op for tests */ }
     }
 
     private static Task InvokeTryUpsertDetailAsync(

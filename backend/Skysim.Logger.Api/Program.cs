@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.OpenApi;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
+using Skysim.Logger.Api.Auth;
 using Skysim.Logger.Api.Consumers;
 using Skysim.Logger.Api.Kafka;
 using Skysim.Logger.Api.Options;
@@ -56,6 +57,7 @@ builder.Services.AddSingleton<Skysim.Logger.Client.Masking.ISensitiveDataMasker,
 
 builder.Services.AddSingleton<IKafkaProducerFactory, KafkaProducerFactory>();
 builder.Services.AddSingleton<IDlqPublisher, DlqPublisher>();
+builder.Services.AddSingleton<IJwtAuthContextExtractor, JwtAuthContextExtractor>();
 
 builder.Services.AddSingleton<Skysim.Logger.Client.Producers.IKafkaLogProducer>(sp =>
 {
