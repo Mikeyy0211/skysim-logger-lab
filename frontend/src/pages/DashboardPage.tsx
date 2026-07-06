@@ -11,11 +11,31 @@ import type {
 
 const RECENT_PAGE_SIZE = 10;
 const EMPTY = '—';
+const MAX_USER_LENGTH = 28;
 
 function formatDuration(ms: number | null | undefined): string {
   if (ms == null) return EMPTY;
-  if (ms >= 1000) return `${(ms / 1000).toFixed(1)}s`;
-  return `${Math.round(ms)}ms`;
+  const value = ms;
+
+  if (value < 1000) {
+    return `${Math.round(value)}ms`;
+  }
+
+  if (value < 60_000) {
+    return `${(value / 1000).toFixed(1)}s`;
+  }
+
+  if (value < 3_600_000) {
+    const totalSeconds = Math.floor(value / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return seconds > 0 ? `${minutes}m ${seconds}s` : `${minutes}m`;
+  }
+
+  const totalSeconds = Math.floor(value / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
 }
 
 function formatDate(value: string | null | undefined): string {
@@ -23,6 +43,36 @@ function formatDate(value: string | null | undefined): string {
   const d = new Date(value);
   if (isNaN(d.getTime())) return EMPTY;
   return d.toLocaleString();
+}
+
+function resolveDisplayUser(flow: LogFlowSummary): {
+  value: string;
+  truncated: boolean;
+  full: string;
+} {
+  const email = flow.customerEmail?.trim();
+  if (email) {
+    return { value: email, truncated: false, full: email };
+  }
+
+  const userEmail = (flow as LogFlowSummary & { userEmail?: string | null }).userEmail?.trim();
+  if (userEmail) {
+    return { value: userEmail, truncated: false, full: userEmail };
+  }
+
+  const userId = flow.userId?.trim();
+  if (userId) {
+    if (userId.length <= MAX_USER_LENGTH) {
+      return { value: userId, truncated: false, full: userId };
+    }
+    return {
+      value: `${userId.slice(0, MAX_USER_LENGTH)}…`,
+      truncated: true,
+      full: userId,
+    };
+  }
+
+  return { value: EMPTY, truncated: false, full: '' };
 }
 
 export function DashboardPage() {
@@ -39,7 +89,7 @@ export function DashboardPage() {
         setIsLoading(true);
         setError(null);
 
-        const [metricsData, flows] = await Promise.all([
+        const [metricsData, flowsPaged] = await Promise.all([
           getDashboardMetrics(),
           getLogFlows({ page: 1, pageSize: RECENT_PAGE_SIZE }),
         ]);
@@ -47,7 +97,7 @@ export function DashboardPage() {
         if (cancelled) return;
 
         setMetrics(metricsData);
-        setRecentFlows(flows);
+        setRecentFlows(flowsPaged.items);
       } catch {
         if (!cancelled) setError('Unable to load dashboard data.');
       } finally {
@@ -71,23 +121,23 @@ export function DashboardPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
         <MetricCard
           title="Total Flows"
-          value={metrics ? metrics.totalFlows : EMPTY}
+          value={metrics?.totalFlows ?? null}
         />
         <MetricCard
           title="Success Flows"
-          value={metrics ? metrics.successFlows : EMPTY}
+          value={metrics?.successFlows ?? null}
         />
         <MetricCard
           title="Failed Flows"
-          value={metrics ? metrics.failedFlows : EMPTY}
+          value={metrics?.failedFlows ?? null}
         />
         <MetricCard
           title="Running Flows"
-          value={metrics ? metrics.runningFlows : EMPTY}
+          value={metrics?.runningFlows ?? null}
         />
         <MetricCard
           title="Partial Failed"
-          value={metrics ? metrics.partialFailed : EMPTY}
+          value={metrics?.partialFailed ?? null}
         />
         <MetricCard
           title="Average Duration"
@@ -155,6 +205,9 @@ export function DashboardPage() {
                     Status
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    User
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Last Action
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -166,33 +219,50 @@ export function DashboardPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {recentFlows.map((flow) => (
-                  <tr key={flow.flowId} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      <Link
-                        to={`/logs/${flow.flowId}`}
-                        className="text-blue-600 hover:text-blue-800 hover:underline"
+                {recentFlows.map((flow) => {
+                  const user = resolveDisplayUser(flow);
+                  const lastMessage = flow.lastMessage?.trim();
+
+                  return (
+                    <tr key={flow.flowId} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        <Link
+                          to={`/logs/${flow.flowId}`}
+                          className="text-blue-600 hover:text-blue-800 hover:underline"
+                        >
+                          {flow.flowId}
+                        </Link>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                        {flow.flowType}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <StatusBadge status={flow.status} />
+                      </td>
+                      <td
+                        className="px-6 py-4 whitespace-nowrap max-w-[240px] text-sm text-gray-700"
+                        title={user.truncated ? user.full : undefined}
                       >
-                        {flow.flowId}
-                      </Link>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                      {flow.flowType}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <StatusBadge status={flow.status} />
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                      {flow.lastActionType || EMPTY}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-600 max-w-xs truncate">
-                      {flow.lastMessage || EMPTY}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {formatDate(flow.updatedAt)}
-                    </td>
-                  </tr>
-                ))}
+                        {user.value}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                        {flow.lastActionType || EMPTY}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-600 max-w-[260px]">
+                        {lastMessage ? (
+                          <div className="truncate" title={lastMessage}>
+                            {lastMessage}
+                          </div>
+                        ) : (
+                          <span className="text-gray-400 italic">unknown</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {formatDate(flow.updatedAt)}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           )}

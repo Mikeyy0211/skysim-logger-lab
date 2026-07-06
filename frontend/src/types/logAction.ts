@@ -1,5 +1,3 @@
-export type ActionDetailType = 'REQUEST' | 'RESPONSE' | 'ERROR';
-
 export interface LogAction {
   actionId: string;
   flowId: string;
@@ -20,10 +18,10 @@ export interface LogAction {
   correlationId?: string | null;
 }
 
-export interface LogActionDetail {
-  actionId: string;
-  detailType: ActionDetailType;
-  payload: unknown;
-  masked: boolean;
-  createdAt: string;
+export interface LogActionDetailsResponse {
+  action: LogAction;
+  requestPayload?: string | null;
+  responsePayload?: string | null;
+  errorPayload?: string | null;
+  metadata?: string | null;
 }

@@ -1,22 +1,53 @@
 import { useEffect, useState } from 'react';
-import type { KeyboardEvent } from 'react';
+import type { KeyboardEvent, ChangeEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { PageHeader } from '../components/PageHeader';
 import { StatusBadge } from '../components/StatusBadge';
 import { CheckoutTypeBadge } from '../components/CheckoutTypeBadge';
 import { FlowIdCell } from '../components/FlowIdCell';
 import { getLogFlows } from '../services/logFlowService';
-import type { LogFlowSummary, PagedResponse } from '../types/logFlow';
+import type { LogFlowSummary } from '../types/logFlow';
 
 const PAGE_SIZE = 10;
 
 const EMPTY = '—';
+const MAX_USER_LENGTH = 28;
 
 function formatDate(value: string | null | undefined): string {
   if (!value) return EMPTY;
   const d = new Date(value);
   if (isNaN(d.getTime())) return EMPTY;
   return d.toLocaleString();
+}
+
+function resolveDisplayUser(flow: LogFlowSummary): {
+  value: string;
+  truncated: boolean;
+  full: string;
+} {
+  const email = flow.customerEmail?.trim();
+  if (email) {
+    return { value: email, truncated: false, full: email };
+  }
+
+  const userEmail = (flow as LogFlowSummary & { userEmail?: string | null }).userEmail?.trim();
+  if (userEmail) {
+    return { value: userEmail, truncated: false, full: userEmail };
+  }
+
+  const userId = flow.userId?.trim();
+  if (userId) {
+    if (userId.length <= MAX_USER_LENGTH) {
+      return { value: userId, truncated: false, full: userId };
+    }
+    return {
+      value: `${userId.slice(0, MAX_USER_LENGTH)}…`,
+      truncated: true,
+      full: userId,
+    };
+  }
+
+  return { value: EMPTY, truncated: false, full: '' };
 }
 
 export function LogListPage() {
@@ -29,6 +60,8 @@ export function LogListPage() {
   const [status, setStatus] = useState('');
   const [flowType, setFlowType] = useState('');
   const [checkoutType, setCheckoutType] = useState('');
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
 
   // Pagination state
   const [page, setPage] = useState(1);
@@ -47,22 +80,14 @@ export function LogListPage() {
       if (status) params.status = status;
       if (flowType) params.flowType = flowType;
       if (checkoutType) params.checkoutType = checkoutType;
+      if (fromDate) params.fromDate = fromDate;
+      if (toDate) params.toDate = toDate;
 
-      const response = await getLogFlows(
-        params as Parameters<typeof getLogFlows>[0]
-      );
+      const paged = await getLogFlows(params as Parameters<typeof getLogFlows>[0]);
 
-      const data = response;
-      if (Array.isArray(data)) {
-        setFlows(data);
-        setTotalPages(1);
-        setPage(1);
-      } else if (data && typeof data === 'object' && 'items' in data) {
-        const paged = data as PagedResponse<LogFlowSummary>;
-        setFlows(paged.items);
-        setPage(paged.page);
-        setTotalPages(paged.totalPages);
-      }
+      setFlows(paged.items);
+      setPage(paged.page);
+      setTotalPages(paged.totalPages);
     } catch {
       setError('Unable to load log flows.');
     } finally {
@@ -87,23 +112,37 @@ export function LogListPage() {
     fetchFlows(1);
   }
 
-  function handleStatusChange(e: React.ChangeEvent<HTMLSelectElement>) {
+  function handleStatusChange(e: ChangeEvent<HTMLSelectElement>) {
     const val = e.target.value;
     setStatus(val);
     setPage(1);
     fetchFlows(1);
   }
 
-  function handleFlowTypeChange(e: React.ChangeEvent<HTMLSelectElement>) {
+  function handleFlowTypeChange(e: ChangeEvent<HTMLSelectElement>) {
     const val = e.target.value;
     setFlowType(val);
     setPage(1);
     fetchFlows(1);
   }
 
-  function handleCheckoutTypeChange(e: React.ChangeEvent<HTMLSelectElement>) {
+  function handleCheckoutTypeChange(e: ChangeEvent<HTMLSelectElement>) {
     const val = e.target.value;
     setCheckoutType(val);
+    setPage(1);
+    fetchFlows(1);
+  }
+
+  function handleFromDateChange(e: ChangeEvent<HTMLInputElement>) {
+    const val = e.target.value;
+    setFromDate(val);
+    setPage(1);
+    fetchFlows(1);
+  }
+
+  function handleToDateChange(e: ChangeEvent<HTMLInputElement>) {
+    const val = e.target.value;
+    setToDate(val);
     setPage(1);
     fetchFlows(1);
   }
@@ -113,6 +152,8 @@ export function LogListPage() {
     setStatus('');
     setFlowType('');
     setCheckoutType('');
+    setFromDate('');
+    setToDate('');
     setPage(1);
     fetchFlows(1);
   }
@@ -142,8 +183,8 @@ export function LogListPage() {
 
       <div className="bg-white rounded-lg border border-gray-200 shadow-sm mb-6">
         <div className="p-4 border-b border-gray-200">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="sm:col-span-2 lg:col-span-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
+            <div className="lg:col-span-2">
               <label htmlFor="search" className="block text-sm font-medium text-gray-700 mb-1">
                 Search
               </label>
@@ -203,6 +244,30 @@ export function LogListPage() {
                 <option value="GUEST">Guest</option>
                 <option value="AUTHENTICATED">Authenticated</option>
               </select>
+            </div>
+            <div>
+              <label htmlFor="fromDate" className="block text-sm font-medium text-gray-700 mb-1">
+                From Date
+              </label>
+              <input
+                id="fromDate"
+                type="date"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                value={fromDate}
+                onChange={handleFromDateChange}
+              />
+            </div>
+            <div>
+              <label htmlFor="toDate" className="block text-sm font-medium text-gray-700 mb-1">
+                To Date
+              </label>
+              <input
+                id="toDate"
+                type="date"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                value={toDate}
+                onChange={handleToDateChange}
+              />
             </div>
           </div>
 
@@ -284,7 +349,7 @@ export function LogListPage() {
                       Status
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Customer
+                      User
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Checkout
@@ -296,6 +361,9 @@ export function LogListPage() {
                       Last Action
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Last Message
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Updated At
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -304,50 +372,74 @@ export function LogListPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {flows.map((flow) => (
-                    <tr key={flow.flowId} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <FlowIdCell flowId={flow.flowId} />
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <StatusBadge status={flow.status} />
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                        {flow.customerEmail ? (
-                          <div>
-                            <div>{flow.customerEmail}</div>
-                            {flow.customerPhone && (
-                              <div className="text-gray-400">{flow.customerPhone}</div>
-                            )}
-                          </div>
-                        ) : flow.customerPhone ? (
-                          flow.customerPhone
-                        ) : (
-                          EMPTY
-                        )}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <CheckoutTypeBadge checkoutType={flow.checkoutType} />
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                        {flow.lastServiceName || EMPTY}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                        {flow.lastActionType || EMPTY}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {formatDate(flow.updatedAt)}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm">
-                        <Link
-                          to={`/logs/${flow.flowId}`}
-                          className="text-blue-600 hover:text-blue-800 font-medium"
+                  {flows.map((flow) => {
+                    const user = resolveDisplayUser(flow);
+                    const checkoutValue = flow.checkoutType?.trim();
+                    const isHttp = !checkoutValue && flow.flowType === 'HTTP_ACTION';
+                    const lastService = flow.lastServiceName?.trim();
+                    const lastMessage = flow.lastMessage?.trim();
+
+                    return (
+                      <tr key={flow.flowId} className="hover:bg-gray-50">
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <FlowIdCell flowId={flow.flowId} />
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <StatusBadge status={flow.status} />
+                        </td>
+                        <td
+                          className="px-6 py-4 whitespace-nowrap max-w-[260px] text-sm text-gray-700"
+                          title={user.truncated ? user.full : undefined}
                         >
-                          View Detail
-                        </Link>
-                      </td>
-                    </tr>
-                  ))}
+                          {user.value}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          {checkoutValue ? (
+                            <CheckoutTypeBadge checkoutType={checkoutValue} />
+                          ) : isHttp ? (
+                            <span className="px-2 py-0.5 text-[11px] font-medium rounded-full bg-sky-100 text-sky-800 border border-sky-200">
+                              HTTP
+                            </span>
+                          ) : (
+                            <span className="text-sm text-gray-400">{EMPTY}</span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                          {lastService ? (
+                            lastService
+                          ) : (
+                            <span className="text-gray-400 italic">unknown</span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                          {flow.lastActionType || EMPTY}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-600 max-w-[280px]">
+                          {lastMessage ? (
+                            <div
+                              className="truncate"
+                              title={lastMessage}
+                            >
+                              {lastMessage}
+                            </div>
+                          ) : (
+                            <span className="text-gray-400 italic">unknown</span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {formatDate(flow.updatedAt)}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">
+                          <Link
+                            to={`/logs/${flow.flowId}`}
+                            className="text-blue-600 hover:text-blue-800 font-medium"
+                          >
+                            View Detail
+                          </Link>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
 

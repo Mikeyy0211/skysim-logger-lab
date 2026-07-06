@@ -7,7 +7,7 @@ import { MetricCard } from '../components/MetricCard';
 import { EmptyState } from '../components/EmptyState';
 import { getLogFlowById, getLogFlowActions, getLogActionDetails } from '../services/logFlowService';
 import type { LogFlowDetail } from '../types/logFlow';
-import type { LogAction, LogActionDetail } from '../types/logAction';
+import type { LogAction, LogActionDetailsResponse } from '../types/logAction';
 
 function formatFieldValue(value: string | null | undefined): string {
   return value ?? '—';
@@ -30,12 +30,292 @@ function formatDate(dateString: string | null | undefined): string {
   }
 }
 
-function safeStringify(payload: unknown): string {
+function parseJsonSafely(raw: string | null | undefined): unknown | null {
+  if (raw === null || raw === undefined || raw === '') return null;
+
+  if (typeof raw !== 'string') return raw;
+
   try {
-    return JSON.stringify(payload, null, 2);
+    return JSON.parse(raw);
   } catch {
-    return '—';
+    return null;
   }
+}
+
+function maskAuthorization(value: string): string {
+  if (typeof value !== 'string') return value;
+  if (value.length === 0) return value;
+  return value.replace(/(Bearer\s+)[^\s"']+/gi, '$1***');
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function prettyJson(value: unknown): string {
+  if (value === undefined) return '';
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
+function PrettyJsonBlock({ value, emptyText = 'No data' }: { value: unknown; emptyText?: string }) {
+  if (value === null || value === undefined || value === '') {
+    return <p className="text-xs text-gray-400 italic">{emptyText}</p>;
+  }
+
+  return (
+    <pre className="text-xs text-gray-800 overflow-x-auto bg-white p-3 rounded border border-gray-200 font-mono leading-relaxed max-h-64 overflow-y-auto whitespace-pre-wrap break-words">
+      {prettyJson(value)}
+    </pre>
+  );
+}
+
+function KeyValueRow({ label, value }: { label: string; value: string | number | boolean | null | undefined }) {
+  const display = value === null || value === undefined || value === '' ? '—' : String(value);
+
+  return (
+    <div className="flex items-baseline gap-2 text-xs py-1">
+      <span className="text-gray-500 w-32 flex-shrink-0">{label}</span>
+      <span className="text-gray-900 font-mono break-all">{display}</span>
+    </div>
+  );
+}
+
+function RequestPayloadView({ raw }: { raw: string | null | undefined }) {
+  if (raw === null || raw === undefined || raw === '') {
+    return <p className="text-xs text-gray-400 italic">No request captured.</p>;
+  }
+
+  const parsed = parseJsonSafely(raw);
+
+  if (!isPlainObject(parsed)) {
+    return <PrettyJsonBlock value={raw} />;
+  }
+
+  // Support both backend shapes:
+  // - canonical: { method, path, fullUrl, clientIp, query, headers, body }
+  // - legacy:    { method, path, fullUrl, clientIp, query, requestHeaders, requestBody, requestPayload }
+  const method = parsed.method;
+  const path = parsed.path;
+  const fullUrl = parsed.fullUrl;
+  const clientIp = parsed.clientIp;
+  const query = parsed.query ?? parsed.queryString;
+
+  const headersValue =
+    parsed.headers !== undefined
+      ? parsed.headers
+      : parsed.requestHeaders !== undefined
+        ? parsed.requestHeaders
+        : undefined;
+
+  const bodyValue =
+    parsed.body !== undefined
+      ? parsed.body
+      : parsed.requestBody !== undefined
+        ? parsed.requestBody
+        : parsed.requestPayload !== undefined
+          ? parsed.requestPayload
+          : undefined;
+
+  const hasStructuredShape =
+    method !== undefined ||
+    path !== undefined ||
+    fullUrl !== undefined ||
+    clientIp !== undefined ||
+    query !== undefined ||
+    headersValue !== undefined ||
+    bodyValue !== undefined;
+
+  if (!hasStructuredShape) {
+    return <PrettyJsonBlock value={parsed} />;
+  }
+
+  const headers = isPlainObject(headersValue) ? (headersValue as Record<string, string>) : null;
+  const maskedHeaders = headers
+    ? Object.fromEntries(
+        Object.entries(headers).map(([k, v]) => {
+          const key = k.toLowerCase();
+          if (key === 'authorization') {
+            return [k, maskAuthorization(typeof v === 'string' ? v : String(v))];
+          }
+          return [k, typeof v === 'string' ? v : prettyJson(v)];
+        }),
+      )
+    : null;
+
+  return (
+    <div className="space-y-3">
+      <div className="bg-white rounded border border-gray-200 p-3">
+        <KeyValueRow label="Method" value={(method as string | undefined) ?? null} />
+        <KeyValueRow label="Path" value={(path as string | undefined) ?? null} />
+        <KeyValueRow label="Full URL" value={(fullUrl as string | undefined) ?? null} />
+        <KeyValueRow label="Client IP" value={(clientIp as string | undefined) ?? null} />
+        {query !== undefined && (
+          <div className="py-1">
+            <p className="text-xs text-gray-500 mb-1">Query</p>
+            <pre className="text-xs text-gray-800 bg-gray-50 rounded p-2 border border-gray-200 font-mono whitespace-pre-wrap break-words">
+              {prettyJson(query)}
+            </pre>
+          </div>
+        )}
+      </div>
+
+      <div>
+        <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1">Headers</p>
+        {maskedHeaders ? (
+          <div className="bg-white rounded border border-gray-200 p-3">
+            {Object.entries(maskedHeaders).map(([k, v]) => (
+              <KeyValueRow key={k} label={k} value={v} />
+            ))}
+          </div>
+        ) : (
+          <p className="text-xs text-gray-400 italic">No headers captured.</p>
+        )}
+      </div>
+
+      <div>
+        <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1">Body</p>
+        <PrettyJsonBlock value={bodyValue ?? null} emptyText="No body captured." />
+      </div>
+    </div>
+  );
+}
+
+function ResponsePayloadView({ raw }: { raw: string | null | undefined }) {
+  if (raw === null || raw === undefined || raw === '') {
+    return <p className="text-xs text-gray-400 italic">No response captured.</p>;
+  }
+
+  const parsed = parseJsonSafely(raw);
+
+  if (!isPlainObject(parsed)) {
+    return <PrettyJsonBlock value={raw} />;
+  }
+
+  // Support both backend shapes:
+  // - canonical: { statusCode, headers, body, durationMs }
+  // - legacy:    { responseHeaders, responseBody }
+  const statusCode = parsed.statusCode;
+  const durationMs = parsed.durationMs;
+
+  const headersValue =
+    parsed.headers !== undefined
+      ? parsed.headers
+      : parsed.responseHeaders !== undefined
+        ? parsed.responseHeaders
+        : undefined;
+
+  const bodyValue =
+    parsed.body !== undefined
+      ? parsed.body
+      : parsed.responseBody !== undefined
+        ? parsed.responseBody
+        : undefined;
+
+  const hasStructuredShape =
+    statusCode !== undefined ||
+    durationMs !== undefined ||
+    headersValue !== undefined ||
+    bodyValue !== undefined;
+
+  if (!hasStructuredShape) {
+    return <PrettyJsonBlock value={parsed} />;
+  }
+
+  const headers = isPlainObject(headersValue) ? (headersValue as Record<string, string>) : null;
+  const maskedHeaders = headers
+    ? Object.fromEntries(
+        Object.entries(headers).map(([k, v]) => {
+          const key = k.toLowerCase();
+          if (key === 'authorization' || key === 'set-cookie') {
+            return [k, '***'];
+          }
+          return [k, typeof v === 'string' ? v : prettyJson(v)];
+        }),
+      )
+    : null;
+
+  return (
+    <div className="space-y-3">
+      <div className="bg-white rounded border border-gray-200 p-3">
+        <KeyValueRow label="Status Code" value={(statusCode as number | string | undefined) ?? null} />
+        <KeyValueRow label="Duration" value={durationMs !== undefined ? `${durationMs}ms` : null} />
+      </div>
+
+      <div>
+        <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1">Headers</p>
+        {maskedHeaders ? (
+          <div className="bg-white rounded border border-gray-200 p-3">
+            {Object.entries(maskedHeaders).map(([k, v]) => (
+              <KeyValueRow key={k} label={k} value={v} />
+            ))}
+          </div>
+        ) : (
+          <p className="text-xs text-gray-400 italic">No headers captured.</p>
+        )}
+      </div>
+
+      <div>
+        <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1">Body</p>
+        <PrettyJsonBlock value={bodyValue ?? null} emptyText="No body captured." />
+      </div>
+    </div>
+  );
+}
+
+function MetadataPayloadView({ raw }: { raw: string | null | undefined }) {
+  if (raw === null || raw === undefined || raw === '') {
+    return <p className="text-xs text-gray-400 italic">No metadata captured.</p>;
+  }
+
+  const parsed = parseJsonSafely(raw);
+
+  if (!isPlainObject(parsed)) {
+    return <PrettyJsonBlock value={raw} />;
+  }
+
+  const identity: Array<[string, unknown]> = [];
+  const rest: Record<string, unknown> = {};
+
+  for (const [k, v] of Object.entries(parsed)) {
+    if (k === 'userId' || k === 'userEmail' || k === 'username' || k === 'roles' || k === 'authResult') {
+      identity.push([k, v]);
+    } else {
+      rest[k] = v;
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      {identity.length > 0 && (
+        <div className="bg-blue-50 border border-blue-200 rounded p-3">
+          <p className="text-xs font-semibold text-blue-900 uppercase tracking-wide mb-1">Identity</p>
+          {identity.map(([k, v]) => (
+            <KeyValueRow
+              key={k}
+              label={k}
+              value={
+                typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean'
+                  ? (v as string | number | boolean)
+                  : prettyJson(v)
+              }
+            />
+          ))}
+        </div>
+      )}
+
+      <div>
+        {Object.keys(rest).length === 0 ? (
+          <p className="text-xs text-gray-400 italic">No additional metadata.</p>
+        ) : (
+          <PrettyJsonBlock value={rest} />
+        )}
+      </div>
+    </div>
+  );
 }
 
 export function LogDetailPage() {
@@ -43,7 +323,7 @@ export function LogDetailPage() {
 
   const [flow, setFlow] = useState<LogFlowDetail | null>(null);
   const [actions, setActions] = useState<LogAction[]>([]);
-  const [selectedActionDetails, setSelectedActionDetails] = useState<LogActionDetail[] | null>(null);
+  const [selectedActionDetails, setSelectedActionDetails] = useState<LogActionDetailsResponse | null>(null);
   const [selectedActionId, setSelectedActionId] = useState<string | null>(null);
 
   const [isLoadingFlow, setIsLoadingFlow] = useState(true);
@@ -425,22 +705,71 @@ export function LogDetailPage() {
                             Retry
                           </button>
                         </div>
-                      ) : selectedActionDetails && selectedActionDetails.length > 0 ? (
-                        <div className="bg-gray-50 rounded-lg p-4 space-y-4">
-                          {selectedActionDetails.map((detail) => (
-                            <div key={detail.detailType}>
-                              <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1">
-                                {detail.detailType}
-                                {detail.masked && (
-                                  <span className="ml-2 text-gray-400 font-normal normal-case tracking-normal">(masked)</span>
-                                )}
+                      ) : selectedActionDetails ? (
+                        <div className="space-y-5">
+                            <section>
+                              <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">
+                                Action Overview
                               </h4>
-                              <pre className="text-xs text-gray-700 overflow-x-auto bg-white p-3 rounded border border-gray-200 font-mono leading-relaxed max-h-64 overflow-y-auto">
-                                {safeStringify(detail.payload)}
-                              </pre>
-                            </div>
-                          ))}
-                        </div>
+                              <div className="bg-white rounded border border-gray-200 p-3 grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-2 text-xs">
+                                <KeyValueRow label="Action Type" value={selectedActionDetails.action.actionType} />
+                                <div>
+                                  <span className="text-gray-500">Status: </span>
+                                  <span className="text-gray-900">{selectedActionDetails.action.status}</span>
+                                </div>
+                                <KeyValueRow label="Service" value={selectedActionDetails.action.serviceName} />
+                                <KeyValueRow label="Message" value={selectedActionDetails.action.message ?? null} />
+                                <KeyValueRow label="Duration" value={formatDuration(selectedActionDetails.action.durationMs)} />
+                                <KeyValueRow label="Started" value={formatDate(selectedActionDetails.action.createdAt)} />
+                                <KeyValueRow label="Finished" value={formatDate(selectedActionDetails.action.finishedAt)} />
+                                {selectedActionDetails.action.errorCode && (
+                                  <KeyValueRow label="Error Code" value={selectedActionDetails.action.errorCode} />
+                                )}
+                                {selectedActionDetails.action.errorMessage && (
+                                  <div className="md:col-span-2">
+                                    <span className="text-gray-500">Error Message: </span>
+                                    <span className="text-gray-900 break-words">{selectedActionDetails.action.errorMessage}</span>
+                                  </div>
+                                )}
+                              </div>
+                            </section>
+
+                            <section>
+                              <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">
+                                Request
+                              </h4>
+                              <RequestPayloadView raw={selectedActionDetails.requestPayload ?? null} />
+                            </section>
+
+                            <section>
+                              <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">
+                                Response
+                              </h4>
+                              <ResponsePayloadView raw={selectedActionDetails.responsePayload ?? null} />
+                            </section>
+
+                            <section>
+                              <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">
+                                Error
+                              </h4>
+                              {selectedActionDetails.errorPayload === null ||
+                              selectedActionDetails.errorPayload === undefined ||
+                              selectedActionDetails.errorPayload === '' ? (
+                                <p className="text-xs text-gray-400 italic">No error captured.</p>
+                              ) : (
+                                <PrettyJsonBlock
+                                  value={parseJsonSafely(selectedActionDetails.errorPayload) ?? selectedActionDetails.errorPayload}
+                                />
+                              )}
+                            </section>
+
+                            <section>
+                              <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">
+                                Metadata
+                              </h4>
+                              <MetadataPayloadView raw={selectedActionDetails.metadata ?? null} />
+                            </section>
+                          </div>
                       ) : (
                         <p className="text-sm text-gray-400 italic">No details available for this action.</p>
                       )}

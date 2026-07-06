@@ -1,11 +1,11 @@
 import { apiClient } from './api';
 import type {
-  LogFlowListResponse,
   LogFlowSummary,
   LogFlowDetail,
+  PagedResponse,
   DashboardMetrics,
 } from '../types/logFlow';
-import type { LogAction, LogActionDetail } from '../types/logAction';
+import type { LogAction, LogActionDetailsResponse } from '../types/logAction';
 
 export interface LogFlowListParams {
   page?: number;
@@ -14,21 +14,45 @@ export interface LogFlowListParams {
   status?: string;
   flowType?: string;
   checkoutType?: string;
+  fromDate?: string;
+  toDate?: string;
 }
 
-export async function getLogFlows(params?: LogFlowListParams): Promise<LogFlowSummary[]> {
-  const response = await apiClient.get<LogFlowListResponse>('/api/log-flows', { params });
+export async function getLogFlows(params?: LogFlowListParams): Promise<PagedResponse<LogFlowSummary>> {
+  const response = await apiClient.get<PagedResponse<LogFlowSummary> | LogFlowSummary[]>(
+    '/api/log-flows',
+    { params }
+  );
   const data = response.data;
 
   if (Array.isArray(data)) {
-    return data;
+    return {
+      items: data,
+      page: 1,
+      pageSize: data.length,
+      totalItems: data.length,
+      totalPages: 1,
+    };
   }
 
   if (data && typeof data === 'object' && 'items' in data) {
-    return data.items;
+    const paged = data as PagedResponse<LogFlowSummary>;
+    return {
+      items: Array.isArray(paged.items) ? paged.items : [],
+      page: paged.page ?? 1,
+      pageSize: paged.pageSize ?? (Array.isArray(paged.items) ? paged.items.length : 0),
+      totalItems: paged.totalItems ?? (Array.isArray(paged.items) ? paged.items.length : 0),
+      totalPages: paged.totalPages ?? 1,
+    };
   }
 
-  return [];
+  return {
+    items: [],
+    page: 1,
+    pageSize: 0,
+    totalItems: 0,
+    totalPages: 1,
+  };
 }
 
 export async function getLogFlowById(flowId: string): Promise<LogFlowDetail> {
@@ -95,19 +119,20 @@ export async function getLogFlowActions(flowId: string): Promise<LogAction[]> {
   return [];
 }
 
-export async function getLogActionDetails(actionId: string): Promise<LogActionDetail[]> {
-  const response = await apiClient.get<LogActionDetail[] | LogActionDetail>(
+export async function getLogActionDetails(actionId: string): Promise<LogActionDetailsResponse> {
+  const response = await apiClient.get<LogActionDetailsResponse>(
     `/api/log-actions/${actionId}/details`
   );
   const data = response.data;
 
-  if (Array.isArray(data)) {
+  if (data && typeof data === 'object' && 'action' in data) {
     return data;
   }
 
-  if (data && typeof data === 'object' && 'detailType' in data) {
-    return [data];
+  const envelope = data as { data?: LogActionDetailsResponse } | null;
+  if (envelope && envelope.data && typeof envelope.data === 'object' && 'action' in envelope.data) {
+    return envelope.data;
   }
 
-  return [];
+  throw new Error('Invalid action details response');
 }

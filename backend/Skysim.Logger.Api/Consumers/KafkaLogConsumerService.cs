@@ -289,9 +289,15 @@ public class KafkaLogConsumerService : BackgroundService
 
     private static void MapFlowFromMessage(LogFlow flow, LogEventMessage message)
     {
-        // 1.2: Upgrade flowType: set to CHECKOUT_ESIM for business messages.
-        // Handles both new flows (string.Empty -> CHECKOUT_ESIM) and HTTP_ACTION -> CHECKOUT_ESIM upgrades.
-        if (message.FlowType == FlowTypes.CheckoutEsim)
+        // 1.2: Set flowType from message when safe.
+        // - Set when current is empty (new flow) so HTTP_ACTION-only flows are persisted.
+        // - Always allow CHECKOUT_ESIM to upgrade HTTP_ACTION or empty.
+        // - Never downgrade an existing CHECKOUT_ESIM to HTTP_ACTION (avoids
+        //   HTTP_REQUEST middleware events clobbering business flow type).
+        if (!string.IsNullOrWhiteSpace(message.FlowType) &&
+            (string.IsNullOrWhiteSpace(flow.FlowType) ||
+             flow.FlowType == FlowTypes.HttpAction ||
+             message.FlowType == FlowTypes.CheckoutEsim))
         {
             flow.FlowType = message.FlowType;
         }
