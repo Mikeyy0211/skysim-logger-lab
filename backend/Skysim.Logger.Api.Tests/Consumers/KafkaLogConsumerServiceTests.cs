@@ -414,7 +414,11 @@ public class MapFlowFromMessageMergeTests
         string? customerEmail = null,
         string? customerPhone = null,
         string? userId = null,
+        string? userEmail = null,
+        string? username = null,
+        string? partnerId = null,
         string? orderId = null,
+        string? orderCode = null,
         string? paymentId = null,
         string? message = null)
     {
@@ -431,7 +435,11 @@ public class MapFlowFromMessageMergeTests
             CustomerEmail = customerEmail,
             CustomerPhone = customerPhone,
             UserId = userId,
+            UserEmail = userEmail,
+            Username = username,
+            PartnerId = partnerId,
             OrderId = orderId,
+            OrderCode = orderCode,
             PaymentId = paymentId,
             Message = message
         };
@@ -735,6 +743,90 @@ public class MapFlowFromMessageMergeTests
         flow.CompletedAt.Should().NotBeNull();
     }
 
+    [Fact]
+    public void MapFlowFromMessage_AuthFieldsMerged_UsesIncomingNonNullValues()
+    {
+        // Arrange
+        var flow = CreateFlow(FlowTypes.CheckoutEsim);
+        flow.UserId = "existing-user";
+        flow.UserEmail = "existing@example.com";
+        flow.Username = null;
+        flow.PartnerId = null;
+        flow.OrderCode = null;
+
+        var message = CreateMessage(
+            flowId: "auth-flow",
+            flowType: FlowTypes.CheckoutEsim,
+            actionType: ActionTypes.OrderCreated,
+            status: StatusTypes.Success,
+            userId: "new-user",
+            userEmail: "new@example.com",
+            username: "newname",
+            partnerId: "partner-999",
+            orderCode: "ORD-CODE-001");
+
+        // Act
+        MapFlowFromMessage(flow, message);
+
+        // Assert
+        flow.UserId.Should().Be("existing-user"); // preserved (incoming was non-null but existing was also non-null)
+        flow.UserEmail.Should().Be("existing@example.com"); // preserved
+        flow.Username.Should().Be("newname"); // filled
+        flow.PartnerId.Should().Be("partner-999"); // filled
+        flow.OrderCode.Should().Be("ORD-CODE-001"); // filled
+    }
+
+    [Fact]
+    public void MapFlowFromMessage_AuthFieldsMerged_PreservesExistingNonNullValues()
+    {
+        // Arrange
+        var flow = CreateFlow(FlowTypes.CheckoutEsim);
+        flow.UserId = "existing-user";
+        flow.UserEmail = "existing@example.com";
+        flow.Username = "existinguser";
+        flow.PartnerId = "partner-existing";
+
+        var message = CreateMessage(
+            flowId: "auth-flow-2",
+            flowType: FlowTypes.CheckoutEsim,
+            actionType: ActionTypes.PaymentSuccess,
+            status: StatusTypes.Success,
+            userId: null,
+            userEmail: null,
+            username: null,
+            partnerId: null);
+
+        // Act
+        MapFlowFromMessage(flow, message);
+
+        // Assert
+        flow.UserId.Should().Be("existing-user"); // preserved
+        flow.UserEmail.Should().Be("existing@example.com"); // preserved
+        flow.Username.Should().Be("existinguser"); // preserved
+        flow.PartnerId.Should().Be("partner-existing"); // preserved
+    }
+
+    [Fact]
+    public void MapFlowFromMessage_OrderCodeMerged()
+    {
+        // Arrange
+        var flow = CreateFlow(FlowTypes.CheckoutEsim);
+        flow.OrderCode = null;
+
+        var message = CreateMessage(
+            flowId: "order-flow",
+            flowType: FlowTypes.CheckoutEsim,
+            actionType: ActionTypes.OrderCreated,
+            status: StatusTypes.Success,
+            orderCode: "ORD-CODE-123");
+
+        // Act
+        MapFlowFromMessage(flow, message);
+
+        // Assert
+        flow.OrderCode.Should().Be("ORD-CODE-123");
+    }
+
     private static void MapFlowFromMessage(LogFlow flow, LogEventMessage message)
     {
         // Set flowType from message when safe.
@@ -755,7 +847,11 @@ public class MapFlowFromMessageMergeTests
         flow.CustomerEmail ??= message.CustomerEmail;
         flow.CustomerPhone ??= message.CustomerPhone;
         flow.UserId ??= message.UserId;
+        flow.UserEmail ??= message.UserEmail;
+        flow.Username ??= message.Username;
+        flow.PartnerId ??= message.PartnerId;
         flow.OrderId ??= message.OrderId;
+        flow.OrderCode ??= message.OrderCode;
         flow.PaymentId ??= message.PaymentId;
 
         // Update status from latest event
@@ -1098,10 +1194,115 @@ public class NormalizeServiceNameTests
         result.ShouldNotHaveValidationErrorFor(x => x.ServiceName);
     }
 
+    [Fact]
+    public void NormalizeServiceName_UnknownServiceNameWithXForwardedPrefixPartner_DerivesPartnerService()
+    {
+        // Arrange - "unknown" must be treated as missing and derived from header
+        var message = CreateHttpActionMessage("unknown");
+        message.RequestHeaders = new Dictionary<string, string>
+        {
+            { "X-Forwarded-Prefix", "/apis/partner" }
+        };
+
+        // Act
+        NormalizeServiceName(message);
+
+        // Assert
+        message.ServiceName.Should().Be("partner-service");
+    }
+
+    [Fact]
+    public void NormalizeServiceName_UnknownServiceServiceNameWithXForwardedPrefixPartner_DerivesPartnerService()
+    {
+        // Arrange - "unknown-service" must be treated as missing and derived from header
+        var message = CreateHttpActionMessage("unknown-service");
+        message.RequestHeaders = new Dictionary<string, string>
+        {
+            { "X-Forwarded-Prefix", "/apis/partner" }
+        };
+
+        // Act
+        NormalizeServiceName(message);
+
+        // Assert
+        message.ServiceName.Should().Be("partner-service");
+    }
+
+    [Fact]
+    public void NormalizeServiceName_ExistingRealServiceName_DoesNotOverwrite()
+    {
+        // Arrange - real serviceName must not be overwritten even when header is present
+        var message = CreateHttpActionMessage("checkout-service");
+        message.RequestHeaders = new Dictionary<string, string>
+        {
+            { "X-Forwarded-Prefix", "/apis/partner" }
+        };
+
+        // Act
+        NormalizeServiceName(message);
+
+        // Assert
+        message.ServiceName.Should().Be("checkout-service");
+    }
+
+    [Fact]
+    public void NormalizeServiceName_UnknownServiceName_PathPartner_DerivesPartnerService()
+    {
+        // Arrange - fallback to Path when no header
+        var message = CreateHttpActionMessage("unknown");
+        message.RequestHeaders = new Dictionary<string, string>();
+        message.Path = "/apis/partner/order/create";
+        message.FullUrl = null;
+
+        // Act
+        NormalizeServiceName(message);
+
+        // Assert
+        message.ServiceName.Should().Be("partner-service");
+    }
+
+    [Theory]
+    [InlineData("payment", "payment-service")]
+    [InlineData("customer", "customer-service")]
+    [InlineData("admin", "admin-service")]
+    [InlineData("provider", "provider-service")]
+    [InlineData("notification", "notification-service")]
+    [InlineData("partner", "partner-service")]
+    public void NormalizeServiceName_XForwardedPrefix_MapsToKnownService(string segment, string expected)
+    {
+        var message = CreateHttpActionMessage("unknown");
+        message.RequestHeaders = new Dictionary<string, string>
+        {
+            { "X-Forwarded-Prefix", $"/apis/{segment}" }
+        };
+
+        NormalizeServiceName(message);
+
+        message.ServiceName.Should().Be(expected);
+    }
+
+    [Theory]
+    [InlineData("payment", "payment-service")]
+    [InlineData("customer", "customer-service")]
+    [InlineData("admin", "admin-service")]
+    [InlineData("provider", "provider-service")]
+    [InlineData("notification", "notification-service")]
+    public void NormalizeServiceName_PathApis_MapsToKnownService(string segment, string expected)
+    {
+        var message = CreateHttpActionMessage("unknown");
+        message.RequestHeaders = new Dictionary<string, string>();
+        message.Path = $"/apis/{segment}/some/resource";
+        message.FullUrl = null;
+
+        NormalizeServiceName(message);
+
+        message.ServiceName.Should().Be(expected);
+    }
+
     // Mirror the static methods from KafkaLogConsumerService for testing
     private static void NormalizeServiceName(LogEventMessage message)
     {
-        if (!string.IsNullOrEmpty(message.ServiceName))
+        if (HasRealServiceName(message.ServiceName))
         {
             return;
         }
@@ -1134,7 +1335,7 @@ public class NormalizeServiceNameTests
         if (!string.IsNullOrEmpty(message.Path))
         {
             message.ServiceName = ParseServiceNameFromPath(message.Path);
-            if (!string.IsNullOrEmpty(message.ServiceName))
+            if (HasRealServiceName(message.ServiceName))
             {
                 return;
             }
@@ -1143,10 +1344,30 @@ public class NormalizeServiceNameTests
         if (!string.IsNullOrEmpty(message.FullUrl))
         {
             message.ServiceName = ParseServiceNameFromPath(message.FullUrl);
-            return;
+            if (HasRealServiceName(message.ServiceName))
+            {
+                return;
+            }
         }
 
         message.ServiceName = "unknown-service";
+    }
+
+    private static bool HasRealServiceName(string? value)
+    {
+        if (string.IsNullOrEmpty(value))
+        {
+            return false;
+        }
+
+        var trimmed = value.Trim();
+        if (trimmed.Length == 0)
+        {
+            return false;
+        }
+
+        return !trimmed.Equals("unknown", StringComparison.OrdinalIgnoreCase)
+            && !trimmed.Equals("unknown-service", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool TryGetHeader(Dictionary<string, string> headers, string key, out string value)
@@ -1180,14 +1401,7 @@ public class NormalizeServiceNameTests
         }
 
         var lastSegment = segments[^1];
-        return lastSegment.ToLowerInvariant() switch
-        {
-            "partner" => "partner-service",
-            "admin" => "admin-service",
-            "user" => "user-service",
-            "payment" => "payment-service",
-            _ => lastSegment.ToLowerInvariant() + "-service"
-        };
+        return MapSegmentToServiceName(lastSegment);
     }
 
     private static string ParseServiceNameFromPath(string pathOrUrl)
@@ -1225,31 +1439,26 @@ public class NormalizeServiceNameTests
             prefixSegment = segments[1];
         }
 
-        if (prefixSegment.Equals("partner", StringComparison.OrdinalIgnoreCase))
+        return MapSegmentToServiceName(prefixSegment);
+    }
+
+    private static string MapSegmentToServiceName(string segment)
+    {
+        if (string.IsNullOrEmpty(segment))
         {
-            return "partner-service";
+            return "unknown-service";
         }
 
-        if (prefixSegment.Equals("admin", StringComparison.OrdinalIgnoreCase))
+        return segment.ToLowerInvariant() switch
         {
-            return "admin-service";
-        }
-
-        if (prefixSegment.Equals("user", StringComparison.OrdinalIgnoreCase))
-        {
-            return "user-service";
-        }
-
-        if (prefixSegment.Equals("payment", StringComparison.OrdinalIgnoreCase))
-        {
-            return "payment-service";
-        }
-
-        if (prefixSegment.StartsWith("api", StringComparison.OrdinalIgnoreCase))
-        {
-            return prefixSegment.ToLowerInvariant() + "-service";
-        }
-
-        return prefixSegment.ToLowerInvariant() + "-service";
+            "partner" => "partner-service",
+            "payment" => "payment-service",
+            "customer" => "customer-service",
+            "admin" => "admin-service",
+            "provider" => "provider-service",
+            "notification" => "notification-service",
+            "user" => "user-service",
+            _ => segment.ToLowerInvariant() + "-service"
+        };
     }
 }

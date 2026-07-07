@@ -94,6 +94,7 @@ public class JwtAuthContextExtractorTests
         message.Roles.Should().NotBeNull();
         message.Roles!.Should().Contain("Admin");
         message.Roles.Should().Contain("User");
+        message.PartnerId.Should().BeNull();
     }
 
     [Fact]
@@ -153,9 +154,185 @@ public class JwtAuthContextExtractorTests
         message.UserId.Should().Be("user-1");
     }
 
-    private static JwtAuthContextExtractor CreateExtractor(JwtOptions? configureOptions = null)
+    // === PM-style token: HS512, Issuer = InventoryAuthenticationServer, Audience = InventoryServiceAppClient, claims Id + Email ===
+    [Fact]
+    public void Extract_Hs512TokenWithIdAndEmailClaims_ExtractsUserIdAndEmail()
     {
-        var options = configureOptions ?? new JwtOptions
+        var signingKey = "pm-signing-key-must-be-at-least-64-bytes-long-for-hs512-signing-secret!!";
+        var token = CreateJwt(
+            new[]
+            {
+                new Claim("Id", "pm-user-42"),
+                new Claim("Email", "pm.user@example.com")
+            },
+            issuer: "InventoryAuthenticationServer",
+            audience: "InventoryServiceAppClient",
+            algorithm: SecurityAlgorithms.HmacSha512,
+            signingKey: signingKey);
+
+        var extractor = CreateExtractor(new ConsumerJwtOptions
+        {
+            Key = signingKey,
+            Issuer = "InventoryAuthenticationServer",
+            Audience = "InventoryServiceAppClient"
+        });
+
+        var message = new LogEventMessage
+        {
+            RequestHeaders = new() { ["Authorization"] = $"Bearer {token}" }
+        };
+
+        extractor.Extract(message);
+
+        message.IsAuthenticated.Should().BeTrue();
+        message.AuthResult.Should().Be("AUTHENTICATED");
+        message.UserId.Should().Be("pm-user-42");
+        message.UserEmail.Should().Be("pm.user@example.com");
+    }
+
+    [Fact]
+    public void Extract_PartnerIdClaim_ExtractsPartnerId()
+    {
+        var signingKey = "pm-signing-key-must-be-at-least-64-bytes-long-for-hs512-signing-secret!!";
+        var token = CreateJwt(
+            new[]
+            {
+                new Claim("Id", "user-100"),
+                new Claim("Email", "partner.user@example.com"),
+                new Claim("PartnerId", "partner-abc-123")
+            },
+            issuer: "InventoryAuthenticationServer",
+            audience: "InventoryServiceAppClient",
+            algorithm: SecurityAlgorithms.HmacSha512,
+            signingKey: signingKey);
+
+        var extractor = CreateExtractor(new ConsumerJwtOptions
+        {
+            Key = signingKey,
+            Issuer = "InventoryAuthenticationServer",
+            Audience = "InventoryServiceAppClient"
+        });
+
+        var message = new LogEventMessage
+        {
+            RequestHeaders = new() { ["Authorization"] = $"Bearer {token}" }
+        };
+
+        extractor.Extract(message);
+
+        message.IsAuthenticated.Should().BeTrue();
+        message.UserId.Should().Be("user-100");
+        message.UserEmail.Should().Be("partner.user@example.com");
+        message.PartnerId.Should().Be("partner-abc-123");
+    }
+
+    [Fact]
+    public void Extract_PartnerIdWithUnderscore_ExtractsPartnerId()
+    {
+        var signingKey = "pm-signing-key-must-be-at-least-64-bytes-long-for-hs512-signing-secret!!";
+        var token = CreateJwt(
+            new[]
+            {
+                new Claim("Id", "user-200"),
+                new Claim("partner_id", "partner-xyz-456")
+            },
+            issuer: "InventoryAuthenticationServer",
+            audience: "InventoryServiceAppClient",
+            algorithm: SecurityAlgorithms.HmacSha512,
+            signingKey: signingKey);
+
+        var extractor = CreateExtractor(new ConsumerJwtOptions
+        {
+            Key = signingKey,
+            Issuer = "InventoryAuthenticationServer",
+            Audience = "InventoryServiceAppClient"
+        });
+
+        var message = new LogEventMessage
+        {
+            RequestHeaders = new() { ["Authorization"] = $"Bearer {token}" }
+        };
+
+        extractor.Extract(message);
+
+        message.IsAuthenticated.Should().BeTrue();
+        message.PartnerId.Should().Be("partner-xyz-456");
+    }
+
+    [Fact]
+    public void Extract_UsernameClaimTypes_ExtractsFromAllVariants()
+    {
+        var signingKey = "pm-signing-key-must-be-at-least-64-bytes-long-for-hs512-signing-secret!!";
+
+        // unique_name claim
+        var token = CreateJwt(
+            new[]
+            {
+                new Claim("Id", "user-300"),
+                new Claim("unique_name", "alice_unique")
+            },
+            issuer: "InventoryAuthenticationServer",
+            audience: "InventoryServiceAppClient",
+            algorithm: SecurityAlgorithms.HmacSha512,
+            signingKey: signingKey);
+
+        var extractor = CreateExtractor(new ConsumerJwtOptions
+        {
+            Key = signingKey,
+            Issuer = "InventoryAuthenticationServer",
+            Audience = "InventoryServiceAppClient"
+        });
+
+        var message = new LogEventMessage
+        {
+            RequestHeaders = new() { ["Authorization"] = $"Bearer {token}" }
+        };
+
+        extractor.Extract(message);
+
+        message.IsAuthenticated.Should().BeTrue();
+        message.Username.Should().Be("alice_unique");
+    }
+
+    [Fact]
+    public void Extract_WrongAudience_SetsTokenPresentNotAuthenticated()
+    {
+        var signingKey = "shared-signing-key-must-be-at-least-64-bytes-long-for-hs512-secure!!";
+        var token = CreateJwt(
+            new[]
+            {
+                new Claim("Id", "pm-user-42"),
+                new Claim("Email", "pm.user@example.com")
+            },
+            issuer: "InventoryAuthenticationServer",
+            audience: "OtherAudience",
+            algorithm: SecurityAlgorithms.HmacSha512,
+            signingKey: signingKey);
+
+        var extractor = CreateExtractor(new ConsumerJwtOptions
+        {
+            Key = signingKey,
+            Issuer = "InventoryAuthenticationServer",
+            Audience = "InventoryServiceAppClient"
+        });
+
+        var message = new LogEventMessage
+        {
+            RequestHeaders = new() { ["Authorization"] = $"Bearer {token}" }
+        };
+
+        extractor.Extract(message);
+
+        message.IsAuthenticated.Should().BeFalse();
+        message.AuthResult.Should().Be("TOKEN_PRESENT_NOT_AUTHENTICATED");
+        message.UserId.Should().BeNull();
+        message.UserEmail.Should().BeNull();
+        message.PartnerId.Should().BeNull();
+    }
+
+    private static JwtAuthContextExtractor CreateExtractor(ConsumerJwtOptions? configureOptions = null)
+    {
+        var options = configureOptions ?? new ConsumerJwtOptions
         {
             Key = SigningKey,
             Issuer = IssuerValue,
@@ -171,15 +348,19 @@ public class JwtAuthContextExtractorTests
         IEnumerable<Claim> claims,
         DateTime? notBefore = null,
         DateTime? expiresAt = null,
-        string? signingKey = null)
+        string? signingKey = null,
+        string? issuer = null,
+        string? audience = null,
+        string? algorithm = null)
     {
         var key = signingKey ?? SigningKey;
         var keyBytes = Encoding.UTF8.GetBytes(key);
-        var creds = new SigningCredentials(new SymmetricSecurityKey(keyBytes), SecurityAlgorithms.HmacSha256);
+        var alg = algorithm ?? SecurityAlgorithms.HmacSha256;
+        var creds = new SigningCredentials(new SymmetricSecurityKey(keyBytes), alg);
 
         var token = new JwtSecurityToken(
-            issuer: IssuerValue,
-            audience: AudienceValue,
+            issuer: issuer ?? IssuerValue,
+            audience: audience ?? AudienceValue,
             claims: claims,
             notBefore: notBefore ?? DateTime.UtcNow.AddMinutes(-1),
             expires: expiresAt ?? DateTime.UtcNow.AddMinutes(10),

@@ -133,11 +133,16 @@ public class LogFlowQueryService : ILogFlowQueryService
             f.FlowType,
             f.CheckoutType,
             f.Status,
+            f.UserId,
+            f.UserEmail,
+            f.Username,
+            f.PartnerId,
             f.CustomerEmail,
             f.CustomerPhone,
-            f.UserId,
             f.OrderId,
+            f.OrderCode,
             f.PaymentId,
+            f.TransactionId,
             f.TotalSteps,
             f.SuccessSteps,
             f.FailedSteps,
@@ -201,11 +206,16 @@ public class LogFlowQueryService : ILogFlowQueryService
             flow.FlowType,
             flow.CheckoutType,
             flow.Status,
+            flow.UserId,
+            flow.UserEmail,
+            flow.Username,
+            flow.PartnerId,
             flow.CustomerEmail,
             flow.CustomerPhone,
-            flow.UserId,
             flow.OrderId,
+            flow.OrderCode,
             flow.PaymentId,
+            flow.TransactionId,
             flow.TotalSteps,
             flow.SuccessSteps,
             flow.FailedSteps,
@@ -294,10 +304,15 @@ public class LogFlowQueryService : ILogFlowQueryService
         {
             return query.Where(f =>
                 (f.FlowId != null && EF.Functions.ILike(f.FlowId, searchPattern)) ||
+                (f.UserEmail != null && EF.Functions.ILike(f.UserEmail, searchPattern)) ||
+                (f.Username != null && EF.Functions.ILike(f.Username, searchPattern)) ||
+                (f.PartnerId != null && EF.Functions.ILike(f.PartnerId, searchPattern)) ||
                 (f.CustomerEmail != null && EF.Functions.ILike(f.CustomerEmail, searchPattern)) ||
                 (f.CustomerPhone != null && EF.Functions.ILike(f.CustomerPhone, searchPattern)) ||
+                (f.OrderCode != null && EF.Functions.ILike(f.OrderCode, searchPattern)) ||
                 (f.OrderId != null && EF.Functions.ILike(f.OrderId, searchPattern)) ||
                 (f.PaymentId != null && EF.Functions.ILike(f.PaymentId, searchPattern)) ||
+                (f.TransactionId != null && EF.Functions.ILike(f.TransactionId, searchPattern)) ||
                 (f.UserId != null && EF.Functions.ILike(f.UserId, searchPattern)) ||
                 (f.LastMessage != null && EF.Functions.ILike(f.LastMessage, searchPattern)));
         }
@@ -305,10 +320,15 @@ public class LogFlowQueryService : ILogFlowQueryService
         var lowerSearch = search.ToLowerInvariant();
         return query.Where(f =>
             (f.FlowId != null && f.FlowId.ToLower().Contains(lowerSearch)) ||
+            (f.UserEmail != null && f.UserEmail.ToLower().Contains(lowerSearch)) ||
+            (f.Username != null && f.Username.ToLower().Contains(lowerSearch)) ||
+            (f.PartnerId != null && f.PartnerId.ToLower().Contains(lowerSearch)) ||
             (f.CustomerEmail != null && f.CustomerEmail.ToLower().Contains(lowerSearch)) ||
             (f.CustomerPhone != null && f.CustomerPhone.ToLower().Contains(lowerSearch)) ||
+            (f.OrderCode != null && f.OrderCode.ToLower().Contains(lowerSearch)) ||
             (f.OrderId != null && f.OrderId.ToLower().Contains(lowerSearch)) ||
             (f.PaymentId != null && f.PaymentId.ToLower().Contains(lowerSearch)) ||
+            (f.TransactionId != null && f.TransactionId.ToLower().Contains(lowerSearch)) ||
             (f.UserId != null && f.UserId.ToLower().Contains(lowerSearch)) ||
             (f.LastMessage != null && f.LastMessage.ToLower().Contains(lowerSearch)));
     }

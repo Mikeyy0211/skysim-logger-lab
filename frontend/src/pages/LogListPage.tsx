@@ -3,15 +3,12 @@ import type { KeyboardEvent, ChangeEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { PageHeader } from '../components/PageHeader';
 import { StatusBadge } from '../components/StatusBadge';
-import { CheckoutTypeBadge } from '../components/CheckoutTypeBadge';
-import { FlowIdCell } from '../components/FlowIdCell';
 import { getLogFlows } from '../services/logFlowService';
 import type { LogFlowSummary } from '../types/logFlow';
 
 const PAGE_SIZE = 10;
 
 const EMPTY = '—';
-const MAX_USER_LENGTH = 28;
 
 function formatDate(value: string | null | undefined): string {
   if (!value) return EMPTY;
@@ -20,34 +17,34 @@ function formatDate(value: string | null | undefined): string {
   return d.toLocaleString();
 }
 
-function resolveDisplayUser(flow: LogFlowSummary): {
-  value: string;
-  truncated: boolean;
-  full: string;
-} {
-  const email = flow.customerEmail?.trim();
-  if (email) {
-    return { value: email, truncated: false, full: email };
-  }
+function resolveDisplayUserEmail(flow: LogFlowSummary): string {
+  return (
+    flow.userEmail?.trim() ||
+    flow.customerEmail?.trim() ||
+    flow.userId?.trim() ||
+    EMPTY
+  );
+}
 
-  const userEmail = (flow as LogFlowSummary & { userEmail?: string | null }).userEmail?.trim();
-  if (userEmail) {
-    return { value: userEmail, truncated: false, full: userEmail };
-  }
+function resolveDisplayOrder(flow: LogFlowSummary): string {
+  return (
+    flow.orderCode?.trim() ||
+    flow.orderId?.trim() ||
+    flow.paymentId?.trim() ||
+    EMPTY
+  );
+}
 
-  const userId = flow.userId?.trim();
-  if (userId) {
-    if (userId.length <= MAX_USER_LENGTH) {
-      return { value: userId, truncated: false, full: userId };
-    }
-    return {
-      value: `${userId.slice(0, MAX_USER_LENGTH)}…`,
-      truncated: true,
-      full: userId,
-    };
-  }
+function resolveDisplayService(flow: LogFlowSummary): string {
+  return flow.lastServiceName?.trim() || EMPTY;
+}
 
-  return { value: EMPTY, truncated: false, full: '' };
+function resolveDisplayAction(flow: LogFlowSummary): string {
+  return flow.lastActionType?.trim() || EMPTY;
+}
+
+function resolveDisplayMessage(flow: LogFlowSummary): string {
+  return flow.lastMessage?.trim() || EMPTY;
 }
 
 export function LogListPage() {
@@ -191,7 +188,7 @@ export function LogListPage() {
               <input
                 id="search"
                 type="text"
-                placeholder="Search by email, phone, order ID, payment ID, or flow ID"
+                placeholder="Search email, order code, payment id, transaction id..."
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
@@ -343,28 +340,25 @@ export function LogListPage() {
                 <thead>
                   <tr className="bg-gray-50">
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Flow ID
+                      Time
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      User Email
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Order Code
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Service
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Action
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Status
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      User
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Checkout
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Last Service
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Last Action
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Last Message
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Updated At
+                      Message
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Actions
@@ -373,61 +367,48 @@ export function LogListPage() {
                 </thead>
                 <tbody className="divide-y divide-gray-200">
                   {flows.map((flow) => {
-                    const user = resolveDisplayUser(flow);
-                    const checkoutValue = flow.checkoutType?.trim();
-                    const isHttp = !checkoutValue && flow.flowType === 'HTTP_ACTION';
-                    const lastService = flow.lastServiceName?.trim();
-                    const lastMessage = flow.lastMessage?.trim();
+                    const userEmail = resolveDisplayUserEmail(flow);
+                    const order = resolveDisplayOrder(flow);
+                    const service = resolveDisplayService(flow);
+                    const action = resolveDisplayAction(flow);
+                    const message = resolveDisplayMessage(flow);
 
                     return (
                       <tr key={flow.flowId} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <FlowIdCell flowId={flow.flowId} />
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {formatDate(flow.updatedAt)}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap max-w-[220px] text-sm text-gray-700">
+                          <span className="truncate block" title={userEmail !== EMPTY ? userEmail : undefined}>
+                            {userEmail}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap max-w-[200px] text-sm text-gray-600 font-mono">
+                          <span className="truncate block" title={order !== EMPTY ? order : undefined}>
+                            {order}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                          {service !== EMPTY ? (
+                            service
+                          ) : (
+                            <span className="text-gray-400 italic">unknown</span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                          {action}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <StatusBadge status={flow.status} />
                         </td>
-                        <td
-                          className="px-6 py-4 whitespace-nowrap max-w-[260px] text-sm text-gray-700"
-                          title={user.truncated ? user.full : undefined}
-                        >
-                          {user.value}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          {checkoutValue ? (
-                            <CheckoutTypeBadge checkoutType={checkoutValue} />
-                          ) : isHttp ? (
-                            <span className="px-2 py-0.5 text-[11px] font-medium rounded-full bg-sky-100 text-sky-800 border border-sky-200">
-                              HTTP
-                            </span>
-                          ) : (
-                            <span className="text-sm text-gray-400">{EMPTY}</span>
-                          )}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                          {lastService ? (
-                            lastService
-                          ) : (
-                            <span className="text-gray-400 italic">unknown</span>
-                          )}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                          {flow.lastActionType || EMPTY}
-                        </td>
-                        <td className="px-6 py-4 text-sm text-gray-600 max-w-[280px]">
-                          {lastMessage ? (
-                            <div
-                              className="truncate"
-                              title={lastMessage}
-                            >
-                              {lastMessage}
+                        <td className="px-6 py-4 text-sm text-gray-600 max-w-[260px]">
+                          {message !== EMPTY ? (
+                            <div className="truncate" title={message}>
+                              {message}
                             </div>
                           ) : (
                             <span className="text-gray-400 italic">unknown</span>
                           )}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {formatDate(flow.updatedAt)}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm">
                           <Link

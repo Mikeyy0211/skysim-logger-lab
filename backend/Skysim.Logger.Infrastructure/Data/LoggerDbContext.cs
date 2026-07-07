@@ -30,8 +30,13 @@ public class LoggerDbContext : DbContext
             entity.Property(e => e.CustomerEmail).HasColumnName("customer_email");
             entity.Property(e => e.CustomerPhone).HasColumnName("customer_phone");
             entity.Property(e => e.UserId).HasColumnName("user_id");
+            entity.Property(e => e.UserEmail).HasColumnName("user_email");
+            entity.Property(e => e.Username).HasColumnName("username");
+            entity.Property(e => e.PartnerId).HasColumnName("partner_id");
             entity.Property(e => e.OrderId).HasColumnName("order_id");
+            entity.Property(e => e.OrderCode).HasColumnName("order_code");
             entity.Property(e => e.PaymentId).HasColumnName("payment_id");
+            entity.Property(e => e.TransactionId).HasColumnName("transaction_id");
             entity.Property(e => e.TotalSteps).HasColumnName("total_steps");
             entity.Property(e => e.SuccessSteps).HasColumnName("success_steps");
             entity.Property(e => e.FailedSteps).HasColumnName("failed_steps");
@@ -52,8 +57,13 @@ public class LoggerDbContext : DbContext
             entity.HasIndex(e => e.CustomerEmail).HasDatabaseName("idx_log_flows_customer_email");
             entity.HasIndex(e => e.CustomerPhone).HasDatabaseName("idx_log_flows_customer_phone");
             entity.HasIndex(e => e.UserId).HasDatabaseName("idx_log_flows_user_id");
+            entity.HasIndex(e => e.UserEmail).HasDatabaseName("idx_log_flows_user_email");
+            entity.HasIndex(e => e.Username).HasDatabaseName("idx_log_flows_username");
+            entity.HasIndex(e => e.PartnerId).HasDatabaseName("idx_log_flows_partner_id");
+            entity.HasIndex(e => e.OrderCode).HasDatabaseName("idx_log_flows_order_code");
             entity.HasIndex(e => e.OrderId).HasDatabaseName("idx_log_flows_order_id");
             entity.HasIndex(e => e.PaymentId).HasDatabaseName("idx_log_flows_payment_id");
+            entity.HasIndex(e => e.TransactionId).HasDatabaseName("idx_log_flows_transaction_id");
             entity.HasIndex(e => e.Status).HasDatabaseName("idx_log_flows_status");
             entity.HasIndex(e => e.FlowType).HasDatabaseName("idx_log_flows_flow_type");
             entity.HasIndex(e => e.CheckoutType).HasDatabaseName("idx_log_flows_checkout_type");

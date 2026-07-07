@@ -5,11 +5,16 @@ export interface LogFlowSummary {
   flowType: string;
   checkoutType: string | null;
   status: FlowStatus;
+  userId: string | null;
+  userEmail: string | null;
+  username: string | null;
+  partnerId: string | null;
   customerEmail: string | null;
   customerPhone: string | null;
-  userId: string | null;
   orderId: string | null;
+  orderCode: string | null;
   paymentId: string | null;
+  transactionId: string | null;
   totalSteps: number;
   successSteps: number;
   failedSteps: number;
@@ -33,8 +38,8 @@ export interface PagedResponse<T> {
 export type LogFlowListResponse = PagedResponse<LogFlowSummary> | LogFlowSummary[];
 
 export interface LogFlowDetail extends LogFlowSummary {
-  // LogFlowDetail uses the same fields as LogFlowSummary
-  // The backend returns the full flow details via GET /api/log-flows/{flowId}
+  // LogFlowDetail uses all fields from LogFlowSummary (inherited)
+  // Additional timeline data comes from the API response
 }
 
 export interface DashboardMetrics {

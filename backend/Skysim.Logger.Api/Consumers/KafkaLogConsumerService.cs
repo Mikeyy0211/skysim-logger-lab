@@ -233,6 +233,68 @@ public class KafkaLogConsumerService : BackgroundService
         }
     }
 
+    private static void EnrichBusinessKeys(LogEventMessage message)
+    {
+        // Already populated from producer, no extraction needed.
+        if (!string.IsNullOrWhiteSpace(message.OrderCode) &&
+            !string.IsNullOrWhiteSpace(message.PaymentId) &&
+            !string.IsNullOrWhiteSpace(message.TransactionId))
+        {
+            return;
+        }
+
+        var candidates = new[] { message.ResponseBody, message.RequestBody };
+
+        string? orderCode = message.OrderCode;
+        string? paymentId = message.PaymentId;
+        string? transactionId = message.TransactionId;
+
+        foreach (var raw in candidates)
+        {
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                continue;
+            }
+
+            if (string.IsNullOrWhiteSpace(orderCode))
+            {
+                orderCode = BusinessKeyExtractor.ExtractOrderCode(raw);
+            }
+
+            if (string.IsNullOrWhiteSpace(paymentId))
+            {
+                paymentId = BusinessKeyExtractor.ExtractPaymentId(raw);
+            }
+
+            if (string.IsNullOrWhiteSpace(transactionId))
+            {
+                transactionId = BusinessKeyExtractor.ExtractTransactionId(raw);
+            }
+
+            if (!string.IsNullOrWhiteSpace(orderCode) &&
+                !string.IsNullOrWhiteSpace(paymentId) &&
+                !string.IsNullOrWhiteSpace(transactionId))
+            {
+                break;
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(orderCode))
+        {
+            message.OrderCode = orderCode;
+        }
+
+        if (!string.IsNullOrWhiteSpace(paymentId))
+        {
+            message.PaymentId = paymentId;
+        }
+
+        if (!string.IsNullOrWhiteSpace(transactionId))
+        {
+            message.TransactionId = transactionId;
+        }
+    }
+
     private async Task<bool> TryPersistWithRetryAsync(LogEventMessage message, CancellationToken ct, Action onAttempt, ResiliencePipeline retryPolicy)
     {
         return await retryPolicy.ExecuteAsync(async token =>
@@ -259,6 +321,8 @@ public class KafkaLogConsumerService : BackgroundService
 
         try
         {
+            EnrichBusinessKeys(message);
+
             var flow = await flowRepo.UpsertAsync(message.FlowId, f => MapFlowFromMessage(f, message), ct);
 
             var action = CreateLogAction(message, flow.Id);
@@ -307,8 +371,13 @@ public class KafkaLogConsumerService : BackgroundService
         flow.CustomerEmail ??= message.CustomerEmail;
         flow.CustomerPhone ??= message.CustomerPhone;
         flow.UserId ??= message.UserId;
+        flow.UserEmail ??= message.UserEmail;
+        flow.Username ??= message.Username;
+        flow.PartnerId ??= message.PartnerId;
         flow.OrderId ??= message.OrderId;
+        flow.OrderCode ??= message.OrderCode;
         flow.PaymentId ??= message.PaymentId;
+        flow.TransactionId ??= message.TransactionId;
 
         // Update status from latest event
         flow.Status = message.Status;
@@ -528,6 +597,7 @@ public class KafkaLogConsumerService : BackgroundService
             || !string.IsNullOrEmpty(message.UserId)
             || !string.IsNullOrEmpty(message.Username)
             || !string.IsNullOrEmpty(message.UserEmail)
+            || !string.IsNullOrEmpty(message.PartnerId)
             || (message.Roles != null && message.Roles.Count > 0)
             || !string.IsNullOrEmpty(message.AuthResult)
             || !string.IsNullOrEmpty(message.CorrelationId);
@@ -548,6 +618,7 @@ public class KafkaLogConsumerService : BackgroundService
             userId = message.UserId,
             username = message.Username,
             userEmail = message.UserEmail,
+            partnerId = message.PartnerId,
             roles = message.Roles,
             authResult = message.AuthResult,
             correlationId = message.CorrelationId
@@ -582,13 +653,17 @@ public class KafkaLogConsumerService : BackgroundService
 
     private static void NormalizeServiceName(LogEventMessage message)
     {
-        if (!string.IsNullOrEmpty(message.ServiceName))
+        // 3.1: Don't overwrite a real serviceName.
+        // Treat empty / "unknown" / "unknown-service" as missing so we can derive from headers/path.
+        if (HasRealServiceName(message.ServiceName))
         {
             return;
         }
 
         if (message.FlowType != FlowTypes.HttpAction)
         {
+            // Non-HTTP_ACTION events keep whatever value they came in with
+            // (e.g. business producer-emitted serviceName).
             return;
         }
 
@@ -615,7 +690,7 @@ public class KafkaLogConsumerService : BackgroundService
         if (!string.IsNullOrEmpty(message.Path))
         {
             message.ServiceName = ParseServiceNameFromPath(message.Path);
-            if (!string.IsNullOrEmpty(message.ServiceName))
+            if (HasRealServiceName(message.ServiceName))
             {
                 return;
             }
@@ -624,10 +699,30 @@ public class KafkaLogConsumerService : BackgroundService
         if (!string.IsNullOrEmpty(message.FullUrl))
         {
             message.ServiceName = ParseServiceNameFromPath(message.FullUrl);
-            return;
+            if (HasRealServiceName(message.ServiceName))
+            {
+                return;
+            }
         }
 
         message.ServiceName = "unknown-service";
+    }
+
+    private static bool HasRealServiceName(string? value)
+    {
+        if (string.IsNullOrEmpty(value))
+        {
+            return false;
+        }
+
+        var trimmed = value.Trim();
+        if (trimmed.Length == 0)
+        {
+            return false;
+        }
+
+        return !trimmed.Equals("unknown", StringComparison.OrdinalIgnoreCase)
+            && !trimmed.Equals("unknown-service", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool TryGetHeader(Dictionary<string, string> headers, string key, out string value)
@@ -661,14 +756,7 @@ public class KafkaLogConsumerService : BackgroundService
         }
 
         var lastSegment = segments[^1];
-        return lastSegment.ToLowerInvariant() switch
-        {
-            "partner" => "partner-service",
-            "admin" => "admin-service",
-            "user" => "user-service",
-            "payment" => "payment-service",
-            _ => lastSegment.ToLowerInvariant() + "-service"
-        };
+        return MapSegmentToServiceName(lastSegment);
     }
 
     private static string ParseServiceNameFromPath(string pathOrUrl)
@@ -706,32 +794,27 @@ public class KafkaLogConsumerService : BackgroundService
             prefixSegment = segments[1];
         }
 
-        if (prefixSegment.Equals("partner", StringComparison.OrdinalIgnoreCase))
+        return MapSegmentToServiceName(prefixSegment);
+    }
+
+    private static string MapSegmentToServiceName(string segment)
+    {
+        if (string.IsNullOrEmpty(segment))
         {
-            return "partner-service";
+            return "unknown-service";
         }
 
-        if (prefixSegment.Equals("admin", StringComparison.OrdinalIgnoreCase))
+        return segment.ToLowerInvariant() switch
         {
-            return "admin-service";
-        }
-
-        if (prefixSegment.Equals("user", StringComparison.OrdinalIgnoreCase))
-        {
-            return "user-service";
-        }
-
-        if (prefixSegment.Equals("payment", StringComparison.OrdinalIgnoreCase))
-        {
-            return "payment-service";
-        }
-
-        if (prefixSegment.StartsWith("api", StringComparison.OrdinalIgnoreCase))
-        {
-            return prefixSegment.ToLowerInvariant() + "-service";
-        }
-
-        return prefixSegment.ToLowerInvariant() + "-service";
+            "partner" => "partner-service",
+            "payment" => "payment-service",
+            "customer" => "customer-service",
+            "admin" => "admin-service",
+            "provider" => "provider-service",
+            "notification" => "notification-service",
+            "user" => "user-service",
+            _ => segment.ToLowerInvariant() + "-service"
+        };
     }
 
     private static AutoOffsetReset ParseAutoOffsetReset(string value)

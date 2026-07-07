@@ -67,7 +67,7 @@ function PrettyJsonBlock({ value, emptyText = 'No data' }: { value: unknown; emp
   }
 
   return (
-    <pre className="text-xs text-gray-800 overflow-x-auto bg-white p-3 rounded border border-gray-200 font-mono leading-relaxed max-h-64 overflow-y-auto whitespace-pre-wrap break-words">
+    <pre className="text-xs text-gray-800 bg-gray-50 p-3 rounded border border-gray-200 font-mono leading-relaxed max-w-full max-h-80 overflow-x-auto overflow-y-auto whitespace-pre-wrap break-words">
       {prettyJson(value)}
     </pre>
   );
@@ -77,9 +77,9 @@ function KeyValueRow({ label, value }: { label: string; value: string | number |
   const display = value === null || value === undefined || value === '' ? '—' : String(value);
 
   return (
-    <div className="flex items-baseline gap-2 text-xs py-1">
-      <span className="text-gray-500 w-32 flex-shrink-0">{label}</span>
-      <span className="text-gray-900 font-mono break-all">{display}</span>
+    <div className="grid grid-cols-[7rem_minmax(0,1fr)] gap-x-2 text-xs py-1 items-baseline">
+      <span className="text-gray-500 truncate">{label}</span>
+      <span className="text-gray-900 font-mono break-all min-w-0">{display}</span>
     </div>
   );
 }
@@ -147,26 +147,36 @@ function RequestPayloadView({ raw }: { raw: string | null | undefined }) {
     : null;
 
   return (
-    <div className="space-y-3">
-      <div className="bg-white rounded border border-gray-200 p-3">
-        <KeyValueRow label="Method" value={(method as string | undefined) ?? null} />
-        <KeyValueRow label="Path" value={(path as string | undefined) ?? null} />
-        <KeyValueRow label="Full URL" value={(fullUrl as string | undefined) ?? null} />
-        <KeyValueRow label="Client IP" value={(clientIp as string | undefined) ?? null} />
+    <div className="space-y-3 min-w-0">
+      <div className="bg-white rounded border border-gray-200 p-3 max-w-full overflow-hidden">
+        <div className="grid grid-cols-[7rem_minmax(0,1fr)] gap-x-2 gap-y-1 text-xs items-baseline">
+          <span className="text-gray-500 truncate">Method</span>
+          <span className="text-gray-900 font-mono break-all min-w-0">{formatFieldValue(method as string | null | undefined)}</span>
+          <span className="text-gray-500 truncate">Path</span>
+          <span className="text-gray-900 font-mono break-all min-w-0">{formatFieldValue(path as string | null | undefined)}</span>
+          <span className="text-gray-500 truncate">Client IP</span>
+          <span className="text-gray-900 font-mono break-all min-w-0">{formatFieldValue(clientIp as string | null | undefined)}</span>
+        </div>
+        {fullUrl !== undefined && (
+          <div className="grid grid-cols-[7rem_minmax(0,1fr)] gap-x-2 text-xs py-1 items-baseline">
+            <span className="text-gray-500 truncate">Full URL</span>
+            <span className="text-gray-900 font-mono break-all min-w-0">{formatFieldValue(fullUrl as string | null | undefined)}</span>
+          </div>
+        )}
         {query !== undefined && (
-          <div className="py-1">
+          <div className="pt-1">
             <p className="text-xs text-gray-500 mb-1">Query</p>
-            <pre className="text-xs text-gray-800 bg-gray-50 rounded p-2 border border-gray-200 font-mono whitespace-pre-wrap break-words">
+            <pre className="text-xs text-gray-800 bg-gray-50 rounded p-2 border border-gray-200 font-mono whitespace-pre-wrap break-words max-w-full overflow-x-auto">
               {prettyJson(query)}
             </pre>
           </div>
         )}
       </div>
 
-      <div>
+      <div className="min-w-0">
         <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1">Headers</p>
         {maskedHeaders ? (
-          <div className="bg-white rounded border border-gray-200 p-3">
+          <div className="bg-white rounded border border-gray-200 p-3 max-h-60 overflow-y-auto overflow-x-auto max-w-full">
             {Object.entries(maskedHeaders).map(([k, v]) => (
               <KeyValueRow key={k} label={k} value={v} />
             ))}
@@ -176,7 +186,7 @@ function RequestPayloadView({ raw }: { raw: string | null | undefined }) {
         )}
       </div>
 
-      <div>
+      <div className="min-w-0">
         <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1">Body</p>
         <PrettyJsonBlock value={bodyValue ?? null} emptyText="No body captured." />
       </div>
@@ -239,16 +249,20 @@ function ResponsePayloadView({ raw }: { raw: string | null | undefined }) {
     : null;
 
   return (
-    <div className="space-y-3">
-      <div className="bg-white rounded border border-gray-200 p-3">
-        <KeyValueRow label="Status Code" value={(statusCode as number | string | undefined) ?? null} />
-        <KeyValueRow label="Duration" value={durationMs !== undefined ? `${durationMs}ms` : null} />
+    <div className="space-y-3 min-w-0">
+      <div className="bg-white rounded border border-gray-200 p-3 max-w-full overflow-hidden">
+        <div className="grid grid-cols-[7rem_minmax(0,1fr)] gap-x-2 gap-y-1 text-xs items-baseline">
+          <span className="text-gray-500 truncate">Status Code</span>
+          <span className="text-gray-900 font-mono break-all min-w-0">{statusCode === undefined || statusCode === null ? '—' : String(statusCode)}</span>
+          <span className="text-gray-500 truncate">Duration</span>
+          <span className="text-gray-900 font-mono break-all min-w-0">{durationMs !== undefined ? `${durationMs}ms` : '—'}</span>
+        </div>
       </div>
 
-      <div>
+      <div className="min-w-0">
         <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1">Headers</p>
         {maskedHeaders ? (
-          <div className="bg-white rounded border border-gray-200 p-3">
+          <div className="bg-white rounded border border-gray-200 p-3 max-h-60 overflow-y-auto overflow-x-auto max-w-full">
             {Object.entries(maskedHeaders).map(([k, v]) => (
               <KeyValueRow key={k} label={k} value={v} />
             ))}
@@ -258,7 +272,7 @@ function ResponsePayloadView({ raw }: { raw: string | null | undefined }) {
         )}
       </div>
 
-      <div>
+      <div className="min-w-0">
         <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1">Body</p>
         <PrettyJsonBlock value={bodyValue ?? null} emptyText="No body captured." />
       </div>
@@ -281,7 +295,7 @@ function MetadataPayloadView({ raw }: { raw: string | null | undefined }) {
   const rest: Record<string, unknown> = {};
 
   for (const [k, v] of Object.entries(parsed)) {
-    if (k === 'userId' || k === 'userEmail' || k === 'username' || k === 'roles' || k === 'authResult') {
+    if (k === 'userId' || k === 'userEmail' || k === 'username' || k === 'partnerId' || k === 'roles' || k === 'authResult') {
       identity.push([k, v]);
     } else {
       rest[k] = v;
@@ -289,9 +303,9 @@ function MetadataPayloadView({ raw }: { raw: string | null | undefined }) {
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3 min-w-0">
       {identity.length > 0 && (
-        <div className="bg-blue-50 border border-blue-200 rounded p-3">
+        <div className="bg-blue-50 border border-blue-200 rounded p-3 max-w-full overflow-hidden">
           <p className="text-xs font-semibold text-blue-900 uppercase tracking-wide mb-1">Identity</p>
           {identity.map(([k, v]) => (
             <KeyValueRow
@@ -307,12 +321,158 @@ function MetadataPayloadView({ raw }: { raw: string | null | undefined }) {
         </div>
       )}
 
-      <div>
+      <div className="min-w-0">
         {Object.keys(rest).length === 0 ? (
           <p className="text-xs text-gray-400 italic">No additional metadata.</p>
         ) : (
           <PrettyJsonBlock value={rest} />
         )}
+      </div>
+    </div>
+  );
+}
+
+function ActionDetailsModal({
+  action,
+  details,
+  isLoading,
+  errorMessage,
+  onClose,
+  onRetry,
+}: {
+  action: LogAction | null;
+  details: LogActionDetailsResponse | null;
+  isLoading: boolean;
+  errorMessage: string | null;
+  onClose: () => void;
+  onRetry: () => void;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  const stopProp = (e: React.MouseEvent) => e.stopPropagation();
+
+  const subtitle = action
+    ? `${action.actionType} • ${action.status}${action.message ? ` • ${action.message}` : ''}`
+    : 'Technical details for this action';
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/30 flex items-center justify-center p-4"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Action Technical Details"
+    >
+      <div
+        className="bg-white rounded-lg shadow-lg w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden"
+        onClick={stopProp}
+      >
+        <header className="flex items-start justify-between gap-4 px-6 py-4 border-b border-gray-200">
+          <div className="min-w-0 flex-1">
+            <h2 className="text-lg font-semibold text-gray-900">Action Technical Details</h2>
+            <p className="text-sm text-gray-600 mt-1 break-words">{subtitle}</p>
+          </div>
+          <button
+            onClick={onClose}
+            className="flex-shrink-0 text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded p-1"
+            aria-label="Close"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </header>
+
+        <div className="overflow-y-auto p-6 space-y-5 min-w-0">
+          {isLoading ? (
+            <div className="animate-pulse space-y-3">
+              <div className="h-3 bg-gray-200 rounded w-1/4"></div>
+              <div className="h-3 bg-gray-200 rounded w-full"></div>
+              <div className="h-3 bg-gray-200 rounded w-3/4"></div>
+            </div>
+          ) : errorMessage ? (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+              <p className="text-red-700 text-sm font-medium">Failed to load details</p>
+              <p className="text-red-600 text-sm mt-1">{errorMessage}</p>
+              <button
+                onClick={onRetry}
+                className="mt-3 px-4 py-2 bg-red-100 text-red-700 text-sm font-medium rounded-lg hover:bg-red-200 focus:outline-none focus:ring-2 focus:ring-red-500 transition-colors"
+              >
+                Retry
+              </button>
+            </div>
+          ) : details ? (
+            <>
+              <section>
+                <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">
+                  Action Overview
+                </h4>
+                <div className="bg-white rounded border border-gray-200 p-3 max-w-full overflow-hidden">
+                  <KeyValueRow label="Action Type" value={details.action.actionType} />
+                  <KeyValueRow label="Status" value={details.action.status} />
+                  <KeyValueRow label="Service" value={details.action.serviceName} />
+                  <KeyValueRow label="Message" value={details.action.message ?? null} />
+                  <KeyValueRow label="Duration" value={formatDuration(details.action.durationMs)} />
+                  <KeyValueRow label="Started" value={formatDate(details.action.createdAt)} />
+                  <KeyValueRow label="Finished" value={formatDate(details.action.finishedAt)} />
+                  {details.action.errorCode && (
+                    <KeyValueRow label="Error Code" value={details.action.errorCode} />
+                  )}
+                  {details.action.errorMessage && (
+                    <div className="grid grid-cols-[7rem_minmax(0,1fr)] gap-x-2 text-xs py-1 items-baseline">
+                      <span className="text-gray-500 truncate">Error Message</span>
+                      <span className="text-gray-900 break-words min-w-0">{details.action.errorMessage}</span>
+                    </div>
+                  )}
+                </div>
+              </section>
+
+              <section>
+                <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">
+                  Request
+                </h4>
+                <RequestPayloadView raw={details.requestPayload ?? null} />
+              </section>
+
+              <section>
+                <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">
+                  Response
+                </h4>
+                <ResponsePayloadView raw={details.responsePayload ?? null} />
+              </section>
+
+              <section>
+                <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">
+                  Error
+                </h4>
+                {details.errorPayload === null ||
+                details.errorPayload === undefined ||
+                details.errorPayload === '' ? (
+                  <p className="text-xs text-gray-400 italic">No error captured.</p>
+                ) : (
+                  <PrettyJsonBlock
+                    value={parseJsonSafely(details.errorPayload) ?? details.errorPayload}
+                  />
+                )}
+              </section>
+
+              <section>
+                <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">
+                  Metadata
+                </h4>
+                <MetadataPayloadView raw={details.metadata ?? null} />
+              </section>
+            </>
+          ) : (
+            <p className="text-sm text-gray-400 italic">No details available for this action.</p>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -437,6 +597,8 @@ export function LogDetailPage() {
     if (selectedActionId === actionId) {
       setSelectedActionId(null);
       setSelectedActionDetails(null);
+      setDetailsError(null);
+      setIsLoadingDetails(false);
       return;
     }
 
@@ -453,6 +615,29 @@ export function LogDetailPage() {
     } finally {
       setIsLoadingDetails(false);
     }
+  };
+
+  const closeModal = () => {
+    setSelectedActionId(null);
+    setSelectedActionDetails(null);
+    setDetailsError(null);
+    setIsLoadingDetails(false);
+  };
+
+  const retryDetails = () => {
+    if (!selectedActionId) return;
+    setSelectedActionDetails(null);
+    setDetailsError(null);
+    setIsLoadingDetails(true);
+    getLogActionDetails(selectedActionId)
+      .then((details) => {
+        setSelectedActionDetails(details);
+        setIsLoadingDetails(false);
+      })
+      .catch(() => {
+        setDetailsError('Unable to load action details.');
+        setIsLoadingDetails(false);
+      });
   };
 
   if (isLoadingFlow) {
@@ -531,6 +716,10 @@ export function LogDetailPage() {
     );
   }
 
+  const selectedActionForModal = selectedActionId
+    ? actions.find((a) => a.actionId === selectedActionId) ?? null
+    : null;
+
   return (
     <div className="p-6">
       <Link
@@ -579,6 +768,22 @@ export function LogDetailPage() {
               <p className="text-sm font-medium text-gray-900">{flow.flowType}</p>
             </div>
             <div>
+              <p className="text-sm text-gray-500">User ID</p>
+              <p className="text-sm font-medium text-gray-900">{formatFieldValue(flow.userId)}</p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-500">User Email</p>
+              <p className="text-sm font-medium text-gray-900">{formatFieldValue(flow.userEmail)}</p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-500">Username</p>
+              <p className="text-sm font-medium text-gray-900">{formatFieldValue(flow.username)}</p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-500">Partner ID</p>
+              <p className="text-sm font-medium text-gray-900">{formatFieldValue(flow.partnerId)}</p>
+            </div>
+            <div>
               <p className="text-sm text-gray-500">Last Action</p>
               <p className="text-sm font-medium text-gray-900">{formatFieldValue(flow.lastActionType)}</p>
             </div>
@@ -593,6 +798,34 @@ export function LogDetailPage() {
             <div>
               <p className="text-sm text-gray-500">Customer Phone</p>
               <p className="text-sm font-medium text-gray-900">{formatFieldValue(flow.customerPhone)}</p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-500">Order ID</p>
+              <p className="text-sm font-medium text-gray-900">{formatFieldValue(flow.orderId)}</p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-500">Order Code</p>
+              <p className="text-sm font-mono font-medium text-gray-900 break-all">{formatFieldValue(flow.orderCode)}</p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-500">Payment ID</p>
+              <p className="text-sm font-mono font-medium text-gray-900 break-all">{formatFieldValue(flow.paymentId)}</p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-500">Transaction ID</p>
+              <p className="text-sm font-mono font-medium text-gray-900 break-all">{formatFieldValue(flow.transactionId)}</p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-500">User Email</p>
+              <p className="text-sm font-medium text-gray-900">{formatFieldValue(flow.userEmail)}</p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-500">Partner ID</p>
+              <p className="text-sm font-mono font-medium text-gray-900 break-all">{formatFieldValue(flow.partnerId)}</p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-500">Order ID</p>
+              <p className="text-sm font-mono font-medium text-gray-900 break-all">{formatFieldValue(flow.orderId)}</p>
             </div>
             <div>
               <p className="text-sm text-gray-500">Created At</p>
@@ -650,7 +883,7 @@ export function LogDetailPage() {
               {actions.map((action, index) => (
                 <div
                   key={action.actionId}
-                  className="border border-gray-200 rounded-lg p-4 hover:border-gray-300 transition-colors"
+                  className="border border-gray-200 rounded-lg p-4 hover:border-gray-300 transition-colors overflow-hidden"
                 >
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex items-start gap-3 flex-1 min-w-0">
@@ -686,95 +919,6 @@ export function LogDetailPage() {
                       </button>
                     </div>
                   </div>
-
-                  {selectedActionId === action.actionId && (
-                    <div className="mt-4 ml-6">
-                      {isLoadingDetails ? (
-                        <div className="animate-pulse bg-gray-50 rounded-lg p-4 space-y-2">
-                          <div className="h-3 bg-gray-200 rounded w-1/4"></div>
-                          <div className="h-3 bg-gray-200 rounded w-full"></div>
-                        </div>
-                      ) : detailsError ? (
-                        <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-                          <p className="text-red-700 text-sm font-medium">Failed to load details</p>
-                          <p className="text-red-600 text-sm mt-1">{detailsError}</p>
-                          <button
-                            onClick={() => handleViewDetails(action.actionId)}
-                            className="mt-2 px-3 py-1 bg-red-100 text-red-700 text-xs font-medium rounded-lg hover:bg-red-200 focus:outline-none focus:ring-2 focus:ring-red-500 transition-colors"
-                          >
-                            Retry
-                          </button>
-                        </div>
-                      ) : selectedActionDetails ? (
-                        <div className="space-y-5">
-                            <section>
-                              <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">
-                                Action Overview
-                              </h4>
-                              <div className="bg-white rounded border border-gray-200 p-3 grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-2 text-xs">
-                                <KeyValueRow label="Action Type" value={selectedActionDetails.action.actionType} />
-                                <div>
-                                  <span className="text-gray-500">Status: </span>
-                                  <span className="text-gray-900">{selectedActionDetails.action.status}</span>
-                                </div>
-                                <KeyValueRow label="Service" value={selectedActionDetails.action.serviceName} />
-                                <KeyValueRow label="Message" value={selectedActionDetails.action.message ?? null} />
-                                <KeyValueRow label="Duration" value={formatDuration(selectedActionDetails.action.durationMs)} />
-                                <KeyValueRow label="Started" value={formatDate(selectedActionDetails.action.createdAt)} />
-                                <KeyValueRow label="Finished" value={formatDate(selectedActionDetails.action.finishedAt)} />
-                                {selectedActionDetails.action.errorCode && (
-                                  <KeyValueRow label="Error Code" value={selectedActionDetails.action.errorCode} />
-                                )}
-                                {selectedActionDetails.action.errorMessage && (
-                                  <div className="md:col-span-2">
-                                    <span className="text-gray-500">Error Message: </span>
-                                    <span className="text-gray-900 break-words">{selectedActionDetails.action.errorMessage}</span>
-                                  </div>
-                                )}
-                              </div>
-                            </section>
-
-                            <section>
-                              <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">
-                                Request
-                              </h4>
-                              <RequestPayloadView raw={selectedActionDetails.requestPayload ?? null} />
-                            </section>
-
-                            <section>
-                              <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">
-                                Response
-                              </h4>
-                              <ResponsePayloadView raw={selectedActionDetails.responsePayload ?? null} />
-                            </section>
-
-                            <section>
-                              <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">
-                                Error
-                              </h4>
-                              {selectedActionDetails.errorPayload === null ||
-                              selectedActionDetails.errorPayload === undefined ||
-                              selectedActionDetails.errorPayload === '' ? (
-                                <p className="text-xs text-gray-400 italic">No error captured.</p>
-                              ) : (
-                                <PrettyJsonBlock
-                                  value={parseJsonSafely(selectedActionDetails.errorPayload) ?? selectedActionDetails.errorPayload}
-                                />
-                              )}
-                            </section>
-
-                            <section>
-                              <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">
-                                Metadata
-                              </h4>
-                              <MetadataPayloadView raw={selectedActionDetails.metadata ?? null} />
-                            </section>
-                          </div>
-                      ) : (
-                        <p className="text-sm text-gray-400 italic">No details available for this action.</p>
-                      )}
-                    </div>
-                  )}
                 </div>
               ))}
             </div>
@@ -782,17 +926,16 @@ export function LogDetailPage() {
         </div>
       </div>
 
-      <div className="bg-white rounded-lg border border-gray-200 shadow-sm">
-        <div className="px-6 py-4 border-b border-gray-200">
-          <h2 className="text-lg font-semibold text-gray-900">Technical Details</h2>
-        </div>
-        <div className="p-6">
-          <div className="text-sm text-gray-500">
-            <p>Click "View Details" on any action above to see technical payloads.</p>
-            <p className="mt-2">Sensitive fields are masked by the backend.</p>
-          </div>
-        </div>
-      </div>
+      {selectedActionId !== null && (
+        <ActionDetailsModal
+          action={selectedActionForModal}
+          details={selectedActionDetails}
+          isLoading={isLoadingDetails}
+          errorMessage={detailsError}
+          onClose={closeModal}
+          onRetry={retryDetails}
+        />
+      )}
     </div>
   );
 }

@@ -35,6 +35,9 @@ builder.Services.Configure<LoggerMiddlewareOptions>(
 builder.Services.Configure<JwtOptions>(
     builder.Configuration.GetSection("Jwt"));
 
+builder.Services.Configure<ConsumerJwtOptions>(
+    builder.Configuration.GetSection("ConsumerJwt"));
+
 builder.Services.AddDbContextFactory<LoggerDbContext>(options =>
 {
     options.UseNpgsql(

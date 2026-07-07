@@ -62,6 +62,12 @@ public class LogEventMessage
     [JsonPropertyName("paymentId")]
     public string? PaymentId { get; set; }
 
+    [JsonPropertyName("orderCode")]
+    public string? OrderCode { get; set; }
+
+    [JsonPropertyName("transactionId")]
+    public string? TransactionId { get; set; }
+
     [JsonPropertyName("message")]
     public string? Message { get; set; }
 
@@ -143,6 +149,9 @@ public class LogEventMessage
 
     [JsonPropertyName("userEmail")]
     public string? UserEmail { get; set; }
+
+    [JsonPropertyName("partnerId")]
+    public string? PartnerId { get; set; }
 
     [JsonPropertyName("roles")]
     public List<string>? Roles { get; set; }

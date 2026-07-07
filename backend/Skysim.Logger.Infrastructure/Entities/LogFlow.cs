@@ -9,8 +9,13 @@ public class LogFlow : BaseEntity
     public string? CustomerEmail { get; set; }
     public string? CustomerPhone { get; set; }
     public string? UserId { get; set; }
+    public string? UserEmail { get; set; }
+    public string? Username { get; set; }
+    public string? PartnerId { get; set; }
     public string? OrderId { get; set; }
+    public string? OrderCode { get; set; }
     public string? PaymentId { get; set; }
+    public string? TransactionId { get; set; }
     public int TotalSteps { get; set; }
     public int SuccessSteps { get; set; }
     public int FailedSteps { get; set; }
