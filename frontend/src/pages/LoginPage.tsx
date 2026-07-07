@@ -1,10 +1,15 @@
 import { useState, type FormEvent } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { login as authenticate, isAuthenticated } from '../services/authService';
+import { useAppSelector } from '../app/hooks';
+import { setCredentials } from '../features/auth/authSlice';
+import { login as authenticate } from '../services/authService';
+import { useAppDispatch } from '../app/hooks';
 
 export function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
+  const dispatch = useAppDispatch();
+  const isAuthenticated = useAppSelector((s) => s.auth.isAuthenticated);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -12,7 +17,7 @@ export function LoginPage() {
 
   const from = (location.state as { from?: Location })?.from?.pathname || '/dashboard';
 
-  if (isAuthenticated()) {
+  if (isAuthenticated) {
     navigate(from, { replace: true });
     return null;
   }
@@ -33,6 +38,7 @@ export function LoginPage() {
     setIsLoading(false);
 
     if (result.success) {
+      dispatch(setCredentials({ accessToken: username, username }));
       navigate(from, { replace: true });
     } else {
       setError(result.error || 'Login failed. Please try again.');

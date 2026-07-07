@@ -1,12 +1,20 @@
-import { useEffect, useState } from 'react';
-import type { KeyboardEvent, ChangeEvent } from 'react';
+import { useEffect, useState, useRef } from 'react';
+import type { ChangeEvent } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { PageHeader } from '../components/PageHeader';
 import { StatusBadge } from '../components/StatusBadge';
 import { getLogFlows } from '../services/logFlowService';
 import type { LogFlowSummary } from '../types/logFlow';
-
-const PAGE_SIZE = 10;
+import { useAppDispatch, useAppSelector } from '../app/hooks';
+import {
+  setKeyword,
+  setStatus,
+  setFromDate,
+  setToDate,
+  setPage,
+  resetFilters,
+  hydrateFiltersFromUrl,
+} from '../features/logs/logFilterSlice';
 
 const EMPTY = '—';
 
@@ -48,21 +56,30 @@ function resolveDisplayMessage(flow: LogFlowSummary): string {
 }
 
 export function LogListPage() {
+  const dispatch = useAppDispatch();
   const [searchParams] = useSearchParams();
-  const initialKeyword = searchParams.get('keyword') ?? '';
+  const urlKeyword = searchParams.get('keyword') ?? '';
+
+  // Sync URL keyword into Redux once on first render
+  const filtersInitialized = useRef(false);
+
+  const filters = useAppSelector((s) => s.logFilters);
   const [flows, setFlows] = useState<LogFlowSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  // Filter state — Flow Type and Checkout Type removed (UI only; backend support remains)
-  const [search, setSearch] = useState(initialKeyword);
-  const [status, setStatus] = useState('');
-  const [fromDate, setFromDate] = useState('');
-  const [toDate, setToDate] = useState('');
-
-  // Pagination state
-  const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+
+  // Sync URL keyword → Redux on mount (only once)
+  useEffect(() => {
+    if (!filtersInitialized.current) {
+      filtersInitialized.current = true;
+      if (urlKeyword) {
+        dispatch(hydrateFiltersFromUrl({ keyword: urlKeyword }));
+        return;
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function fetchFlows(currentPage: number) {
     try {
@@ -71,17 +88,16 @@ export function LogListPage() {
 
       const params: Record<string, unknown> = {
         page: currentPage,
-        pageSize: PAGE_SIZE,
+        pageSize: filters.pageSize,
       };
-      if (search.trim()) params.search = search.trim();
-      if (status) params.status = status;
-      if (fromDate) params.fromDate = fromDate;
-      if (toDate) params.toDate = toDate;
+      if (filters.keyword.trim()) params.search = filters.keyword.trim();
+      if (filters.status) params.status = filters.status;
+      if (filters.fromDate) params.fromDate = filters.fromDate;
+      if (filters.toDate) params.toDate = filters.toDate;
 
       const paged = await getLogFlows(params as Parameters<typeof getLogFlows>[0]);
 
       setFlows(paged.items);
-      setPage(paged.page);
       setTotalPages(paged.totalPages);
     } catch {
       setError('Unable to load log flows.');
@@ -90,70 +106,55 @@ export function LogListPage() {
     }
   }
 
+  // Fetch whenever filters or page change
   useEffect(() => {
-    fetchFlows(1);
+    fetchFlows(filters.page);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [filters.keyword, filters.status, filters.fromDate, filters.toDate, filters.page]);
 
-  function handleSearchKeyDown(e: KeyboardEvent<HTMLInputElement>) {
+  function handleSearchKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === 'Enter') {
-      setPage(1);
-      fetchFlows(1);
+      dispatch(setKeyword(filters.keyword));
     }
   }
 
+  function handleSearchChange(e: ChangeEvent<HTMLInputElement>) {
+    dispatch(setKeyword(e.target.value));
+  }
+
   function handleSearchClick() {
-    setPage(1);
-    fetchFlows(1);
+    dispatch(setKeyword(filters.keyword));
   }
 
   function handleStatusChange(e: ChangeEvent<HTMLSelectElement>) {
-    const val = e.target.value;
-    setStatus(val);
-    setPage(1);
-    fetchFlows(1);
+    dispatch(setStatus(e.target.value));
   }
 
   function handleFromDateChange(e: ChangeEvent<HTMLInputElement>) {
-    const val = e.target.value;
-    setFromDate(val);
-    setPage(1);
-    fetchFlows(1);
+    dispatch(setFromDate(e.target.value));
   }
 
   function handleToDateChange(e: ChangeEvent<HTMLInputElement>) {
-    const val = e.target.value;
-    setToDate(val);
-    setPage(1);
-    fetchFlows(1);
+    dispatch(setToDate(e.target.value));
   }
 
   function handleReset() {
-    setSearch('');
-    setStatus('');
-    setFromDate('');
-    setToDate('');
-    setPage(1);
+    dispatch(resetFilters());
     const url = new URL(window.location.href);
     url.searchParams.delete('flowType');
     url.searchParams.delete('checkoutType');
     window.history.replaceState(null, '', url.pathname + url.search);
-    fetchFlows(1);
   }
 
   function handlePrevious() {
-    if (page > 1) {
-      const newPage = page - 1;
-      setPage(newPage);
-      fetchFlows(newPage);
+    if (filters.page > 1) {
+      dispatch(setPage(filters.page - 1));
     }
   }
 
   function handleNext() {
-    if (page < totalPages) {
-      const newPage = page + 1;
-      setPage(newPage);
-      fetchFlows(newPage);
+    if (filters.page < totalPages) {
+      dispatch(setPage(filters.page + 1));
     }
   }
 
@@ -176,8 +177,8 @@ export function LogListPage() {
                 type="text"
                 placeholder="Search email, order code, payment id, transaction id..."
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                value={filters.keyword}
+                onChange={handleSearchChange}
                 onKeyDown={handleSearchKeyDown}
               />
             </div>
@@ -188,7 +189,7 @@ export function LogListPage() {
               <select
                 id="status"
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
-                value={status}
+                value={filters.status}
                 onChange={handleStatusChange}
               >
                 <option value="">All Statuses</option>
@@ -206,7 +207,7 @@ export function LogListPage() {
                 id="fromDate"
                 type="date"
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
-                value={fromDate}
+                value={filters.fromDate}
                 onChange={handleFromDateChange}
               />
             </div>
@@ -218,7 +219,7 @@ export function LogListPage() {
                 id="toDate"
                 type="date"
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
-                value={toDate}
+                value={filters.toDate}
                 onChange={handleToDateChange}
               />
             </div>
@@ -257,7 +258,7 @@ export function LogListPage() {
                 <p className="font-medium mb-1">Failed to load log flows</p>
                 <p className="text-sm">{error}</p>
                 <button
-                  onClick={() => fetchFlows(page)}
+                  onClick={() => fetchFlows(filters.page)}
                   className="mt-3 px-4 py-2 bg-red-100 text-red-700 text-sm font-medium rounded-lg hover:bg-red-200 focus:outline-none focus:ring-2 focus:ring-red-500 transition-colors"
                 >
                   Retry
@@ -388,18 +389,18 @@ export function LogListPage() {
                 <button
                   type="button"
                   onClick={handlePrevious}
-                  disabled={page <= 1}
+                  disabled={filters.page <= 1}
                   className="px-4 py-2 bg-white border border-gray-300 text-sm font-medium rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   Previous
                 </button>
                 <span className="text-sm text-gray-600">
-                  Page {page} of {totalPages}
+                  Page {filters.page} of {totalPages}
                 </span>
                 <button
                   type="button"
                   onClick={handleNext}
-                  disabled={page >= totalPages}
+                  disabled={filters.page >= totalPages}
                   className="px-4 py-2 bg-white border border-gray-300 text-sm font-medium rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   Next

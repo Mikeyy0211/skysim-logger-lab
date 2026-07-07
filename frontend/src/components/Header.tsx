@@ -1,10 +1,14 @@
 import { useNavigate } from 'react-router-dom';
+import { useAppDispatch } from '../app/hooks';
+import { clearCredentials } from '../features/auth/authSlice';
 import { logout } from '../services/authService';
 
 export function Header() {
   const navigate = useNavigate();
+  const dispatch = useAppDispatch();
 
   const handleLogout = () => {
+    dispatch(clearCredentials());
     logout();
     navigate('/login');
   };

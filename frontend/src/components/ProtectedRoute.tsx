@@ -1,5 +1,5 @@
 import { Navigate, useLocation } from 'react-router-dom';
-import { isAuthenticated } from '../services/authService';
+import { useAppSelector } from '../app/hooks';
 import type { ReactNode } from 'react';
 
 interface ProtectedRouteProps {
@@ -8,9 +8,9 @@ interface ProtectedRouteProps {
 
 export function ProtectedRoute({ children }: ProtectedRouteProps) {
   const location = useLocation();
-  const authenticated = isAuthenticated();
+  const isAuthenticated = useAppSelector((s) => s.auth.isAuthenticated);
 
-  if (!authenticated) {
+  if (!isAuthenticated) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
