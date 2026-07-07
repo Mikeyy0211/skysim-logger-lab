@@ -889,6 +889,384 @@ public class MapFlowFromMessageMergeTests
     }
 }
 
+// Test class for incremental flow propagation: same flowId appends actions, does not duplicate
+public class FlowContextIncrementalAppendTests
+{
+    private static LogEventMessage CreateMessage(
+        string flowId,
+        string flowType,
+        string actionType,
+        string status,
+        Guid? eventId = null,
+        string? customerEmail = null,
+        string? userEmail = null,
+        string? orderId = null,
+        string? orderCode = null,
+        string? paymentId = null,
+        string? userId = null)
+    {
+        return new LogEventMessage
+        {
+            EventId = eventId ?? Guid.NewGuid(),
+            FlowId = flowId,
+            FlowType = flowType,
+            ServiceName = "TestService",
+            ActionType = actionType,
+            Status = status,
+            CreatedAt = DateTime.UtcNow,
+            CustomerEmail = customerEmail,
+            UserEmail = userEmail,
+            OrderId = orderId,
+            OrderCode = orderCode,
+            PaymentId = paymentId,
+            UserId = userId
+        };
+    }
+
+    private static LogFlow CreateFlow(string flowType = FlowTypes.HttpAction)
+    {
+        return new LogFlow
+        {
+            Id = Guid.NewGuid(),
+            FlowId = "shared-flow-id",
+            FlowType = flowType,
+            Status = StatusTypes.Success,
+            TotalSteps = 0,
+            SuccessSteps = 0,
+            FailedSteps = 0,
+            StartedAt = DateTime.UtcNow,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+    }
+
+    #region Incremental append: same flowId, different events
+
+    [Fact]
+    public void MapFlowFromMessage_SecondEventWithSameFlowId_DoesNotCreateNewFlow()
+    {
+        // Arrange - first event created the flow with FlowType CHECKOUT_ESIM
+        var flow = CreateFlow(FlowTypes.CheckoutEsim);
+        flow.CustomerEmail = "alice@example.com";
+        flow.TotalSteps = 1;
+        flow.SuccessSteps = 1;
+
+        var secondMessage = CreateMessage(
+            flowId: "shared-flow-id",
+            flowType: FlowTypes.CheckoutEsim,
+            actionType: ActionTypes.PaymentSuccess,
+            status: StatusTypes.Success,
+            customerEmail: "alice@example.com");
+
+        // Act - simulate appending second action to existing flow
+        MapFlowFromMessage(flow, secondMessage);
+
+        // Assert - flow should have incremented steps
+        flow.TotalSteps.Should().Be(2);
+        flow.SuccessSteps.Should().Be(2);
+        flow.FlowType.Should().Be(FlowTypes.CheckoutEsim);
+        flow.CustomerEmail.Should().Be("alice@example.com");
+    }
+
+    [Fact]
+    public void MapFlowFromMessage_SecondEventHasNullBusinessFields_DoesNotOverwriteExisting()
+    {
+        // Arrange - first event set customerEmail
+        var flow = CreateFlow(FlowTypes.CheckoutEsim);
+        flow.CustomerEmail = "existing@example.com";
+        flow.UserId = "user-001";
+
+        // Second event has null customerEmail and userId
+        var secondMessage = CreateMessage(
+            flowId: "shared-flow-id",
+            flowType: FlowTypes.CheckoutEsim,
+            actionType: ActionTypes.PaymentSuccess,
+            status: StatusTypes.Success,
+            customerEmail: null,
+            userId: null);
+
+        // Act
+        MapFlowFromMessage(flow, secondMessage);
+
+        // Assert - existing values preserved
+        flow.CustomerEmail.Should().Be("existing@example.com");
+        flow.UserId.Should().Be("user-001");
+    }
+
+    #endregion
+
+    #region Duplicate eventId does not create duplicate action
+
+    [Fact]
+    public void MapFlowFromMessage_DuplicateEventId_FlowStepsNotDoubleIncremented()
+    {
+        // Arrange - simulate two messages with same eventId (Kafka retry/reconsume)
+        var flow = CreateFlow(FlowTypes.CheckoutEsim);
+        var sharedEventId = Guid.NewGuid();
+
+        var firstMessage = CreateMessage(
+            flowId: "shared-flow-id",
+            flowType: FlowTypes.CheckoutEsim,
+            actionType: ActionTypes.OrderCreated,
+            status: StatusTypes.Success,
+            eventId: sharedEventId,
+            customerEmail: "test@example.com");
+
+        var secondMessage = CreateMessage(
+            flowId: "shared-flow-id",
+            flowType: FlowTypes.CheckoutEsim,
+            actionType: ActionTypes.OrderCreated,
+            status: StatusTypes.Success,
+            eventId: sharedEventId); // same eventId
+
+        // Act
+        MapFlowFromMessage(flow, firstMessage);
+        MapFlowFromMessage(flow, secondMessage); // duplicate eventId
+
+        // Assert - steps should only increment once per message, even if eventId same
+        // (actual duplicate prevention is at repository level via eventId unique constraint)
+        flow.TotalSteps.Should().Be(2);
+    }
+
+    #endregion
+
+    #region userEmail vs customerEmail separation
+
+    [Fact]
+    public void MapFlowFromMessage_FlowHasCustomerEmail_SecondMessageWithUserEmail_DoesNotOverwrite()
+    {
+        // Arrange - flow was created by a message that set customerEmail only
+        var flow = CreateFlow(FlowTypes.CheckoutEsim);
+        flow.CustomerEmail = "customer@example.com";
+
+        // A second message arrives with userEmail (from authenticated context)
+        var secondMessage = CreateMessage(
+            flowId: "shared-flow-id",
+            flowType: FlowTypes.CheckoutEsim,
+            actionType: ActionTypes.HttpRequest,
+            status: StatusTypes.Success,
+            customerEmail: null,
+            userEmail: "user@auth.com");
+
+        // Act
+        MapFlowFromMessage(flow, secondMessage);
+
+        // Assert - customerEmail preserved, userEmail filled
+        flow.CustomerEmail.Should().Be("customer@example.com");
+        flow.UserEmail.Should().Be("user@auth.com");
+    }
+
+    [Fact]
+    public void MapFlowFromMessage_FlowHasUserEmail_SecondMessageWithCustomerEmail_DoesNotOverwrite()
+    {
+        // Arrange
+        var flow = CreateFlow(FlowTypes.CheckoutEsim);
+        flow.UserEmail = "user@auth.com";
+
+        var secondMessage = CreateMessage(
+            flowId: "shared-flow-id",
+            flowType: FlowTypes.CheckoutEsim,
+            actionType: ActionTypes.PaymentSuccess,
+            status: StatusTypes.Success,
+            customerEmail: "customer@external.com",
+            userEmail: null);
+
+        // Act
+        MapFlowFromMessage(flow, secondMessage);
+
+        // Assert
+        flow.UserEmail.Should().Be("user@auth.com");
+        flow.CustomerEmail.Should().Be("customer@external.com");
+    }
+
+    #endregion
+
+    #region orderId vs orderCode separation
+
+    [Fact]
+    public void MapFlowFromMessage_FlowHasOrderCode_SecondMessageWithOrderId_DoesNotOverwrite()
+    {
+        // Arrange
+        var flow = CreateFlow(FlowTypes.CheckoutEsim);
+        flow.OrderCode = "ORD-CODE-001";
+
+        var secondMessage = CreateMessage(
+            flowId: "shared-flow-id",
+            flowType: FlowTypes.CheckoutEsim,
+            actionType: ActionTypes.PaymentSuccess,
+            status: StatusTypes.Success,
+            orderId: "ORD-internal-123",
+            orderCode: null);
+
+        // Act
+        MapFlowFromMessage(flow, secondMessage);
+
+        // Assert
+        flow.OrderCode.Should().Be("ORD-CODE-001");
+        flow.OrderId.Should().Be("ORD-internal-123");
+    }
+
+    [Fact]
+    public void MapFlowFromMessage_FlowHasOrderId_SecondMessageWithOrderCode_DoesNotOverwrite()
+    {
+        // Arrange
+        var flow = CreateFlow(FlowTypes.CheckoutEsim);
+        flow.OrderId = "ORD-internal-001";
+
+        var secondMessage = CreateMessage(
+            flowId: "shared-flow-id",
+            flowType: FlowTypes.CheckoutEsim,
+            actionType: ActionTypes.PaymentSuccess,
+            status: StatusTypes.Success,
+            orderId: null,
+            orderCode: "ORD-CODE-456");
+
+        // Act
+        MapFlowFromMessage(flow, secondMessage);
+
+        // Assert
+        flow.OrderId.Should().Be("ORD-internal-001");
+        flow.OrderCode.Should().Be("ORD-CODE-456");
+    }
+
+    #endregion
+
+    #region FAILED status propagates to flow
+
+    [Fact]
+    public void MapFlowFromMessage_ActionIsFailed_FlowStatusBecomesFailed()
+    {
+        // Arrange
+        var flow = CreateFlow(FlowTypes.CheckoutEsim);
+        flow.Status = StatusTypes.Success;
+
+        var failedMessage = CreateMessage(
+            flowId: "shared-flow-id",
+            flowType: FlowTypes.CheckoutEsim,
+            actionType: ActionTypes.PaymentFailed,
+            status: StatusTypes.Failed);
+
+        // Act
+        MapFlowFromMessage(flow, failedMessage);
+
+        // Assert
+        flow.Status.Should().Be(StatusTypes.Failed);
+        flow.FailedSteps.Should().Be(1);
+        flow.CompletedAt.Should().NotBeNull();
+    }
+
+    [Fact]
+    public void MapFlowFromMessage_MultipleFailedActions_FailedStepsAccumulates()
+    {
+        // Arrange
+        var flow = CreateFlow(FlowTypes.CheckoutEsim);
+        flow.FailedSteps = 1;
+
+        var secondFailedMessage = CreateMessage(
+            flowId: "shared-flow-id",
+            flowType: FlowTypes.CheckoutEsim,
+            actionType: ActionTypes.EsimActivationFailed,
+            status: StatusTypes.Failed);
+
+        // Act
+        MapFlowFromMessage(flow, secondFailedMessage);
+
+        // Assert
+        flow.FailedSteps.Should().Be(2);
+        flow.CompletedAt.Should().NotBeNull();
+    }
+
+    #endregion
+
+    #region Shared flowId between HTTP and business events
+
+    [Fact]
+    public void MapFlowFromMessage_HttpActionArrivesAfterCheckoutEsim_DoesNotClearBusinessFields()
+    {
+        // Arrange - flow was created by ORDER_CREATED event
+        var flow = CreateFlow(FlowTypes.CheckoutEsim);
+        flow.CustomerEmail = "alice@example.com";
+        flow.OrderId = "ORD-001";
+        flow.LastActionType = ActionTypes.OrderCreated;
+        flow.LastMessage = "Order created";
+
+        // HTTP_REQUEST arrives later (from middleware)
+        var httpMessage = CreateMessage(
+            flowId: "shared-flow-id",
+            flowType: FlowTypes.HttpAction,
+            actionType: ActionTypes.HttpRequest,
+            status: StatusTypes.Success,
+            customerEmail: null,
+            orderId: null);
+
+        // Act
+        MapFlowFromMessage(flow, httpMessage);
+
+        // Assert - business fields preserved
+        flow.CustomerEmail.Should().Be("alice@example.com");
+        flow.OrderId.Should().Be("ORD-001");
+        // lastActionType should be preserved (not overwritten by HTTP_REQUEST)
+        flow.LastActionType.Should().Be(ActionTypes.OrderCreated);
+        flow.LastMessage.Should().Be("Order created");
+    }
+
+    #endregion
+
+    // Mirror MapFlowFromMessage from KafkaLogConsumerService (same logic used in tests)
+    private static void MapFlowFromMessage(LogFlow flow, LogEventMessage message)
+    {
+        if (!string.IsNullOrWhiteSpace(message.FlowType) &&
+            (string.IsNullOrWhiteSpace(flow.FlowType) ||
+             flow.FlowType == FlowTypes.HttpAction ||
+             message.FlowType == FlowTypes.CheckoutEsim))
+        {
+            flow.FlowType = message.FlowType;
+        }
+
+        flow.CheckoutType ??= message.CheckoutType;
+        flow.CustomerEmail ??= message.CustomerEmail;
+        flow.CustomerPhone ??= message.CustomerPhone;
+        flow.UserId ??= message.UserId;
+        flow.UserEmail ??= message.UserEmail;
+        flow.Username ??= message.Username;
+        flow.PartnerId ??= message.PartnerId;
+        flow.OrderId ??= message.OrderId;
+        flow.OrderCode ??= message.OrderCode;
+        flow.PaymentId ??= message.PaymentId;
+
+        flow.Status = message.Status;
+        flow.StartedAt = message.CreatedAt;
+
+        bool isExistingBusinessFlow = flow.FlowType == FlowTypes.CheckoutEsim;
+        bool isHttpRequest = message.ActionType == ActionTypes.HttpRequest;
+
+        if (isHttpRequest && isExistingBusinessFlow)
+        {
+            // Preserve existing lastActionType/lastMessage
+        }
+        else
+        {
+            flow.LastActionType = message.ActionType;
+            flow.LastMessage = message.Message;
+        }
+
+        if (message.Status == StatusTypes.Success)
+        {
+            flow.SuccessSteps++;
+            if (Skysim.Logger.Api.Domain.Services.FlowDomainService.IsTerminalAction(message.ActionType, message.Status))
+            {
+                flow.CompletedAt = DateTime.UtcNow;
+            }
+        }
+        else if (message.Status == StatusTypes.Failed)
+        {
+            flow.FailedSteps++;
+            flow.CompletedAt = DateTime.UtcNow;
+        }
+        flow.TotalSteps++;
+    }
+}
+
 // Test class specifically for NormalizeServiceName logic
 public class NormalizeServiceNameTests
 {

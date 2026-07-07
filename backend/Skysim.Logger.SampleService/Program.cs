@@ -1,4 +1,6 @@
+using System.Net.Http.Headers;
 using Microsoft.Extensions.Options;
+using Skysim.Logger.Client.Http;
 using Skysim.Logger.Client.Masking;
 using Skysim.Logger.Client.Middlewares;
 using Skysim.Logger.Client.Producers;
@@ -47,6 +49,10 @@ builder.Services.Configure<LoggerMiddlewareOptions>(
 // Register BusinessActionLogger
 builder.Services.AddScoped<IBusinessActionLogger, BusinessActionLogger>();
 
+// HttpClient for downstream service calls, with flow-context propagation
+builder.Services.AddHttpClient<PropagationHttpClient>()
+    .AddHttpMessageHandler<FlowContextForwardingHandler>();
+
 // Add controllers
 builder.Services.AddControllers();
 
@@ -66,10 +72,7 @@ var app = builder.Build();
 
 // Configure the HTTP request pipeline
 
-// FlowIdSeedingMiddleware BEFORE LoggerMiddleware
-app.UseFlowIdSeeding();
-
-// LoggerMiddleware
+// LoggerMiddleware handles X-Flow-Id/X-Correlation-Id: reuses existing header or creates new
 app.UseMiddleware<LoggerMiddleware>();
 
 // Enable Swagger in Development environment

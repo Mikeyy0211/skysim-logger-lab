@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Skysim.Logger.Client.Http;
 using Skysim.Logger.Client.Middlewares;
 using Skysim.Logger.Client.Producers;
 
@@ -7,8 +8,20 @@ namespace Skysim.Logger.Client.Extensions;
 
 public static class ServiceCollectionExtensions
 {
+    /// <summary>
+    /// Registers the Skysim Logger infrastructure: LoggerMiddleware options, KafkaLogProducer,
+    /// and IHttpContextAccessor (required by FlowContextForwardingHandler).
+    ///
+    /// To propagate X-Flow-Id / X-Correlation-Id through downstream HTTP calls:
+    /// <code>
+    /// services.AddHttpClient("MyService")
+    ///     .AddHttpMessageHandler&lt;FlowContextForwardingHandler&gt;();
+    /// </code>
+    /// </summary>
     public static IServiceCollection AddSkysimLogger(this IServiceCollection services, IConfiguration configuration)
     {
+        services.AddHttpContextAccessor();
+
         services.Configure<LoggerMiddlewareOptions>(opts =>
         {
             var section = configuration.GetSection(LoggerMiddlewareOptions.SectionName);

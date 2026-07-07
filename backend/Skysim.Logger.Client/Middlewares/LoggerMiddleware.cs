@@ -4,8 +4,15 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Skysim.Logger.Client.Producers;
+using HeaderNames = Skysim.Logger.Contracts.Constants.HeaderNames;
 
 namespace Skysim.Logger.Client.Middlewares;
+
+public class FlowContext
+{
+    public string FlowId { get; init; } = string.Empty;
+    public string CorrelationId { get; init; } = string.Empty;
+}
 
 public class LoggerMiddleware
 {
@@ -39,7 +46,7 @@ public class LoggerMiddleware
         }
 
         var startedAt = DateTime.UtcNow;
-        var flowId = GetFlowId(context);
+        var flowCtx = EnsureFlowContext(context);
         var requestBody = await CaptureRequestBodyAsync(context.Request);
 
         var (statusCode, responseBody, exception) = await ExecuteAndCaptureResponseAsync(context);
@@ -51,7 +58,8 @@ public class LoggerMiddleware
             await _producer.PublishAsync(new
             {
                 eventId = Guid.NewGuid(),
-                flowId,
+                flowId = flowCtx.FlowId,
+                correlationId = flowCtx.CorrelationId,
                 flowType = "HTTP_ACTION",
                 actionType = "HTTP_REQUEST",
 
@@ -82,32 +90,58 @@ public class LoggerMiddleware
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Kafka publish failed. FlowId={FlowId}", flowId);
+            _logger.LogError(ex, "Kafka publish failed. FlowId={FlowId}", flowCtx.FlowId);
         }
 
         if (exception != null)
             ExceptionDispatchInfo.Capture(exception).Throw();
     }
 
-    private static string GetFlowId(HttpContext context)
+    private static FlowContext EnsureFlowContext(HttpContext context)
     {
         var headers = context.Request.Headers;
 
-        if (headers.TryGetValue("X-Flow-Id", out var v) && !string.IsNullOrWhiteSpace(v))
-            return v.ToString();
+        string flowId;
+        string correlationId;
 
-        if (headers.TryGetValue("X-Correlation-Id", out v) && !string.IsNullOrWhiteSpace(v))
-            return v.ToString();
+        if (headers.TryGetValue(HeaderNames.FlowId, out var flowIdHeader) &&
+            !string.IsNullOrWhiteSpace(flowIdHeader))
+        {
+            flowId = flowIdHeader.ToString();
+            correlationId = flowId;
+        }
+        else if (headers.TryGetValue(HeaderNames.CorrelationId, out var corrIdHeader) &&
+                 !string.IsNullOrWhiteSpace(corrIdHeader))
+        {
+            flowId = corrIdHeader.ToString();
+            correlationId = flowId;
+        }
+        else if (headers.TryGetValue(HeaderNames.RequestId, out var reqIdHeader) &&
+                 !string.IsNullOrWhiteSpace(reqIdHeader))
+        {
+            flowId = reqIdHeader.ToString();
+            correlationId = flowId;
+        }
+        else
+        {
+            flowId = Guid.NewGuid().ToString("D");
+            correlationId = flowId;
+        }
 
-        if (headers.TryGetValue("X-Request-Id", out v) && !string.IsNullOrWhiteSpace(v))
-            return v.ToString();
-
-        var generated = Guid.NewGuid().ToString("D");
+        // Expose context to downstream code (e.g. HttpClient via IHttpContextAccessor)
+        context.Items["FlowContext"] = new FlowContext
+        {
+            FlowId = flowId,
+            CorrelationId = correlationId
+        };
 
         if (!context.Response.HasStarted)
-            context.Response.Headers["X-Flow-Id"] = generated;
+        {
+            context.Response.Headers[HeaderNames.FlowId] = flowId;
+            context.Response.Headers[HeaderNames.CorrelationId] = correlationId;
+        }
 
-        return generated;
+        return new FlowContext { FlowId = flowId, CorrelationId = correlationId };
     }
 
     private static string BuildFullUrl(HttpRequest request)
