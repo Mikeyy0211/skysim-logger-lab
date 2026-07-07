@@ -54,11 +54,9 @@ export function LogListPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Filter state
+  // Filter state — Flow Type and Checkout Type removed (UI only; backend support remains)
   const [search, setSearch] = useState(initialKeyword);
   const [status, setStatus] = useState('');
-  const [flowType, setFlowType] = useState('');
-  const [checkoutType, setCheckoutType] = useState('');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
 
@@ -77,8 +75,6 @@ export function LogListPage() {
       };
       if (search.trim()) params.search = search.trim();
       if (status) params.status = status;
-      if (flowType) params.flowType = flowType;
-      if (checkoutType) params.checkoutType = checkoutType;
       if (fromDate) params.fromDate = fromDate;
       if (toDate) params.toDate = toDate;
 
@@ -118,20 +114,6 @@ export function LogListPage() {
     fetchFlows(1);
   }
 
-  function handleFlowTypeChange(e: ChangeEvent<HTMLSelectElement>) {
-    const val = e.target.value;
-    setFlowType(val);
-    setPage(1);
-    fetchFlows(1);
-  }
-
-  function handleCheckoutTypeChange(e: ChangeEvent<HTMLSelectElement>) {
-    const val = e.target.value;
-    setCheckoutType(val);
-    setPage(1);
-    fetchFlows(1);
-  }
-
   function handleFromDateChange(e: ChangeEvent<HTMLInputElement>) {
     const val = e.target.value;
     setFromDate(val);
@@ -149,11 +131,13 @@ export function LogListPage() {
   function handleReset() {
     setSearch('');
     setStatus('');
-    setFlowType('');
-    setCheckoutType('');
     setFromDate('');
     setToDate('');
     setPage(1);
+    const url = new URL(window.location.href);
+    url.searchParams.delete('flowType');
+    url.searchParams.delete('checkoutType');
+    window.history.replaceState(null, '', url.pathname + url.search);
     fetchFlows(1);
   }
 
@@ -182,7 +166,7 @@ export function LogListPage() {
 
       <div className="bg-white rounded-lg border border-gray-200 shadow-sm mb-6">
         <div className="p-4 border-b border-gray-200">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="lg:col-span-2">
               <label htmlFor="search" className="block text-sm font-medium text-gray-700 mb-1">
                 Search
@@ -212,36 +196,6 @@ export function LogListPage() {
                 <option value="FAILED">Failed</option>
                 <option value="RUNNING">Running</option>
                 <option value="PARTIAL_FAILED">Partial Failed</option>
-              </select>
-            </div>
-            <div>
-              <label htmlFor="flowType" className="block text-sm font-medium text-gray-700 mb-1">
-                Flow Type
-              </label>
-              <select
-                id="flowType"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
-                value={flowType}
-                onChange={handleFlowTypeChange}
-              >
-                <option value="">All Flow Types</option>
-                <option value="CHECKOUT_ESIM">Checkout eSIM</option>
-                <option value="HTTP_ACTION">HTTP Action</option>
-              </select>
-            </div>
-            <div>
-              <label htmlFor="checkoutType" className="block text-sm font-medium text-gray-700 mb-1">
-                Checkout Type
-              </label>
-              <select
-                id="checkoutType"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
-                value={checkoutType}
-                onChange={handleCheckoutTypeChange}
-              >
-                <option value="">All Types</option>
-                <option value="GUEST">Guest</option>
-                <option value="AUTHENTICATED">Authenticated</option>
               </select>
             </div>
             <div>
@@ -414,7 +368,11 @@ export function LogListPage() {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm">
                           <Link
-                            to={`/logs/${flow.flowId}`}
+                            to={
+                              flow.orderCode
+                                ? `/business-flows/${encodeURIComponent(flow.orderCode)}`
+                                : `/logs/${flow.flowId}`
+                            }
                             className="text-blue-600 hover:text-blue-800 font-medium"
                           >
                             View Detail

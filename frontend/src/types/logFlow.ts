@@ -77,3 +77,51 @@ export interface DashboardMetrics {
   recentFailedFlows: RecentFlowItem[];
   recentSuccessFlows: RecentFlowItem[];
 }
+
+// ─── Business Flow Types ──────────────────────────────────────────────────────
+
+export interface BusinessFlowSummary {
+  orderCode: string;
+  representativeFlowId: string;
+  userEmail: string | null;
+  customerEmail: string | null;
+  customerPhone: string | null;
+  partnerId: string | null;
+  paymentId: string | null;
+  transactionId: string | null;
+  overallStatus: string;
+  services: string[];
+  actionCount: number;
+  failedCount: number;
+  successCount: number;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  lastMessage: string | null;
+  lastServiceName: string | null;
+  lastActionType: string | null;
+}
+
+export interface BusinessFlowAction {
+  flowId: string;
+  eventId: string;
+  serviceName: string;
+  actionType: string;
+  status: string;
+  message: string | null;
+  errorCode: string | null;
+  errorMessage: string | null;
+  durationMs: number | null;
+  correlationId: string | null;
+  createdAt: string;
+  requestTime: string | null;
+  responseTime: string | null;
+  requestPayload: string | null;
+  responsePayload: string | null;
+  errorPayload: string | null;
+  metadata: string | null;
+}
+
+export interface BusinessFlowDetail {
+  summary: BusinessFlowSummary;
+  timeline: BusinessFlowAction[];
+}

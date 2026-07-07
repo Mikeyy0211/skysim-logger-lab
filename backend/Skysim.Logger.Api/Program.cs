@@ -81,6 +81,7 @@ builder.Services.AddHostedService<KafkaLogConsumerService>();
 
 builder.Services.AddScoped<ILogFlowQueryService, LogFlowQueryService>();
 builder.Services.AddScoped<ILogActionQueryService, LogActionQueryService>();
+builder.Services.AddScoped<IBusinessFlowQueryService, BusinessFlowQueryService>();
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>

@@ -171,7 +171,11 @@ function RecentFlowRow({ item }: { item: RecentFlowItem }) {
       <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{time}</td>
       <td className="px-4 py-3 whitespace-nowrap text-sm">
         <Link
-          to={`/logs/${item.flowId}`}
+          to={
+            item.orderCode
+              ? `/business-flows/${encodeURIComponent(item.orderCode)}`
+              : `/logs/${item.flowId}`
+          }
           className="text-blue-600 hover:text-blue-800 font-medium"
         >
           View
@@ -224,7 +228,7 @@ function RecentFlowSection({
                   Time
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Detail
+                  View
                 </th>
               </tr>
             </thead>
