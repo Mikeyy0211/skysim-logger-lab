@@ -372,6 +372,184 @@ public class LogFlowQueryServiceTests : IDisposable
         result.Items[0].LastServiceName.Should().Be("sample-checkout-service");
     }
 
+    [Fact]
+    public async Task GetDashboardMetricsAsync_EmptyDb_ReturnsZeroCounts()
+    {
+        var result = await _service.GetDashboardMetricsAsync();
+
+        result.TotalFlows.Should().Be(0);
+        result.TotalActions.Should().Be(0);
+        result.LogsToday.Should().Be(0);
+        result.LogsThisWeek.Should().Be(0);
+        result.SuccessFlows.Should().Be(0);
+        result.FailedFlows.Should().Be(0);
+        result.RunningFlows.Should().Be(0);
+        result.PartialFailed.Should().Be(0);
+        result.SuccessRate.Should().Be(0);
+        result.RecentFailedFlows.Should().BeEmpty();
+        result.RecentSuccessFlows.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task GetDashboardMetricsAsync_TotalsByStatus_AreCorrect()
+    {
+        await _db.LogFlows.AddRangeAsync(
+            CreateFlow("s-1", status: StatusTypes.Success),
+            CreateFlow("s-2", status: StatusTypes.Success),
+            CreateFlow("f-1", status: StatusTypes.Failed),
+            CreateFlow("r-1", status: StatusTypes.Running));
+        await _db.SaveChangesAsync();
+
+        var result = await _service.GetDashboardMetricsAsync();
+
+        result.TotalFlows.Should().Be(4);
+        result.SuccessFlows.Should().Be(2);
+        result.FailedFlows.Should().Be(1);
+        result.RunningFlows.Should().Be(1);
+        result.PartialFailed.Should().Be(0);
+        result.SuccessRate.Should().Be(50.0);
+    }
+
+    [Fact]
+    public async Task GetDashboardMetricsAsync_TotalActions_CountsAllLogActions()
+    {
+        var flow = CreateFlow("flow-a");
+        await _db.LogFlows.AddAsync(flow);
+        await _db.SaveChangesAsync();
+
+        await _db.LogActions.AddRangeAsync(
+            CreateAction(flow.FlowId, "OrderService", ActionTypes.OrderCreated, stepOrder: 1),
+            CreateAction(flow.FlowId, "PaymentService", ActionTypes.PaymentSuccess, stepOrder: 2),
+            CreateAction(flow.FlowId, "ProviderService", ActionTypes.EsimActivated, stepOrder: 3));
+        await _db.SaveChangesAsync();
+
+        var result = await _service.GetDashboardMetricsAsync();
+
+        result.TotalActions.Should().Be(3);
+    }
+
+    [Fact]
+    public async Task GetDashboardMetricsAsync_LogsToday_OnlyCountsFlowsFromToday()
+    {
+        var today = CreateFlow("today", status: StatusTypes.Success);
+        today.CreatedAt = DateTime.UtcNow;
+        var yesterday = CreateFlow("yesterday", status: StatusTypes.Success);
+        yesterday.CreatedAt = DateTime.UtcNow.AddDays(-1);
+        await _db.LogFlows.AddRangeAsync(today, yesterday);
+        await _db.SaveChangesAsync();
+
+        var result = await _service.GetDashboardMetricsAsync();
+
+        result.LogsToday.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task GetDashboardMetricsAsync_LogsThisWeek_CountsFlowsFromCurrentIsoWeek()
+    {
+        var now = DateTime.UtcNow;
+        // Monday 00:00 UTC of this week
+        var dayOfWeek = (int)now.DayOfWeek;
+        var offset = dayOfWeek == 0 ? 6 : dayOfWeek - 1;
+        var mondayThisWeek = DateTime.SpecifyKind(now.Date.AddDays(-offset), DateTimeKind.Utc);
+
+        var thisWeek = CreateFlow("this-week", status: StatusTypes.Success);
+        thisWeek.CreatedAt = mondayThisWeek.AddHours(1);
+        var beforeWeek = CreateFlow("before-week", status: StatusTypes.Success);
+        beforeWeek.CreatedAt = mondayThisWeek.AddDays(-1);
+        await _db.LogFlows.AddRangeAsync(thisWeek, beforeWeek);
+        await _db.SaveChangesAsync();
+
+        var result = await _service.GetDashboardMetricsAsync();
+
+        result.LogsThisWeek.Should().BeGreaterOrEqualTo(1);
+        result.LogsThisWeek.Should().BeGreaterThan(0);
+    }
+
+    [Fact]
+    public async Task GetDashboardMetricsAsync_RecentFailedFlows_OrderedByUpdatedAtDesc()
+    {
+        var older = CreateFlow("failed-old", status: StatusTypes.Failed);
+        older.UpdatedAt = DateTime.UtcNow.AddMinutes(-30);
+        var newer = CreateFlow("failed-new", status: StatusTypes.Failed);
+        newer.UpdatedAt = DateTime.UtcNow;
+        await _db.LogFlows.AddRangeAsync(older, newer);
+        await _db.SaveChangesAsync();
+
+        var result = await _service.GetDashboardMetricsAsync();
+
+        result.RecentFailedFlows.Should().HaveCount(2);
+        result.RecentFailedFlows[0].FlowId.Should().Be("failed-new");
+        result.RecentFailedFlows[1].FlowId.Should().Be("failed-old");
+        result.RecentFailedFlows.Should().OnlyContain(f => f.Status == StatusTypes.Failed);
+    }
+
+    [Fact]
+    public async Task GetDashboardMetricsAsync_RecentSuccessFlows_IncludesLatestActionServiceAndDuration()
+    {
+        var flow = CreateFlow("success-with-actions", status: StatusTypes.Success);
+        await _db.LogFlows.AddAsync(flow);
+        await _db.SaveChangesAsync();
+
+        await _db.LogActions.AddRangeAsync(
+            CreateAction(flow.FlowId, "OrderService", ActionTypes.OrderCreated, stepOrder: 1),
+            CreateAction(flow.FlowId, "PaymentService", ActionTypes.PaymentSuccess, stepOrder: 2),
+            CreateActionWithDuration(flow.FlowId, "NotificationService", ActionTypes.EmailSent, stepOrder: 3, durationMs: 250));
+        await _db.SaveChangesAsync();
+
+        var result = await _service.GetDashboardMetricsAsync();
+
+        result.RecentSuccessFlows.Should().HaveCount(1);
+        var recent = result.RecentSuccessFlows[0];
+        recent.FlowId.Should().Be("success-with-actions");
+        recent.LastServiceName.Should().Be("NotificationService");
+        recent.LastActionType.Should().Be(ActionTypes.EmailSent);
+        recent.LastDurationMs.Should().Be(250);
+    }
+
+    [Fact]
+    public async Task GetDashboardMetricsAsync_RecentFlows_CappedAtLimit()
+    {
+        for (var i = 0; i < 10; i++)
+        {
+            await _db.LogFlows.AddAsync(CreateFlow($"failed-{i:D2}", status: StatusTypes.Failed));
+        }
+        await _db.SaveChangesAsync();
+
+        var result = await _service.GetDashboardMetricsAsync();
+
+        result.RecentFailedFlows.Should().HaveCount(5);
+    }
+
+    [Fact]
+    public async Task GetDashboardMetricsAsync_SuccessRate_IsZeroWhenNoFlows()
+    {
+        var result = await _service.GetDashboardMetricsAsync();
+
+        result.SuccessRate.Should().Be(0);
+    }
+
+    private static LogAction CreateActionWithDuration(
+        string flowId,
+        string serviceName,
+        string actionType,
+        int stepOrder,
+        int durationMs)
+    {
+        return new LogAction
+        {
+            Id = Guid.NewGuid(),
+            EventId = Guid.NewGuid(),
+            FlowId = flowId,
+            StepOrder = stepOrder,
+            ServiceName = serviceName,
+            ActionType = actionType,
+            Status = StatusTypes.Success,
+            DurationMs = durationMs,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+        };
+    }
+
     private async Task SeedFlowsAsync(int count)
     {
         var flows = Enumerable.Range(1, count)

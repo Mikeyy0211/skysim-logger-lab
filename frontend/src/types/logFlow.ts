@@ -42,11 +42,37 @@ export interface LogFlowDetail extends LogFlowSummary {
   // Additional timeline data comes from the API response
 }
 
+export interface RecentFlowItem {
+  flowId: string;
+  status: string;
+  userId: string | null;
+  userEmail: string | null;
+  username: string | null;
+  customerEmail: string | null;
+  partnerId: string | null;
+  orderCode: string | null;
+  orderId: string | null;
+  paymentId: string | null;
+  transactionId: string | null;
+  lastServiceName: string | null;
+  lastActionType: string | null;
+  lastMessage: string | null;
+  lastDurationMs: number | null;
+  updatedAt: string;
+  createdAt: string;
+}
+
 export interface DashboardMetrics {
   totalFlows: number;
+  totalActions: number;
+  logsToday: number;
+  logsThisWeek: number;
   successFlows: number;
   failedFlows: number;
   runningFlows: number;
   partialFailed: number;
+  successRate: number;
   averageDurationMs: number | null;
+  recentFailedFlows: RecentFlowItem[];
+  recentSuccessFlows: RecentFlowItem[];
 }

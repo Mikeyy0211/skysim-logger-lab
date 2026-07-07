@@ -269,19 +269,124 @@ public class LogFlowQueryService : ILogFlowQueryService
 
         long total = success + failed + running + partial;
 
+        var nowUtc = DateTime.UtcNow;
+        var todayUtc = DateTime.SpecifyKind(nowUtc.Date, DateTimeKind.Utc);
+        var weekStartUtc = StartOfWeekUtc(nowUtc);
+
+        long totalActions = await db.LogActions.AsNoTracking().LongCountAsync(ct);
+
+        long logsToday = await db.LogFlows
+            .AsNoTracking()
+            .Where(f => f.CreatedAt >= todayUtc)
+            .LongCountAsync(ct);
+
+        long logsThisWeek = await db.LogFlows
+            .AsNoTracking()
+            .Where(f => f.CreatedAt >= weekStartUtc)
+            .LongCountAsync(ct);
+
+        double successRate = total > 0
+            ? Math.Round((double)success / total * 100, 2)
+            : 0d;
+
         double? averageDurationMs = await db.LogFlows
             .AsNoTracking()
             .Where(f => f.CompletedAt != null)
             .Select(f => (double?)(f.CompletedAt!.Value - f.StartedAt).TotalMilliseconds)
             .AverageAsync(ct);
 
+        var recentFailed = await LoadRecentFlowsAsync(db, StatusTypes.Failed, RecentLimit, ct);
+        var recentSuccess = await LoadRecentFlowsAsync(db, StatusTypes.Success, RecentLimit, ct);
+
         return new DashboardMetricsDto(
             total,
+            totalActions,
+            logsToday,
+            logsThisWeek,
             success,
             failed,
             running,
             partial,
-            averageDurationMs);
+            successRate,
+            averageDurationMs,
+            recentFailed,
+            recentSuccess);
+    }
+
+    /// <summary>
+    /// Loads up to <paramref name="limit"/> most recent flows for a given status, including the
+    /// service name, action type, message, and duration of the latest meaningful action.
+    /// </summary>
+    private static async Task<IReadOnlyList<RecentFlowDto>> LoadRecentFlowsAsync(
+        LoggerDbContext db,
+        string status,
+        int limit,
+        CancellationToken ct)
+    {
+        var flows = await db.LogFlows
+            .AsNoTracking()
+            .Where(f => f.Status == status)
+            .OrderByDescending(f => f.UpdatedAt)
+            .ThenByDescending(f => f.CreatedAt)
+            .Take(limit)
+            .ToListAsync(ct);
+
+        if (flows.Count == 0)
+        {
+            return Array.Empty<RecentFlowDto>();
+        }
+
+        var flowIds = flows.Select(f => f.FlowId).ToList();
+        var latestActionsByFlow = await db.LogActions
+            .AsNoTracking()
+            .Where(a => flowIds.Contains(a.FlowId))
+            .GroupBy(a => a.FlowId)
+            .Select(g => g.OrderByDescending(a => a.StepOrder)
+                          .ThenByDescending(a => a.CreatedAt)
+                          .FirstOrDefault())
+            .ToListAsync(ct);
+
+        var actionLookup = latestActionsByFlow
+            .Where(a => a != null)
+            .ToDictionary(a => a!.FlowId, a => a!);
+
+        return flows.Select(f =>
+        {
+            actionLookup.TryGetValue(f.FlowId, out var lastAction);
+            return new RecentFlowDto(
+                f.FlowId,
+                f.Status,
+                f.UserId,
+                f.UserEmail,
+                f.Username,
+                f.CustomerEmail,
+                f.PartnerId,
+                f.OrderCode,
+                f.OrderId,
+                f.PaymentId,
+                f.TransactionId,
+                lastAction?.ServiceName,
+                lastAction?.ActionType,
+                f.LastMessage,
+                lastAction?.DurationMs,
+                f.UpdatedAt,
+                f.CreatedAt);
+        }).ToList();
+    }
+
+    private const int RecentLimit = 5;
+
+    /// <summary>
+    /// Returns Monday 00:00 (UTC) of the week containing <paramref name="nowUtc"/>.
+    /// Uses ISO 8601 week rule (Monday is the first day of the week).
+    /// </summary>
+    private static DateTime StartOfWeekUtc(DateTime nowUtc)
+    {
+        var date = nowUtc.Date;
+        var dayOfWeek = (int)date.DayOfWeek;
+        // DayOfWeek.Sunday == 0 -> treat Sunday as last day => offset 6; Monday == 1 -> offset 0.
+        var offsetToMonday = dayOfWeek == 0 ? 6 : dayOfWeek - 1;
+        return DateTime.SpecifyKind(date.AddDays(-offsetToMonday), DateTimeKind.Utc);
     }
 
     /// <summary>

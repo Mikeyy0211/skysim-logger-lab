@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { KeyboardEvent, ChangeEvent } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { PageHeader } from '../components/PageHeader';
 import { StatusBadge } from '../components/StatusBadge';
 import { getLogFlows } from '../services/logFlowService';
@@ -48,12 +48,14 @@ function resolveDisplayMessage(flow: LogFlowSummary): string {
 }
 
 export function LogListPage() {
+  const [searchParams] = useSearchParams();
+  const initialKeyword = searchParams.get('keyword') ?? '';
   const [flows, setFlows] = useState<LogFlowSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   // Filter state
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(initialKeyword);
   const [status, setStatus] = useState('');
   const [flowType, setFlowType] = useState('');
   const [checkoutType, setCheckoutType] = useState('');
