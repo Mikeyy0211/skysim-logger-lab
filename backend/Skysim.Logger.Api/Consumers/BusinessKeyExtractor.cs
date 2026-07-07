@@ -37,6 +37,35 @@ public static class BusinessKeyExtractor
         "trans_id"
     ];
 
+    private static readonly string[] CustomerEmailKeys =
+    [
+        "customerEmail",
+        "customer_email",
+        "buyerEmail",
+        "receiverEmail",
+        "email"
+    ];
+
+    private static readonly string[] CustomerPhoneKeys =
+    [
+        "customerPhone",
+        "customer_phone",
+        "phoneNumber",
+        "phone_number",
+        "phone",
+        "mobile",
+        "mobilePhone"
+    ];
+
+    private static readonly string[] CustomerNameKeys =
+    [
+        "customerName",
+        "customer_name",
+        "fullname",
+        "fullName",
+        "name"
+    ];
+
     /// <summary>
     /// Tries to extract an order code from the payload. Returns null when no match is found.
     /// </summary>
@@ -54,6 +83,24 @@ public static class BusinessKeyExtractor
     /// </summary>
     public static string? ExtractTransactionId(string? rawJson) =>
         ExtractFirstMatch(rawJson, TransactionIdKeys);
+
+    /// <summary>
+    /// Tries to extract a customer email from the payload. Returns null when no match is found.
+    /// </summary>
+    public static string? ExtractCustomerEmail(string? rawJson) =>
+        ExtractFirstMatch(rawJson, CustomerEmailKeys);
+
+    /// <summary>
+    /// Tries to extract a customer phone from the payload. Returns null when no match is found.
+    /// </summary>
+    public static string? ExtractCustomerPhone(string? rawJson) =>
+        ExtractFirstMatch(rawJson, CustomerPhoneKeys);
+
+    /// <summary>
+    /// Tries to extract a customer name from the payload. Returns null when no match is found.
+    /// </summary>
+    public static string? ExtractCustomerName(string? rawJson) =>
+        ExtractFirstMatch(rawJson, CustomerNameKeys);
 
     /// <summary>
     /// Returns the first non-empty string value found for any of the candidate property names,

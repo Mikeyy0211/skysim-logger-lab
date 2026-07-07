@@ -21,6 +21,7 @@ export interface LogFlowSummary {
   lastActionType: string | null;
   lastMessage: string | null;
   lastServiceName: string | null;
+  durationMs: number | null;
   startedAt: string;
   completedAt: string | null;
   createdAt: string;

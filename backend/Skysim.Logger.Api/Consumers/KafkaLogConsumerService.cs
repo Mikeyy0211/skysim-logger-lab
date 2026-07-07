@@ -295,6 +295,56 @@ public class KafkaLogConsumerService : BackgroundService
         }
     }
 
+    private static void EnrichCustomerInfo(LogEventMessage message)
+    {
+        // Only extract if message doesn't already have customer email/phone from JWT/auth context.
+        if (!string.IsNullOrWhiteSpace(message.CustomerEmail) &&
+            !string.IsNullOrWhiteSpace(message.CustomerPhone))
+        {
+            return;
+        }
+
+        var candidates = new[] { message.RequestBody, message.ResponseBody };
+
+        string? customerEmail = message.CustomerEmail;
+        string? customerPhone = message.CustomerPhone;
+
+        foreach (var raw in candidates)
+        {
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                continue;
+            }
+
+            if (string.IsNullOrWhiteSpace(customerEmail))
+            {
+                customerEmail = BusinessKeyExtractor.ExtractCustomerEmail(raw);
+            }
+
+            if (string.IsNullOrWhiteSpace(customerPhone))
+            {
+                customerPhone = BusinessKeyExtractor.ExtractCustomerPhone(raw);
+            }
+
+            if (!string.IsNullOrWhiteSpace(customerEmail) &&
+                !string.IsNullOrWhiteSpace(customerPhone))
+            {
+                break;
+            }
+        }
+
+        // Assign only non-null/non-empty values. Never overwrite with null/empty.
+        if (!string.IsNullOrWhiteSpace(customerEmail))
+        {
+            message.CustomerEmail = customerEmail;
+        }
+
+        if (!string.IsNullOrWhiteSpace(customerPhone))
+        {
+            message.CustomerPhone = customerPhone;
+        }
+    }
+
     private async Task<bool> TryPersistWithRetryAsync(LogEventMessage message, CancellationToken ct, Action onAttempt, ResiliencePipeline retryPolicy)
     {
         return await retryPolicy.ExecuteAsync(async token =>
@@ -322,6 +372,7 @@ public class KafkaLogConsumerService : BackgroundService
         try
         {
             EnrichBusinessKeys(message);
+            EnrichCustomerInfo(message);
 
             var flow = await flowRepo.UpsertAsync(message.FlowId, f => MapFlowFromMessage(f, message), ct);
 

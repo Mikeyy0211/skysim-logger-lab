@@ -149,6 +149,7 @@ public class LogFlowQueryService : ILogFlowQueryService
             f.LastActionType,
             f.LastMessage,
             lastServiceNameMap[f.FlowId],
+            ComputeDurationMs(f.StartedAt, f.CompletedAt),
             f.StartedAt,
             f.CompletedAt,
             f.CreatedAt,
@@ -222,6 +223,7 @@ public class LogFlowQueryService : ILogFlowQueryService
             flow.LastActionType,
             flow.LastMessage,
             lastServiceName,
+            ComputeDurationMs(flow.StartedAt, flow.CompletedAt),
             flow.StartedAt,
             flow.CompletedAt,
             flow.CreatedAt,
@@ -501,5 +503,20 @@ public class LogFlowQueryService : ILogFlowQueryService
             .OrderByDescending(a => a.StepOrder)
             .Select(a => a.ServiceName)
             .FirstOrDefault();
+    }
+
+    /// <summary>
+    /// Computes total flow duration in milliseconds between startedAt and completedAt.
+    /// Returns null if completedAt is not set.
+    /// </summary>
+    private static int? ComputeDurationMs(DateTime startedAt, DateTime? completedAt)
+    {
+        if (!completedAt.HasValue)
+        {
+            return null;
+        }
+
+        var diff = completedAt.Value - startedAt;
+        return diff.TotalMilliseconds >= int.MaxValue ? null : (int?)diff.TotalMilliseconds;
     }
 }

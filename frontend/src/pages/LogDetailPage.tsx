@@ -1,55 +1,35 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { PageHeader } from '../components/PageHeader';
 import { StatusBadge } from '../components/StatusBadge';
 import { CheckoutTypeBadge } from '../components/CheckoutTypeBadge';
-import { MetricCard } from '../components/MetricCard';
 import { EmptyState } from '../components/EmptyState';
-import { getLogFlowById, getLogFlowActions, getLogActionDetails } from '../services/logFlowService';
+import {
+  getLogFlowById,
+  getLogFlowActions,
+  getLogActionDetails,
+} from '../services/logFlowService';
 import type { LogFlowDetail } from '../types/logFlow';
 import type { LogAction, LogActionDetailsResponse } from '../types/logAction';
 
-function formatFieldValue(value: string | null | undefined): string {
-  return value ?? '—';
-}
+const EMPTY = '—';
 
-function formatDuration(ms: number | null): string {
-  if (ms === null || ms === undefined) return '—';
-  if (ms >= 1000) {
-    return `${(ms / 1000).toFixed(1)}s`;
-  }
+function formatDuration(ms: number | null | undefined): string {
+  if (ms == null || ms < 0) return EMPTY;
+  if (ms >= 1000) return `${(ms / 1000).toFixed(1)}s`;
   return `${ms}ms`;
 }
 
-function formatDate(dateString: string | null | undefined): string {
-  if (!dateString) return '—';
+function formatDate(value: string | null | undefined): string {
+  if (!value) return EMPTY;
   try {
-    return new Date(dateString).toLocaleString();
+    return new Date(value).toLocaleString();
   } catch {
-    return '—';
+    return EMPTY;
   }
 }
 
-function parseJsonSafely(raw: string | null | undefined): unknown | null {
-  if (raw === null || raw === undefined || raw === '') return null;
-
-  if (typeof raw !== 'string') return raw;
-
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
-}
-
-function maskAuthorization(value: string): string {
-  if (typeof value !== 'string') return value;
-  if (value.length === 0) return value;
-  return value.replace(/(Bearer\s+)[^\s"']+/gi, '$1***');
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
+function formatFieldValue(value: string | null | undefined): string {
+  return value ?? EMPTY;
 }
 
 function prettyJson(value: unknown): string {
@@ -61,50 +41,209 @@ function prettyJson(value: unknown): string {
   }
 }
 
-function PrettyJsonBlock({ value, emptyText = 'No data' }: { value: unknown; emptyText?: string }) {
-  if (value === null || value === undefined || value === '') {
-    return <p className="text-xs text-gray-400 italic">{emptyText}</p>;
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function parseJsonSafely(raw: string | null | undefined): unknown | null {
+  if (raw === null || raw === undefined || raw === '') return null;
+  if (typeof raw !== 'string') return raw;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
   }
+}
+
+function maskAuthorization(value: string): string {
+  if (typeof value !== 'string' || value.length === 0) return value;
+  return value.replace(/(Bearer\s+)[^\s"']+/gi, '$1***');
+}
+
+/** Parse duration from message text like "Request completed (380ms)" */
+function parseDurationFromMessage(message: string | null | undefined): number | null {
+  if (!message) return null;
+  const match = message.match(/\((\d+)(?:ms|s)\)/);
+  if (match) {
+    const num = parseInt(match[1], 10);
+    if (match[0].endsWith('s')) return num * 1000;
+    return num;
+  }
+  return null;
+}
+
+// ─── Layout Helpers ─────────────────────────────────────────────────────────────
+
+function FieldRow({
+  label,
+  value,
+  isMonospace = false,
+}: {
+  label: string;
+  value: React.ReactNode;
+  isMonospace?: boolean;
+}) {
+  const valueStr = typeof value === 'string' ? value : '';
+  return (
+    <div className="flex flex-col gap-1 min-w-0">
+      <span className="text-xs text-gray-500 uppercase tracking-wide font-medium">
+        {label}
+      </span>
+      <span
+        className={`text-sm text-gray-900 min-w-0 ${isMonospace ? 'font-mono break-all' : ''}`}
+        title={valueStr.length > 60 ? valueStr : undefined}
+      >
+        {value}
+      </span>
+    </div>
+  );
+}
+
+function MetricPill({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div className="flex flex-col gap-1 min-w-0">
+      <span className="text-xs text-gray-500 uppercase tracking-wide font-medium">
+        {label}
+      </span>
+      <span className="text-sm font-semibold text-gray-900">{value}</span>
+    </div>
+  );
+}
+
+function LoadingSkeleton() {
+  return (
+    <div className="p-6 space-y-6">
+      <div className="h-4 w-24 bg-gray-200 rounded animate-pulse" />
+      <div className="space-y-4">
+        <div className="h-8 w-48 bg-gray-200 rounded animate-pulse" />
+        <div className="h-4 w-32 bg-gray-200 rounded animate-pulse" />
+      </div>
+      <div className="bg-white rounded-lg border border-gray-200 p-6">
+        <div className="h-6 w-40 bg-gray-200 rounded mb-6 animate-pulse" />
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="space-y-2">
+              <div className="h-3 w-20 bg-gray-200 rounded animate-pulse" />
+              <div className="h-4 w-28 bg-gray-200 rounded animate-pulse" />
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ErrorCard({
+  title,
+  message,
+  onRetry,
+  backLink,
+}: {
+  title: string;
+  message: string;
+  onRetry: () => void;
+  backLink?: string;
+}) {
+  return (
+    <div className="p-6">
+      {backLink && (
+        <Link
+          to={backLink}
+          className="inline-flex items-center text-sm text-gray-600 hover:text-gray-900 mb-4"
+        >
+          <svg
+            className="w-4 h-4 mr-1"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M15 19l-7-7 7-7"
+            />
+          </svg>
+          Back to Logs
+        </Link>
+      )}
+      <div className="bg-red-50 border border-red-200 rounded-lg p-6">
+        <p className="text-red-700 font-semibold">{title}</p>
+        <p className="text-red-600 text-sm mt-1">{message}</p>
+        <button
+          onClick={onRetry}
+          className="mt-4 px-4 py-2 bg-red-100 text-red-700 text-sm font-medium rounded-lg hover:bg-red-200 focus:outline-none focus:ring-2 focus:ring-red-500 transition-colors"
+        >
+          Retry
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Collapsible Section ────────────────────────────────────────────────────────
+
+function CollapsibleSection({
+  title,
+  defaultOpen = false,
+  children,
+}: {
+  title: string;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}) {
+  const [isOpen, setIsOpen] = useState(defaultOpen);
 
   return (
-    <pre className="text-xs text-gray-800 bg-gray-50 p-3 rounded border border-gray-200 font-mono leading-relaxed max-w-full max-h-80 overflow-x-auto overflow-y-auto whitespace-pre-wrap break-words">
+    <div>
+      <button
+        onClick={() => setIsOpen((prev) => !prev)}
+        className="flex items-center gap-2 text-xs font-semibold text-gray-700 uppercase tracking-wide hover:text-gray-900 focus:outline-none focus:underline"
+      >
+        <span className={`transition-transform duration-150 ${isOpen ? 'rotate-90' : ''}`}>
+          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
+          </svg>
+        </span>
+        {title}
+      </button>
+      {isOpen && <div className="mt-2">{children}</div>}
+    </div>
+  );
+}
+
+// ─── Compact Raw JSON Block ────────────────────────────────────────────────────
+
+function CompactRawBlock({ value }: { value: unknown }) {
+  return (
+    <pre className="text-xs text-gray-800 bg-gray-50 p-3 rounded border border-gray-200 font-mono leading-relaxed max-w-full max-h-72 overflow-x-auto overflow-y-auto whitespace-pre-wrap break-words">
       {prettyJson(value)}
     </pre>
   );
 }
 
-function KeyValueRow({ label, value }: { label: string; value: string | number | boolean | null | undefined }) {
-  const display = value === null || value === undefined || value === '' ? '—' : String(value);
+// ─── Request Summary ────────────────────────────────────────────────────────────
 
-  return (
-    <div className="grid grid-cols-[7rem_minmax(0,1fr)] gap-x-2 text-xs py-1 items-baseline">
-      <span className="text-gray-500 truncate">{label}</span>
-      <span className="text-gray-900 font-mono break-all min-w-0">{display}</span>
-    </div>
-  );
-}
+function RequestSummaryView({ raw }: { raw: string | null | undefined }) {
+  const [showFullHeaders, setShowFullHeaders] = useState(false);
 
-function RequestPayloadView({ raw }: { raw: string | null | undefined }) {
-  if (raw === null || raw === undefined || raw === '') {
-    return <p className="text-xs text-gray-400 italic">No request captured.</p>;
+  if (!raw) {
+    return <p className="text-xs text-gray-400 italic">—</p>;
   }
 
   const parsed = parseJsonSafely(raw);
 
   if (!isPlainObject(parsed)) {
-    return <PrettyJsonBlock value={raw} />;
+    return <CompactRawBlock value={raw} />;
   }
 
-  // Support both backend shapes:
-  // - canonical: { method, path, fullUrl, clientIp, query, headers, body }
-  // - legacy:    { method, path, fullUrl, clientIp, query, requestHeaders, requestBody, requestPayload }
-  const method = parsed.method;
-  const path = parsed.path;
-  const fullUrl = parsed.fullUrl;
-  const clientIp = parsed.clientIp;
-  const query = parsed.query ?? parsed.queryString;
+  const method = parsed.method as string | undefined;
+  const path = parsed.path as string | undefined;
+  const fullUrl = parsed.fullUrl as string | undefined;
+  const clientIp = parsed.clientIp as string | undefined;
+  const contentType = parsed.contentType as string | undefined;
 
-  const headersValue =
+  const headersRaw =
     parsed.headers !== undefined
       ? parsed.headers
       : parsed.requestHeaders !== undefined
@@ -120,103 +259,136 @@ function RequestPayloadView({ raw }: { raw: string | null | undefined }) {
           ? parsed.requestPayload
           : undefined;
 
-  const hasStructuredShape =
-    method !== undefined ||
-    path !== undefined ||
-    fullUrl !== undefined ||
-    clientIp !== undefined ||
-    query !== undefined ||
-    headersValue !== undefined ||
-    bodyValue !== undefined;
+  const headers = isPlainObject(headersRaw) ? (headersRaw as Record<string, string>) : null;
+  const hasAuthHeader = headers && Object.keys(headers).some((k) => k.toLowerCase() === 'authorization');
 
-  if (!hasStructuredShape) {
-    return <PrettyJsonBlock value={parsed} />;
+  // Shorten long URLs
+  const displayUrl = (() => {
+    if (!fullUrl) return null;
+    if (fullUrl.length <= 100) return fullUrl;
+    return fullUrl.substring(0, 100) + '…';
+  })();
+
+  // Truncate body preview
+  const bodyPreview = (() => {
+    if (!bodyValue) return null;
+    const str = typeof bodyValue === 'string' ? bodyValue : prettyJson(bodyValue);
+    if (str.length <= 400) return str;
+    return str.substring(0, 400) + '…';
+  })();
+
+  const hasStructured = method || path || displayUrl || clientIp || contentType || bodyPreview;
+
+  if (!hasStructured) {
+    return <CompactRawBlock value={parsed} />;
   }
 
-  const headers = isPlainObject(headersValue) ? (headersValue as Record<string, string>) : null;
-  const maskedHeaders = headers
-    ? Object.fromEntries(
-        Object.entries(headers).map(([k, v]) => {
-          const key = k.toLowerCase();
-          if (key === 'authorization') {
-            return [k, maskAuthorization(typeof v === 'string' ? v : String(v))];
-          }
-          return [k, typeof v === 'string' ? v : prettyJson(v)];
-        }),
-      )
-    : null;
-
   return (
-    <div className="space-y-3 min-w-0">
-      <div className="bg-white rounded border border-gray-200 p-3 max-w-full overflow-hidden">
-        <div className="grid grid-cols-[7rem_minmax(0,1fr)] gap-x-2 gap-y-1 text-xs items-baseline">
-          <span className="text-gray-500 truncate">Method</span>
-          <span className="text-gray-900 font-mono break-all min-w-0">{formatFieldValue(method as string | null | undefined)}</span>
-          <span className="text-gray-500 truncate">Path</span>
-          <span className="text-gray-900 font-mono break-all min-w-0">{formatFieldValue(path as string | null | undefined)}</span>
-          <span className="text-gray-500 truncate">Client IP</span>
-          <span className="text-gray-900 font-mono break-all min-w-0">{formatFieldValue(clientIp as string | null | undefined)}</span>
+    <div className="space-y-2 min-w-0">
+      {/* Method / Path / URL / Client IP */}
+      {(method || path || displayUrl || clientIp) && (
+        <div className="grid grid-cols-[7rem_minmax(0,1fr)] gap-x-2 gap-y-1 text-xs items-baseline min-w-0">
+          {method && (
+            <>
+              <span className="text-gray-500 truncate">Method</span>
+              <span className="text-gray-900 font-mono break-all min-w-0">{method}</span>
+            </>
+          )}
+          {path && (
+            <>
+              <span className="text-gray-500 truncate">Path</span>
+              <span className="text-gray-900 font-mono break-all min-w-0">{path}</span>
+            </>
+          )}
+          {displayUrl && (
+            <>
+              <span className="text-gray-500 truncate">Full URL</span>
+              <span
+                className="text-gray-900 font-mono break-all min-w-0"
+                title={fullUrl ?? undefined}
+              >
+                {displayUrl}
+              </span>
+            </>
+          )}
+          {clientIp && (
+            <>
+              <span className="text-gray-500 truncate">Client IP</span>
+              <span className="text-gray-900 font-mono break-all min-w-0">{clientIp}</span>
+            </>
+          )}
+          {contentType && (
+            <>
+              <span className="text-gray-500 truncate">Content-Type</span>
+              <span className="text-gray-900 font-mono break-all min-w-0">{contentType}</span>
+            </>
+          )}
+          {hasAuthHeader && (
+            <>
+              <span className="text-gray-500 truncate">Authorization</span>
+              <span className="text-gray-900 font-mono break-all min-w-0">***</span>
+            </>
+          )}
         </div>
-        {fullUrl !== undefined && (
-          <div className="grid grid-cols-[7rem_minmax(0,1fr)] gap-x-2 text-xs py-1 items-baseline">
-            <span className="text-gray-500 truncate">Full URL</span>
-            <span className="text-gray-900 font-mono break-all min-w-0">{formatFieldValue(fullUrl as string | null | undefined)}</span>
-          </div>
-        )}
-        {query !== undefined && (
-          <div className="pt-1">
-            <p className="text-xs text-gray-500 mb-1">Query</p>
-            <pre className="text-xs text-gray-800 bg-gray-50 rounded p-2 border border-gray-200 font-mono whitespace-pre-wrap break-words max-w-full overflow-x-auto">
-              {prettyJson(query)}
-            </pre>
-          </div>
-        )}
-      </div>
+      )}
 
-      <div className="min-w-0">
-        <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1">Headers</p>
-        {maskedHeaders ? (
-          <div className="bg-white rounded border border-gray-200 p-3 max-h-60 overflow-y-auto overflow-x-auto max-w-full">
-            {Object.entries(maskedHeaders).map(([k, v]) => (
-              <KeyValueRow key={k} label={k} value={v} />
-            ))}
-          </div>
-        ) : (
-          <p className="text-xs text-gray-400 italic">No headers captured.</p>
-        )}
-      </div>
+      {/* Body preview */}
+      {bodyPreview && (
+        <div className="min-w-0">
+          <p className="text-xs text-gray-500 mb-1">Body</p>
+          <pre className="text-xs text-gray-800 bg-gray-50 p-2 rounded border border-gray-200 font-mono whitespace-pre-wrap break-words max-w-full overflow-x-auto">
+            {bodyPreview}
+          </pre>
+        </div>
+      )}
 
-      <div className="min-w-0">
-        <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1">Body</p>
-        <PrettyJsonBlock value={bodyValue ?? null} emptyText="No body captured." />
-      </div>
+      {/* Full Headers toggle */}
+      {headers && Object.keys(headers).length > 0 && (
+        <div className="min-w-0">
+          <button
+            onClick={() => setShowFullHeaders((prev) => !prev)}
+            className="text-xs text-blue-600 hover:text-blue-800 font-medium focus:outline-none focus:underline"
+          >
+            {showFullHeaders ? 'Hide' : 'Show'} full headers ({Object.keys(headers).length})
+          </button>
+          {showFullHeaders && (
+            <div className="mt-1 bg-white rounded border border-gray-200 p-2 max-h-64 overflow-y-auto max-w-full">
+              {Object.entries(headers).map(([k, v]) => {
+                const key = k.toLowerCase();
+                const masked = key === 'authorization' ? '***' : maskAuthorization(typeof v === 'string' ? v : String(v));
+                return (
+                  <div
+                    key={k}
+                    className="grid grid-cols-[8rem_minmax(0,1fr)] gap-x-2 text-xs py-0.5 items-baseline min-w-0"
+                  >
+                    <span className="text-gray-500 truncate">{k}</span>
+                    <span className="text-gray-900 font-mono break-all min-w-0">{masked}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
-function ResponsePayloadView({ raw }: { raw: string | null | undefined }) {
-  if (raw === null || raw === undefined || raw === '') {
-    return <p className="text-xs text-gray-400 italic">No response captured.</p>;
+// ─── Response Summary ───────────────────────────────────────────────────────────
+
+function ResponseSummaryView({ raw }: { raw: string | null | undefined }) {
+  if (!raw) {
+    return <p className="text-xs text-gray-400 italic">—</p>;
   }
 
   const parsed = parseJsonSafely(raw);
 
   if (!isPlainObject(parsed)) {
-    return <PrettyJsonBlock value={raw} />;
+    return <CompactRawBlock value={raw} />;
   }
 
-  // Support both backend shapes:
-  // - canonical: { statusCode, headers, body, durationMs }
-  // - legacy:    { responseHeaders, responseBody }
-  const statusCode = parsed.statusCode;
-  const durationMs = parsed.durationMs;
-
-  const headersValue =
-    parsed.headers !== undefined
-      ? parsed.headers
-      : parsed.responseHeaders !== undefined
-        ? parsed.responseHeaders
-        : undefined;
+  const statusCode = parsed.statusCode as number | undefined;
+  const durationMs = parsed.durationMs as number | undefined;
 
   const bodyValue =
     parsed.body !== undefined
@@ -225,252 +397,466 @@ function ResponsePayloadView({ raw }: { raw: string | null | undefined }) {
         ? parsed.responseBody
         : undefined;
 
-  const hasStructuredShape =
-    statusCode !== undefined ||
-    durationMs !== undefined ||
-    headersValue !== undefined ||
-    bodyValue !== undefined;
+  // Parse important business fields from response body
+  let errorCode: string | number | undefined;
+  let message: string | undefined;
+  let orderCode: string | undefined;
+  let paymentId: string | undefined;
+  let transPaymentId: string | undefined;
+  let transactionId: string | number | undefined;
+  let paymentUrl: string | undefined;
 
-  if (!hasStructuredShape) {
-    return <PrettyJsonBlock value={parsed} />;
+  if (bodyValue) {
+    const bodyParsed = parseJsonSafely(typeof bodyValue === 'string' ? bodyValue : prettyJson(bodyValue));
+    if (isPlainObject(bodyParsed)) {
+      const data = (bodyParsed as Record<string, unknown>).data as Record<string, unknown> | undefined;
+      const payment = data && isPlainObject(data) ? (data as Record<string, unknown>).payment as Record<string, unknown> | undefined : undefined;
+
+      errorCode = bodyParsed.errorCode as string | number | undefined;
+      message = bodyParsed.message as string | undefined;
+      orderCode = (bodyParsed.orderCode ?? bodyParsed.billOrder ?? bodyParsed.order_code ?? bodyParsed.bill_order) as string | undefined;
+      paymentId = (bodyParsed.paymentId ?? bodyParsed.payment_id) as string | undefined;
+      transPaymentId = (bodyParsed.transPaymentId ?? bodyParsed.trans_payment_id) as string | undefined;
+      transactionId = (bodyParsed.transactionId ?? bodyParsed.transId ?? bodyParsed.transaction_id ?? bodyParsed.trans_id) as string | number | undefined;
+
+      if (payment) {
+        paymentId ??= (payment.paymentId ?? payment.payment_id) as string | undefined;
+        transPaymentId ??= (payment.transPaymentId ?? payment.trans_payment_id) as string | undefined;
+        transactionId ??= (payment.transactionId ?? payment.transId) as string | number | undefined;
+        orderCode ??= (payment.billOrder ?? payment.bill_order) as string | undefined;
+        paymentUrl = (payment.paymentUrl ?? payment.payment_url) as string | undefined;
+      }
+    }
   }
 
-  const headers = isPlainObject(headersValue) ? (headersValue as Record<string, string>) : null;
-  const maskedHeaders = headers
-    ? Object.fromEntries(
-        Object.entries(headers).map(([k, v]) => {
-          const key = k.toLowerCase();
-          if (key === 'authorization' || key === 'set-cookie') {
-            return [k, '***'];
-          }
-          return [k, typeof v === 'string' ? v : prettyJson(v)];
-        }),
-      )
-    : null;
+  // Truncate body preview
+  const bodyPreview = (() => {
+    if (!bodyValue) return null;
+    const str = typeof bodyValue === 'string' ? bodyValue : prettyJson(bodyValue);
+    if (str.length <= 400) return str;
+    return str.substring(0, 400) + '…';
+  })();
+
+  const hasBusinessFields = errorCode !== undefined || message || orderCode || paymentId || transPaymentId || transactionId || paymentUrl;
 
   return (
-    <div className="space-y-3 min-w-0">
-      <div className="bg-white rounded border border-gray-200 p-3 max-w-full overflow-hidden">
-        <div className="grid grid-cols-[7rem_minmax(0,1fr)] gap-x-2 gap-y-1 text-xs items-baseline">
-          <span className="text-gray-500 truncate">Status Code</span>
-          <span className="text-gray-900 font-mono break-all min-w-0">{statusCode === undefined || statusCode === null ? '—' : String(statusCode)}</span>
-          <span className="text-gray-500 truncate">Duration</span>
-          <span className="text-gray-900 font-mono break-all min-w-0">{durationMs !== undefined ? `${durationMs}ms` : '—'}</span>
+    <div className="space-y-2 min-w-0">
+      {/* Status + Duration */}
+      {(statusCode !== undefined || durationMs !== undefined) && (
+        <div className="grid grid-cols-[7rem_minmax(0,1fr)] gap-x-2 gap-y-1 text-xs items-baseline min-w-0">
+          {statusCode !== undefined && (
+            <>
+              <span className="text-gray-500 truncate">Status Code</span>
+              <span className="text-gray-900 font-mono break-all min-w-0">{statusCode}</span>
+            </>
+          )}
+          {durationMs !== undefined && (
+            <>
+              <span className="text-gray-500 truncate">Duration</span>
+              <span className="text-gray-900 font-mono break-all min-w-0">{durationMs}ms</span>
+            </>
+          )}
         </div>
-      </div>
+      )}
 
-      <div className="min-w-0">
-        <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1">Headers</p>
-        {maskedHeaders ? (
-          <div className="bg-white rounded border border-gray-200 p-3 max-h-60 overflow-y-auto overflow-x-auto max-w-full">
-            {Object.entries(maskedHeaders).map(([k, v]) => (
-              <KeyValueRow key={k} label={k} value={v} />
-            ))}
-          </div>
-        ) : (
-          <p className="text-xs text-gray-400 italic">No headers captured.</p>
-        )}
-      </div>
+      {/* Business fields from body */}
+      {hasBusinessFields && (
+        <div className="grid grid-cols-[7rem_minmax(0,1fr)] gap-x-2 gap-y-1 text-xs items-baseline min-w-0">
+          {errorCode !== undefined && (
+            <>
+              <span className="text-gray-500 truncate">errorCode</span>
+              <span className="text-gray-900 font-mono break-all min-w-0">{errorCode}</span>
+            </>
+          )}
+          {message && (
+            <>
+              <span className="text-gray-500 truncate">message</span>
+              <span className="text-gray-900 break-all min-w-0">{message}</span>
+            </>
+          )}
+          {orderCode && (
+            <>
+              <span className="text-gray-500 truncate">orderCode</span>
+              <span className="text-gray-900 font-mono break-all min-w-0">{orderCode}</span>
+            </>
+          )}
+          {paymentId && (
+            <>
+              <span className="text-gray-500 truncate">paymentId</span>
+              <span className="text-gray-900 font-mono break-all min-w-0">{paymentId}</span>
+            </>
+          )}
+          {transPaymentId && (
+            <>
+              <span className="text-gray-500 truncate">transPaymentId</span>
+              <span className="text-gray-900 font-mono break-all min-w-0">{transPaymentId}</span>
+            </>
+          )}
+          {transactionId !== undefined && (
+            <>
+              <span className="text-gray-500 truncate">transactionId</span>
+              <span className="text-gray-900 font-mono break-all min-w-0">{transactionId}</span>
+            </>
+          )}
+          {paymentUrl && (
+            <>
+              <span className="text-gray-500 truncate">paymentUrl</span>
+              <span
+                className="text-gray-900 font-mono break-all min-w-0"
+                title={paymentUrl}
+              >
+                {paymentUrl.length > 80 ? paymentUrl.substring(0, 80) + '…' : paymentUrl}
+              </span>
+            </>
+          )}
+        </div>
+      )}
 
-      <div className="min-w-0">
-        <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1">Body</p>
-        <PrettyJsonBlock value={bodyValue ?? null} emptyText="No body captured." />
-      </div>
+      {/* Body preview */}
+      {bodyPreview && (
+        <div className="min-w-0">
+          <p className="text-xs text-gray-500 mb-1">Body</p>
+          <pre className="text-xs text-gray-800 bg-gray-50 p-2 rounded border border-gray-200 font-mono whitespace-pre-wrap break-words max-w-full overflow-x-auto">
+            {bodyPreview}
+          </pre>
+        </div>
+      )}
     </div>
   );
 }
 
-function MetadataPayloadView({ raw }: { raw: string | null | undefined }) {
-  if (raw === null || raw === undefined || raw === '') {
-    return <p className="text-xs text-gray-400 italic">No metadata captured.</p>;
+// ─── Metadata Summary ──────────────────────────────────────────────────────────
+
+function MetadataSummaryView({ raw }: { raw: string | null | undefined }) {
+  if (!raw) {
+    return <p className="text-xs text-gray-400 italic">—</p>;
   }
 
   const parsed = parseJsonSafely(raw);
 
   if (!isPlainObject(parsed)) {
-    return <PrettyJsonBlock value={raw} />;
+    return <CompactRawBlock value={raw} />;
   }
 
-  const identity: Array<[string, unknown]> = [];
-  const rest: Record<string, unknown> = {};
-
+  // Show important fields only
+  const importantFields: Array<[string, unknown]> = [];
   for (const [k, v] of Object.entries(parsed)) {
-    if (k === 'userId' || k === 'userEmail' || k === 'username' || k === 'partnerId' || k === 'roles' || k === 'authResult') {
-      identity.push([k, v]);
-    } else {
-      rest[k] = v;
+    if (
+      k === 'authResult' ||
+      k === 'userEmail' ||
+      k === 'partnerId' ||
+      k === 'userId' ||
+      k === 'hasAuthorization' ||
+      k === 'isAuthenticated' ||
+      k === 'correlationId' ||
+      k === 'username'
+    ) {
+      const displayVal = typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean'
+        ? String(v)
+        : v === null
+          ? 'null'
+          : prettyJson(v);
+      importantFields.push([k, displayVal]);
     }
   }
 
-  return (
-    <div className="space-y-3 min-w-0">
-      {identity.length > 0 && (
-        <div className="bg-blue-50 border border-blue-200 rounded p-3 max-w-full overflow-hidden">
-          <p className="text-xs font-semibold text-blue-900 uppercase tracking-wide mb-1">Identity</p>
-          {identity.map(([k, v]) => (
-            <KeyValueRow
-              key={k}
-              label={k}
-              value={
-                typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean'
-                  ? (v as string | number | boolean)
-                  : prettyJson(v)
-              }
-            />
-          ))}
-        </div>
-      )}
+  if (importantFields.length === 0) {
+    return <p className="text-xs text-gray-400 italic">—</p>;
+  }
 
-      <div className="min-w-0">
-        {Object.keys(rest).length === 0 ? (
-          <p className="text-xs text-gray-400 italic">No additional metadata.</p>
-        ) : (
-          <PrettyJsonBlock value={rest} />
-        )}
-      </div>
+  return (
+    <div className="space-y-1 min-w-0">
+      {importantFields.map(([k, v]) => (
+        <div
+          key={k}
+          className="grid grid-cols-[8rem_minmax(0,1fr)] gap-x-2 text-xs items-baseline min-w-0"
+        >
+          <span className="text-gray-500 truncate">{k}</span>
+          <span className="text-gray-900 font-mono break-all min-w-0">{String(v)}</span>
+        </div>
+      ))}
     </div>
   );
 }
 
-function ActionDetailsModal({
-  action,
+// ─── Action Detail Panel ────────────────────────────────────────────────────────
+
+function ActionPayloadsPanel({
   details,
   isLoading,
-  errorMessage,
-  onClose,
+  error,
   onRetry,
 }: {
-  action: LogAction | null;
   details: LogActionDetailsResponse | null;
   isLoading: boolean;
-  errorMessage: string | null;
-  onClose: () => void;
+  error: string | null;
   onRetry: () => void;
 }) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  if (isLoading) {
+    return (
+      <div className="animate-pulse space-y-3">
+        <div className="h-3 bg-gray-200 rounded w-1/4" />
+        <div className="h-24 bg-gray-200 rounded" />
+      </div>
+    );
+  }
 
-  const stopProp = (e: React.MouseEvent) => e.stopPropagation();
+  if (error) {
+    return (
+      <div className="bg-red-50 border border-red-200 rounded p-3">
+        <p className="text-red-700 text-xs font-medium">Failed to load details</p>
+        <p className="text-red-600 text-xs mt-1">{error}</p>
+        <button
+          onClick={onRetry}
+          className="mt-2 px-3 py-1 bg-red-100 text-red-700 text-xs font-medium rounded hover:bg-red-200"
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
 
-  const subtitle = action
-    ? `${action.actionType} • ${action.status}${action.message ? ` • ${action.message}` : ''}`
-    : 'Technical details for this action';
+  if (!details) {
+    return <p className="text-xs text-gray-400 italic">—</p>;
+  }
+
+  // Compute action duration: prefer action.durationMs, fallback to parsing message
+  const actionDuration = details.action.durationMs != null
+    ? details.action.durationMs
+    : parseDurationFromMessage(details.action.message);
 
   return (
-    <div
-      className="fixed inset-0 z-50 bg-black/30 flex items-center justify-center p-4"
-      onClick={onClose}
-      role="dialog"
-      aria-modal="true"
-      aria-label="Action Technical Details"
-    >
-      <div
-        className="bg-white rounded-lg shadow-lg w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden"
-        onClick={stopProp}
-      >
-        <header className="flex items-start justify-between gap-4 px-6 py-4 border-b border-gray-200">
-          <div className="min-w-0 flex-1">
-            <h2 className="text-lg font-semibold text-gray-900">Action Technical Details</h2>
-            <p className="text-sm text-gray-600 mt-1 break-words">{subtitle}</p>
+    <div className="space-y-4">
+      {/* Action Overview — always open by default */}
+      <div>
+        <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">
+          Action Overview
+        </h4>
+        <div className="bg-white rounded border border-gray-200 p-3 max-w-full overflow-hidden">
+          <div className="grid grid-cols-[7rem_minmax(0,1fr)] gap-x-2 gap-y-1 text-xs items-baseline min-w-0">
+            <span className="text-gray-500 truncate">Service</span>
+            <span className="text-gray-900 break-all min-w-0">{details.action.serviceName}</span>
+
+            <span className="text-gray-500 truncate">Action</span>
+            <span className="text-gray-900 break-all min-w-0">{details.action.actionType}</span>
+
+            <span className="text-gray-500 truncate">Status</span>
+            <span className="text-gray-900 break-all min-w-0">{details.action.status}</span>
+
+            <span className="text-gray-500 truncate">Duration</span>
+            <span className="text-gray-900 break-all min-w-0">{formatDuration(actionDuration)}</span>
+
+            {details.action.message && (
+              <>
+                <span className="text-gray-500 truncate">Message</span>
+                <span className="text-gray-900 break-all min-w-0">{details.action.message}</span>
+              </>
+            )}
+            {details.action.errorCode && (
+              <>
+                <span className="text-gray-500 truncate">Error Code</span>
+                <span className="text-gray-900 break-all min-w-0">{details.action.errorCode}</span>
+              </>
+            )}
+            {details.action.errorMessage && (
+              <>
+                <span className="text-gray-500 truncate">Error Message</span>
+                <span className="text-gray-900 break-all min-w-0">{details.action.errorMessage}</span>
+              </>
+            )}
+            <span className="text-gray-500 truncate">Started</span>
+            <span className="text-gray-900 break-all min-w-0">{formatDate(details.action.createdAt)}</span>
+            <span className="text-gray-500 truncate">Finished</span>
+            <span className="text-gray-900 break-all min-w-0">{formatDate(details.action.finishedAt ?? null)}</span>
           </div>
-          <button
-            onClick={onClose}
-            className="flex-shrink-0 text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded p-1"
-            aria-label="Close"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+        </div>
+      </div>
+
+      {/* Request Summary — always open */}
+      {details.requestPayload && (
+        <div>
+          <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">
+            Request
+          </h4>
+          <RequestSummaryView raw={details.requestPayload} />
+        </div>
+      )}
+
+      {/* Response Summary — always open */}
+      {details.responsePayload && (
+        <div>
+          <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">
+            Response
+          </h4>
+          <ResponseSummaryView raw={details.responsePayload} />
+        </div>
+      )}
+
+      {/* Error — open if present */}
+      {details.errorPayload && (
+        <div>
+          <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">
+            Error
+          </h4>
+          <CompactRawBlock
+            value={parseJsonSafely(details.errorPayload) ?? details.errorPayload}
+          />
+        </div>
+      )}
+
+      {/* Metadata Summary — always open */}
+      {details.metadata && (
+        <div>
+          <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">
+            Metadata
+          </h4>
+          <MetadataSummaryView raw={details.metadata} />
+        </div>
+      )}
+
+      {/* Raw Request — collapsed by default */}
+      {details.requestPayload && (
+        <CollapsibleSection title="Raw Request" defaultOpen={false}>
+          <CompactRawBlock value={parseJsonSafely(details.requestPayload) ?? details.requestPayload} />
+        </CollapsibleSection>
+      )}
+
+      {/* Raw Response — collapsed by default */}
+      {details.responsePayload && (
+        <CollapsibleSection title="Raw Response" defaultOpen={false}>
+          <CompactRawBlock value={parseJsonSafely(details.responsePayload) ?? details.responsePayload} />
+        </CollapsibleSection>
+      )}
+
+      {/* Raw Metadata — collapsed by default */}
+      {details.metadata && (
+        <CollapsibleSection title="Raw Metadata" defaultOpen={false}>
+          <CompactRawBlock value={parseJsonSafely(details.metadata) ?? details.metadata} />
+        </CollapsibleSection>
+      )}
+    </div>
+  );
+}
+
+// ─── Timeline Item ──────────────────────────────────────────────────────────────
+
+function isFailedAction(action: LogAction): boolean {
+  const s = action.status?.toUpperCase();
+  return s === 'FAILED' || s === 'ERROR' || s === 'TIMEOUT';
+}
+
+function ActionTimelineItem({
+  action,
+  stepNumber,
+  isSelected,
+  isLoadingDetails,
+  details,
+  detailsError,
+  onToggle,
+  onRetry,
+}: {
+  action: LogAction;
+  stepNumber: number;
+  isSelected: boolean;
+  isLoadingDetails: boolean;
+  details: LogActionDetailsResponse | null;
+  detailsError: string | null;
+  onToggle: () => void;
+  onRetry: () => void;
+}) {
+  const failed = isFailedAction(action);
+  const actionDuration = action.durationMs ?? parseDurationFromMessage(action.message);
+
+  return (
+    <div className="flex gap-0">
+      {/* Timeline line + dot */}
+      <div className="flex flex-col items-center flex-shrink-0 w-10">
+        <div
+          className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${
+            failed
+              ? 'bg-red-100 text-red-700 ring-2 ring-red-200'
+              : action.status?.toUpperCase() === 'SUCCESS'
+                ? 'bg-green-100 text-green-700'
+                : 'bg-blue-100 text-blue-700'
+          }`}
+        >
+          {failed ? (
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2.5}
+                d="M6 18L18 6M6 6l12 12"
+              />
             </svg>
-          </button>
-        </header>
-
-        <div className="overflow-y-auto p-6 space-y-5 min-w-0">
-          {isLoading ? (
-            <div className="animate-pulse space-y-3">
-              <div className="h-3 bg-gray-200 rounded w-1/4"></div>
-              <div className="h-3 bg-gray-200 rounded w-full"></div>
-              <div className="h-3 bg-gray-200 rounded w-3/4"></div>
-            </div>
-          ) : errorMessage ? (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-              <p className="text-red-700 text-sm font-medium">Failed to load details</p>
-              <p className="text-red-600 text-sm mt-1">{errorMessage}</p>
-              <button
-                onClick={onRetry}
-                className="mt-3 px-4 py-2 bg-red-100 text-red-700 text-sm font-medium rounded-lg hover:bg-red-200 focus:outline-none focus:ring-2 focus:ring-red-500 transition-colors"
-              >
-                Retry
-              </button>
-            </div>
-          ) : details ? (
-            <>
-              <section>
-                <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">
-                  Action Overview
-                </h4>
-                <div className="bg-white rounded border border-gray-200 p-3 max-w-full overflow-hidden">
-                  <KeyValueRow label="Action Type" value={details.action.actionType} />
-                  <KeyValueRow label="Status" value={details.action.status} />
-                  <KeyValueRow label="Service" value={details.action.serviceName} />
-                  <KeyValueRow label="Message" value={details.action.message ?? null} />
-                  <KeyValueRow label="Duration" value={formatDuration(details.action.durationMs)} />
-                  <KeyValueRow label="Started" value={formatDate(details.action.createdAt)} />
-                  <KeyValueRow label="Finished" value={formatDate(details.action.finishedAt)} />
-                  {details.action.errorCode && (
-                    <KeyValueRow label="Error Code" value={details.action.errorCode} />
-                  )}
-                  {details.action.errorMessage && (
-                    <div className="grid grid-cols-[7rem_minmax(0,1fr)] gap-x-2 text-xs py-1 items-baseline">
-                      <span className="text-gray-500 truncate">Error Message</span>
-                      <span className="text-gray-900 break-words min-w-0">{details.action.errorMessage}</span>
-                    </div>
-                  )}
-                </div>
-              </section>
-
-              <section>
-                <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">
-                  Request
-                </h4>
-                <RequestPayloadView raw={details.requestPayload ?? null} />
-              </section>
-
-              <section>
-                <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">
-                  Response
-                </h4>
-                <ResponsePayloadView raw={details.responsePayload ?? null} />
-              </section>
-
-              <section>
-                <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">
-                  Error
-                </h4>
-                {details.errorPayload === null ||
-                details.errorPayload === undefined ||
-                details.errorPayload === '' ? (
-                  <p className="text-xs text-gray-400 italic">No error captured.</p>
-                ) : (
-                  <PrettyJsonBlock
-                    value={parseJsonSafely(details.errorPayload) ?? details.errorPayload}
-                  />
-                )}
-              </section>
-
-              <section>
-                <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">
-                  Metadata
-                </h4>
-                <MetadataPayloadView raw={details.metadata ?? null} />
-              </section>
-            </>
           ) : (
-            <p className="text-sm text-gray-400 italic">No details available for this action.</p>
+            stepNumber
+          )}
+        </div>
+        <div className="w-px flex-1 bg-gray-200 my-1" />
+      </div>
+
+      {/* Content */}
+      <div className="flex-1 min-w-0 pb-4">
+        <div className="border border-gray-200 rounded-lg p-4 bg-white hover:border-gray-300 transition-colors">
+          {/* Header row */}
+          <div className="flex items-start justify-between gap-3 mb-2">
+            <div className="flex items-center gap-2 flex-wrap min-w-0">
+              <span className="text-sm font-semibold text-gray-900">
+                {action.actionType}
+              </span>
+              <StatusBadge status={action.status} />
+              {failed && action.errorCode && (
+                <span className="px-2 py-0.5 text-xs font-mono font-medium bg-red-50 text-red-700 border border-red-200 rounded">
+                  {action.errorCode}
+                </span>
+              )}
+            </div>
+            <button
+              onClick={onToggle}
+              className={`flex-shrink-0 px-3 py-1 text-xs font-medium rounded-lg border focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors ${
+                isSelected
+                  ? 'bg-gray-100 text-gray-700 border-gray-300'
+                  : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
+              }`}
+            >
+              {isSelected ? 'Hide Details' : 'View Details'}
+            </button>
+          </div>
+
+          {/* Service + Duration + Time */}
+          <div className="flex items-center gap-x-4 gap-y-1 text-xs text-gray-500 flex-wrap mb-2">
+            <span className="font-medium text-gray-600">{action.serviceName}</span>
+            <span className="text-gray-300">·</span>
+            <span>{formatDuration(actionDuration)}</span>
+            <span className="text-gray-300">·</span>
+            <span>{formatDate(action.createdAt)}</span>
+          </div>
+
+          {/* Message */}
+          {action.message && (
+            <p className={`text-sm mb-3 ${failed ? 'text-red-700' : 'text-gray-600'}`}>
+              {action.message}
+            </p>
+          )}
+
+          {/* Error message */}
+          {failed && action.errorMessage && (
+            <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2 border border-red-100 mb-3">
+              {action.errorMessage}
+            </p>
+          )}
+
+          {/* Inline detail panel */}
+          {isSelected && (
+            <div className="mt-3 pt-3 border-t border-gray-200">
+              <ActionPayloadsPanel
+                details={details}
+                isLoading={isLoadingDetails}
+                error={detailsError}
+                onRetry={onRetry}
+              />
+            </div>
           )}
         </div>
       </div>
@@ -478,12 +864,15 @@ function ActionDetailsModal({
   );
 }
 
+// ─── Main Page ─────────────────────────────────────────────────────────────────
+
 export function LogDetailPage() {
   const { flowId } = useParams<{ flowId: string }>();
 
   const [flow, setFlow] = useState<LogFlowDetail | null>(null);
   const [actions, setActions] = useState<LogAction[]>([]);
-  const [selectedActionDetails, setSelectedActionDetails] = useState<LogActionDetailsResponse | null>(null);
+  const [selectedActionDetails, setSelectedActionDetails] =
+    useState<LogActionDetailsResponse | null>(null);
   const [selectedActionId, setSelectedActionId] = useState<string | null>(null);
 
   const [isLoadingFlow, setIsLoadingFlow] = useState(true);
@@ -495,16 +884,16 @@ export function LogDetailPage() {
   const [actionsError, setActionsError] = useState<string | null>(null);
   const [detailsError, setDetailsError] = useState<string | null>(null);
 
-  function retryFlow() {
+  const loadFlow = useCallback(() => {
     if (!flowId) return;
     setIsLoadingFlow(true);
     setFlowError(null);
     setFlowNotFound(false);
     setFlow(null);
+
     getLogFlowById(flowId)
       .then((data) => {
         setFlow(data);
-        setIsLoadingFlow(false);
       })
       .catch((error) => {
         if (error.response?.status === 404) {
@@ -512,355 +901,267 @@ export function LogDetailPage() {
         } else {
           setFlowError('Unable to load flow detail.');
         }
-        setIsLoadingFlow(false);
-      });
-  }
+      })
+      .finally(() => setIsLoadingFlow(false));
+  }, [flowId]);
 
-  function retryActions() {
+  const loadActions = useCallback(() => {
     if (!flowId) return;
     setIsLoadingActions(true);
     setActionsError(null);
     setActions([]);
+
     getLogFlowActions(flowId)
       .then((data) => {
         setActions(Array.isArray(data) ? data : []);
-        setIsLoadingActions(false);
       })
       .catch(() => {
         setActionsError('Unable to load actions.');
-        setActions([]);
-        setIsLoadingActions(false);
-      });
-  }
-
-  useEffect(() => {
-    if (!flowId) return;
-
-    let cancelled = false;
-    setIsLoadingFlow(true);
-    setFlowError(null);
-    setFlowNotFound(false);
-    setFlow(null);
-
-    getLogFlowById(flowId)
-      .then((data) => {
-        if (!cancelled) {
-          setFlow(data);
-          setIsLoadingFlow(false);
-        }
       })
-      .catch((error) => {
-        if (!cancelled) {
-          if (error.response?.status === 404) {
-            setFlowNotFound(true);
-          } else {
-            setFlowError('Unable to load flow detail.');
-          }
-          setIsLoadingFlow(false);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
+      .finally(() => setIsLoadingActions(false));
   }, [flowId]);
 
   useEffect(() => {
-    if (!flowId) return;
+    loadFlow();
+    loadActions();
+  }, [loadFlow, loadActions]);
 
-    let cancelled = false;
-    setIsLoadingActions(true);
-    setActionsError(null);
-    setActions([]);
+  const loadActionDetails = useCallback(
+    (actionId: string) => {
+      setSelectedActionId(actionId);
+      setSelectedActionDetails(null);
+      setDetailsError(null);
+      setIsLoadingDetails(true);
 
-    getLogFlowActions(flowId)
-      .then((data) => {
-        if (!cancelled) {
-          setActions(Array.isArray(data) ? data : []);
-          setIsLoadingActions(false);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setActionsError('Unable to load actions.');
-          setActions([]);
-          setIsLoadingActions(false);
-        }
-      });
+      getLogActionDetails(actionId)
+        .then((data) => {
+          setSelectedActionDetails(data);
+        })
+        .catch(() => {
+          setDetailsError('Unable to load action details.');
+        })
+        .finally(() => setIsLoadingDetails(false));
+    },
+    [],
+  );
 
-    return () => {
-      cancelled = true;
-    };
-  }, [flowId]);
-
-  const handleViewDetails = async (actionId: string) => {
+  const handleToggleAction = (actionId: string) => {
     if (selectedActionId === actionId) {
       setSelectedActionId(null);
       setSelectedActionDetails(null);
       setDetailsError(null);
       setIsLoadingDetails(false);
-      return;
+    } else {
+      loadActionDetails(actionId);
     }
-
-    setSelectedActionId(actionId);
-    setSelectedActionDetails(null);
-    setDetailsError(null);
-    setIsLoadingDetails(true);
-
-    try {
-      const details = await getLogActionDetails(actionId);
-      setSelectedActionDetails(details);
-    } catch {
-      setDetailsError('Unable to load action details.');
-    } finally {
-      setIsLoadingDetails(false);
-    }
-  };
-
-  const closeModal = () => {
-    setSelectedActionId(null);
-    setSelectedActionDetails(null);
-    setDetailsError(null);
-    setIsLoadingDetails(false);
-  };
-
-  const retryDetails = () => {
-    if (!selectedActionId) return;
-    setSelectedActionDetails(null);
-    setDetailsError(null);
-    setIsLoadingDetails(true);
-    getLogActionDetails(selectedActionId)
-      .then((details) => {
-        setSelectedActionDetails(details);
-        setIsLoadingDetails(false);
-      })
-      .catch(() => {
-        setDetailsError('Unable to load action details.');
-        setIsLoadingDetails(false);
-      });
   };
 
   if (isLoadingFlow) {
     return (
       <div className="p-6">
-        <div className="animate-pulse space-y-6">
-          <div className="h-4 w-24 bg-gray-200 rounded"></div>
-          <div>
-            <div className="h-8 w-48 bg-gray-200 rounded mb-2"></div>
-            <div className="h-4 w-32 bg-gray-200 rounded"></div>
-          </div>
-          <div className="bg-white rounded-lg border border-gray-200 p-6">
-            <div className="h-6 w-40 bg-gray-200 rounded mb-6"></div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {[...Array(6)].map((_, i) => (
-                <div key={i}>
-                  <div className="h-3 w-24 bg-gray-200 rounded mb-2"></div>
-                  <div className="h-4 w-40 bg-gray-200 rounded"></div>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {[...Array(3)].map((_, i) => (
-              <div key={i} className="bg-white rounded-lg border border-gray-200 p-4">
-                <div className="h-3 w-24 bg-gray-200 rounded mb-2"></div>
-                <div className="h-8 w-12 bg-gray-200 rounded"></div>
-              </div>
-            ))}
-          </div>
-        </div>
+        <LoadingSkeleton />
       </div>
     );
   }
 
   if (flowNotFound) {
     return (
-      <div className="p-6">
-        <Link
-          to="/logs"
-          className="inline-flex items-center text-sm text-gray-600 hover:text-gray-900 mb-4"
-        >
-          <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-          </svg>
-          Back to Logs
-        </Link>
-        <EmptyState message="Flow not found" />
-      </div>
+      <ErrorCard
+        title="Flow not found"
+        message="The requested flow does not exist or has been removed."
+        onRetry={loadFlow}
+        backLink="/logs"
+      />
     );
   }
 
   if (flowError || !flow) {
     return (
-      <div className="p-6">
-        <Link
-          to="/logs"
-          className="inline-flex items-center text-sm text-gray-600 hover:text-gray-900 mb-4"
-        >
-          <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-          </svg>
-          Back to Logs
-        </Link>
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-          <p className="text-red-700 font-medium">Failed to load flow detail</p>
-          <p className="text-red-600 text-sm mt-1">{flowError ?? 'An unexpected error occurred.'}</p>
-          <button
-            onClick={retryFlow}
-            className="mt-3 px-4 py-2 bg-red-100 text-red-700 text-sm font-medium rounded-lg hover:bg-red-200 focus:outline-none focus:ring-2 focus:ring-red-500 transition-colors"
-          >
-            Retry
-          </button>
-        </div>
-      </div>
+      <ErrorCard
+        title="Failed to load flow"
+        message={flowError ?? 'An unexpected error occurred.'}
+        onRetry={loadFlow}
+        backLink="/logs"
+      />
     );
   }
 
-  const selectedActionForModal = selectedActionId
-    ? actions.find((a) => a.actionId === selectedActionId) ?? null
-    : null;
+  // Duration: use flow.durationMs from API (computed from startedAt/completedAt).
+  // No Date.now() trick — no "(running)" for SUCCESS/FAILED.
+  const isFlowRunning = flow.status === 'RUNNING';
+  const flowDurationDisplay = flow.durationMs != null
+    ? formatDuration(flow.durationMs)
+    : isFlowRunning
+      ? formatDuration(Math.floor((Date.now() - new Date(flow.startedAt).getTime())))
+      : EMPTY;
+
+  const displaySubtitle = flow.orderCode ?? flow.orderId ?? flow.paymentId ?? flow.userId ?? flow.flowId;
 
   return (
-    <div className="p-6">
-      <Link
-        to="/logs"
-        className="inline-flex items-center text-sm text-gray-600 hover:text-gray-900 mb-4"
-      >
-        <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-        </svg>
-        Back to Logs
-      </Link>
-
-      <PageHeader
-        title="Flow Detail"
-        subtitle="Trace actions and inspect technical details for this flow"
-      >
-        <div className="mt-2">
-          <StatusBadge status={flow.status} />
+    <div className="p-6 space-y-6">
+      {/* Header */}
+      <div className="flex items-center gap-4">
+        <Link
+          to="/logs"
+          className="flex-shrink-0 flex items-center text-sm text-gray-500 hover:text-gray-900 transition-colors"
+        >
+          <svg
+            className="w-4 h-4 mr-1"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M15 19l-7-7 7-7"
+            />
+          </svg>
+          Logs
+        </Link>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-3 flex-wrap">
+            <h1 className="text-xl font-semibold text-gray-900">Flow Detail</h1>
+            <StatusBadge status={flow.status} />
+          </div>
+          <p
+            className="text-sm text-gray-500 font-mono mt-0.5 truncate max-w-xl"
+            title={displaySubtitle}
+          >
+            {displaySubtitle}
+          </p>
         </div>
-      </PageHeader>
+      </div>
 
-      <div className="bg-white rounded-lg border border-gray-200 shadow-sm mb-6">
-        <div className="px-6 py-4 border-b border-gray-200">
-          <h2 className="text-lg font-semibold text-gray-900">Flow Summary</h2>
+      {/* Business Summary Card — most prominent */}
+      <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-100 bg-gray-50">
+          <h2 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">
+            Business Summary
+          </h2>
         </div>
         <div className="p-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <div>
-              <p className="text-sm text-gray-500">Flow ID</p>
-              <p className="text-sm font-mono font-medium text-gray-900 break-all">{flow.flowId}</p>
+          {/* User / Email / Partner / Customer Phone row */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-6 pb-6 border-b border-gray-100">
+            <FieldRow
+              label="User Email"
+              value={formatFieldValue(flow.userEmail)}
+            />
+            <FieldRow
+              label="Customer Email"
+              value={formatFieldValue(flow.customerEmail)}
+            />
+            <FieldRow label="Partner ID" value={formatFieldValue(flow.partnerId)} />
+            <FieldRow
+              label="Customer Phone"
+              value={formatFieldValue(flow.customerPhone)}
+            />
+          </div>
+
+          {/* Order identifiers row */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-6 pb-6 border-b border-gray-100">
+            <FieldRow label="Order Code" value={formatFieldValue(flow.orderCode)} isMonospace />
+            <FieldRow label="Order ID" value={formatFieldValue(flow.orderId)} isMonospace />
+            <FieldRow label="Payment ID" value={formatFieldValue(flow.paymentId)} isMonospace />
+            <FieldRow label="Transaction ID" value={formatFieldValue(flow.transactionId)} isMonospace />
+          </div>
+
+          {/* Status + Service + Action + Duration row */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-6 pb-6 border-b border-gray-100">
+            <MetricPill label="Status" value={flow.status.replace(/_/g, ' ')} />
+            <MetricPill label="Last Service" value={formatFieldValue(flow.lastServiceName)} />
+            <MetricPill label="Last Action" value={formatFieldValue(flow.lastActionType)} />
+            <MetricPill label="Duration" value={flowDurationDisplay} />
+          </div>
+
+          {/* Last Message */}
+          {flow.lastMessage && (
+            <div className="mb-6 pb-6 border-b border-gray-100">
+              <FieldRow label="Last Message" value={flow.lastMessage} />
             </div>
-            <div>
-              <p className="text-sm text-gray-500">Status</p>
-              <div className="mt-1">
-                <StatusBadge status={flow.status} />
-              </div>
+          )}
+
+          {/* Timestamps row */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+            <FieldRow label="Started At" value={formatDate(flow.startedAt)} />
+            <FieldRow label="Completed At" value={formatDate(flow.completedAt)} />
+            <FieldRow label="Created At" value={formatDate(flow.createdAt)} />
+            <FieldRow label="Updated At" value={formatDate(flow.updatedAt)} />
+          </div>
+        </div>
+      </div>
+
+      {/* Technical Details Card */}
+      <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-100 bg-gray-50">
+          <h2 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">
+            Technical Details
+          </h2>
+        </div>
+        <div className="p-6">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+            <FieldRow label="Flow ID" value={flow.flowId} isMonospace />
+            <FieldRow label="Flow Type" value={formatFieldValue(flow.flowType)} />
+            <FieldRow
+              label="Checkout Type"
+              value={
+                flow.checkoutType ? (
+                  <span className="inline-flex items-center">
+                    <CheckoutTypeBadge checkoutType={flow.checkoutType} />
+                  </span>
+                ) : (
+                  EMPTY
+                )
+              }
+            />
+            <FieldRow label="User ID" value={formatFieldValue(flow.userId)} isMonospace />
+          </div>
+
+          {/* Action counts */}
+          <div className="grid grid-cols-3 gap-6 mt-6 pt-6 border-t border-gray-100">
+            <div className="flex flex-col gap-1">
+              <span className="text-xs text-gray-500 uppercase tracking-wide font-medium">
+                Total Steps
+              </span>
+              <span className="text-lg font-bold text-gray-900">{flow.totalSteps}</span>
             </div>
-            <div>
-              <p className="text-sm text-gray-500">Checkout Type</p>
-              <div className="mt-1">
-                <CheckoutTypeBadge checkoutType={flow.checkoutType} />
-              </div>
+            <div className="flex flex-col gap-1">
+              <span className="text-xs text-gray-500 uppercase tracking-wide font-medium">
+                Success Steps
+              </span>
+              <span className="text-lg font-bold text-green-600">{flow.successSteps}</span>
             </div>
-            <div>
-              <p className="text-sm text-gray-500">Flow Type</p>
-              <p className="text-sm font-medium text-gray-900">{flow.flowType}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">User ID</p>
-              <p className="text-sm font-medium text-gray-900">{formatFieldValue(flow.userId)}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">User Email</p>
-              <p className="text-sm font-medium text-gray-900">{formatFieldValue(flow.userEmail)}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">Username</p>
-              <p className="text-sm font-medium text-gray-900">{formatFieldValue(flow.username)}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">Partner ID</p>
-              <p className="text-sm font-medium text-gray-900">{formatFieldValue(flow.partnerId)}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">Last Action</p>
-              <p className="text-sm font-medium text-gray-900">{formatFieldValue(flow.lastActionType)}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">Last Message</p>
-              <p className="text-sm font-medium text-gray-900">{formatFieldValue(flow.lastMessage)}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">Customer Email</p>
-              <p className="text-sm font-medium text-gray-900">{formatFieldValue(flow.customerEmail)}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">Customer Phone</p>
-              <p className="text-sm font-medium text-gray-900">{formatFieldValue(flow.customerPhone)}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">Order ID</p>
-              <p className="text-sm font-medium text-gray-900">{formatFieldValue(flow.orderId)}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">Order Code</p>
-              <p className="text-sm font-mono font-medium text-gray-900 break-all">{formatFieldValue(flow.orderCode)}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">Payment ID</p>
-              <p className="text-sm font-mono font-medium text-gray-900 break-all">{formatFieldValue(flow.paymentId)}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">Transaction ID</p>
-              <p className="text-sm font-mono font-medium text-gray-900 break-all">{formatFieldValue(flow.transactionId)}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">User Email</p>
-              <p className="text-sm font-medium text-gray-900">{formatFieldValue(flow.userEmail)}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">Partner ID</p>
-              <p className="text-sm font-mono font-medium text-gray-900 break-all">{formatFieldValue(flow.partnerId)}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">Order ID</p>
-              <p className="text-sm font-mono font-medium text-gray-900 break-all">{formatFieldValue(flow.orderId)}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">Created At</p>
-              <p className="text-sm font-medium text-gray-900">{formatDate(flow.createdAt)}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">Updated At</p>
-              <p className="text-sm font-medium text-gray-900">{formatDate(flow.updatedAt)}</p>
+            <div className="flex flex-col gap-1">
+              <span className="text-xs text-gray-500 uppercase tracking-wide font-medium">
+                Failed Steps
+              </span>
+              <span className="text-lg font-bold text-red-600">{flow.failedSteps}</span>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
-        <MetricCard title="Total Steps" value={flow.totalSteps} />
-        <MetricCard title="Success Steps" value={flow.successSteps} />
-        <MetricCard title="Failed Steps" value={flow.failedSteps} />
-        <MetricCard title="Last Service" value={formatFieldValue(flow.lastServiceName)} />
-        <MetricCard title="Last Action" value={formatFieldValue(flow.lastActionType)} />
-      </div>
-
-      <div className="bg-white rounded-lg border border-gray-200 shadow-sm mb-6">
-        <div className="px-6 py-4 border-b border-gray-200">
-          <h2 className="text-lg font-semibold text-gray-900">Action Timeline</h2>
+      {/* Timeline Section */}
+      <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-100 bg-gray-50">
+          <h2 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">
+            Action Timeline
+          </h2>
         </div>
         <div className="p-6">
           {isLoadingActions ? (
             <div className="animate-pulse space-y-4">
               {[1, 2, 3].map((i) => (
                 <div key={i} className="flex gap-4">
-                  <div className="w-3 h-3 bg-gray-200 rounded-full mt-1.5 flex-shrink-0"></div>
+                  <div className="w-10 flex-shrink-0 flex flex-col items-center">
+                    <div className="w-6 h-6 bg-gray-200 rounded-full" />
+                    <div className="w-px flex-1 bg-gray-200 mt-1" />
+                  </div>
                   <div className="flex-1 space-y-2">
-                    <div className="h-4 bg-gray-200 rounded w-1/4"></div>
-                    <div className="h-3 bg-gray-200 rounded w-3/4"></div>
-                    <div className="h-3 bg-gray-200 rounded w-1/2"></div>
+                    <div className="h-4 bg-gray-200 rounded w-1/3" />
+                    <div className="h-3 bg-gray-200 rounded w-1/2" />
+                    <div className="h-3 bg-gray-200 rounded w-2/3" />
                   </div>
                 </div>
               ))}
@@ -870,72 +1171,37 @@ export function LogDetailPage() {
               <p className="text-red-700 text-sm font-medium">Failed to load actions</p>
               <p className="text-red-600 text-sm mt-1">{actionsError}</p>
               <button
-                onClick={retryActions}
-                className="mt-3 px-4 py-2 bg-red-100 text-red-700 text-sm font-medium rounded-lg hover:bg-red-200 focus:outline-none focus:ring-2 focus:ring-red-500 transition-colors"
+                onClick={loadActions}
+                className="mt-3 px-4 py-2 bg-red-100 text-red-700 text-sm font-medium rounded-lg hover:bg-red-200"
               >
                 Retry
               </button>
             </div>
           ) : actions.length === 0 ? (
-            <p className="text-sm text-gray-500 italic">No actions found for this flow.</p>
+            <EmptyState message="No actions found for this flow." />
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-0">
               {actions.map((action, index) => (
-                <div
+                <ActionTimelineItem
                   key={action.actionId}
-                  className="border border-gray-200 rounded-lg p-4 hover:border-gray-300 transition-colors overflow-hidden"
-                >
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex items-start gap-3 flex-1 min-w-0">
-                      <div className="flex flex-col items-center mt-1 flex-shrink-0">
-                        <div className={`w-3 h-3 rounded-full ${index === 0 ? 'bg-blue-600' : 'bg-gray-300'}`}></div>
-                        {index < actions.length - 1 && (
-                          <div className="w-0.5 flex-1 bg-gray-200 mt-1" style={{ minHeight: '12px' }}></div>
-                        )}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2 flex-wrap mb-1">
-                          <span className="text-sm font-semibold text-gray-900">{action.actionType}</span>
-                          <StatusBadge status={action.status} />
-                        </div>
-                        {action.message && (
-                          <p className="text-sm text-gray-600 mb-2">{action.message}</p>
-                        )}
-                        <div className="flex items-center gap-x-4 gap-y-1 text-xs text-gray-500 flex-wrap">
-                          <span className="font-medium text-gray-600">{action.serviceName}</span>
-                          <span className="text-gray-300">|</span>
-                          <span>{formatDuration(action.durationMs)}</span>
-                          <span className="text-gray-300">|</span>
-                          <span>{formatDate(action.createdAt)}</span>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex-shrink-0">
-                      <button
-                        onClick={() => handleViewDetails(action.actionId)}
-                        className="px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
-                      >
-                        {selectedActionId === action.actionId ? 'Hide Details' : 'View Details'}
-                      </button>
-                    </div>
-                  </div>
-                </div>
+                  action={action}
+                  stepNumber={index + 1}
+                  isSelected={selectedActionId === action.actionId}
+                  isLoadingDetails={isLoadingDetails && selectedActionId === action.actionId}
+                  details={
+                    selectedActionId === action.actionId ? selectedActionDetails : null
+                  }
+                  detailsError={
+                    selectedActionId === action.actionId ? detailsError : null
+                  }
+                  onToggle={() => handleToggleAction(action.actionId)}
+                  onRetry={() => loadActionDetails(action.actionId)}
+                />
               ))}
             </div>
           )}
         </div>
       </div>
-
-      {selectedActionId !== null && (
-        <ActionDetailsModal
-          action={selectedActionForModal}
-          details={selectedActionDetails}
-          isLoading={isLoadingDetails}
-          errorMessage={detailsError}
-          onClose={closeModal}
-          onRetry={retryDetails}
-        />
-      )}
     </div>
   );
 }

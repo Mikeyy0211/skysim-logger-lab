@@ -21,6 +21,7 @@ public record LogFlowSummaryDto(
     string? LastActionType,
     string? LastMessage,
     string? LastServiceName,
+    int? DurationMs,
     DateTime StartedAt,
     DateTime? CompletedAt,
     DateTime CreatedAt,

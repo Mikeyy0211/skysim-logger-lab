@@ -451,7 +451,7 @@ public class MapFlowFromMessageTransactionIdTests
         flow.TransactionId.Should().Be("EXISTING-TX");
     }
 
-    // Mirror of the production mapper - keep in sync with KafkaLogConsumerService.MapFlowFromMessage
+        // Mirror of the production mapper - keep in sync with KafkaLogConsumerService.MapFlowFromMessage
     private static void MapFlowFromMessage(LogFlow flow, LogEventMessage message)
     {
         if (!string.IsNullOrWhiteSpace(message.FlowType) &&
@@ -479,5 +479,445 @@ public class MapFlowFromMessageTransactionIdTests
         flow.LastActionType = message.ActionType;
         flow.LastMessage = message.Message;
         flow.TotalSteps++;
+    }
+}
+
+public class CustomerInfoExtractorTests
+{
+    [Fact]
+    public void ExtractCustomerEmail_FromEmailField_ReturnsValue()
+    {
+        const string payload = """
+        {
+          "invoicePartnerId": null,
+          "paymentChannel": "ONEPAY",
+          "modifyMoney": 24000,
+          "isPartnerPayment": true,
+          "paymentMoney": 19200,
+          "fullname": "1",
+          "email": "minzdapoet@gmail.com",
+          "phoneNumber": "0867687325",
+          "voucherCode": null
+        }
+        """;
+
+        var result = BusinessKeyExtractor.ExtractCustomerEmail(payload);
+
+        result.Should().Be("minzdapoet@gmail.com");
+    }
+
+    [Fact]
+    public void ExtractCustomerPhone_FromPhoneNumberField_ReturnsValue()
+    {
+        const string payload = """
+        {
+          "invoicePartnerId": null,
+          "paymentChannel": "ONEPAY",
+          "modifyMoney": 24000,
+          "isPartnerPayment": true,
+          "paymentMoney": 19200,
+          "fullname": "1",
+          "email": "minzdapoet@gmail.com",
+          "phoneNumber": "0867687325",
+          "voucherCode": null
+        }
+        """;
+
+        var result = BusinessKeyExtractor.ExtractCustomerPhone(payload);
+
+        result.Should().Be("0867687325");
+    }
+
+    [Fact]
+    public void ExtractCustomerEmail_FromWrapperWithJsonBodyString_ReturnsValue()
+    {
+        const string payload = """
+        {
+          "body": "{\"fullname\":\"Test\",\"email\":\"customer@test.com\",\"phoneNumber\":\"0909123456\"}",
+          "path": "/apis/partner/order/create",
+          "headers": { "content-type": "application/json" }
+        }
+        """;
+
+        var result = BusinessKeyExtractor.ExtractCustomerEmail(payload);
+
+        result.Should().Be("customer@test.com");
+    }
+
+    [Fact]
+    public void ExtractCustomerPhone_FromWrapperWithJsonBodyString_ReturnsValue()
+    {
+        const string payload = """
+        {
+          "body": "{\"fullname\":\"Test\",\"email\":\"customer@test.com\",\"phoneNumber\":\"0909123456\"}",
+          "path": "/apis/partner/order/create",
+          "headers": { "content-type": "application/json" }
+        }
+        """;
+
+        var result = BusinessKeyExtractor.ExtractCustomerPhone(payload);
+
+        result.Should().Be("0909123456");
+    }
+
+    [Fact]
+    public void ExtractCustomerEmail_DoesNotOverwriteWithNull_OrEmpty()
+    {
+        const string payload = """
+        {
+          "email": "",
+          "phoneNumber": null
+        }
+        """;
+
+        var result = BusinessKeyExtractor.ExtractCustomerEmail(payload);
+
+        result.Should().BeNull();
+    }
+
+    [Fact]
+    public void ExtractCustomerName_FromFullname_ReturnsValue()
+    {
+        const string payload = """
+        {
+          "fullname": "John Doe",
+          "email": "john@example.com",
+          "phoneNumber": "0909123456"
+        }
+        """;
+
+        var result = BusinessKeyExtractor.ExtractCustomerName(payload);
+
+        result.Should().Be("John Doe");
+    }
+
+    [Fact]
+    public void ExtractCustomerEmail_PrefersCustomerEmail_OverEmail()
+    {
+        const string payload = """
+        {
+          "customerEmail": "preferred@test.com",
+          "email": "fallback@test.com"
+        }
+        """;
+
+        var result = BusinessKeyExtractor.ExtractCustomerEmail(payload);
+
+        result.Should().Be("preferred@test.com");
+    }
+
+    [Fact]
+    public void ExtractCustomerPhone_PrefersCustomerPhone_OverPhoneNumber()
+    {
+        const string payload = """
+        {
+          "customerPhone": "preferred-phone",
+          "phoneNumber": "fallback-phone"
+        }
+        """;
+
+        var result = BusinessKeyExtractor.ExtractCustomerPhone(payload);
+
+        result.Should().Be("preferred-phone");
+    }
+
+    [Fact]
+    public void ExtractCustomerName_PrefersFullname_OverName()
+    {
+        const string payload = """
+        {
+          "fullname": "Preferred Name",
+          "name": "Fallback Name"
+        }
+        """;
+
+        var result = BusinessKeyExtractor.ExtractCustomerName(payload);
+
+        result.Should().Be("Preferred Name");
+    }
+
+    [Fact]
+    public void ExtractCustomerEmail_WhenPayloadIsNull_ReturnsNull()
+    {
+        BusinessKeyExtractor.ExtractCustomerEmail(null).Should().BeNull();
+        BusinessKeyExtractor.ExtractCustomerPhone(null).Should().BeNull();
+        BusinessKeyExtractor.ExtractCustomerName(null).Should().BeNull();
+    }
+
+    [Fact]
+    public void ExtractCustomerEmail_WhenPayloadIsEmpty_ReturnsNull()
+    {
+        BusinessKeyExtractor.ExtractCustomerEmail("").Should().BeNull();
+        BusinessKeyExtractor.ExtractCustomerPhone("").Should().BeNull();
+        BusinessKeyExtractor.ExtractCustomerName("").Should().BeNull();
+    }
+
+    [Fact]
+    public void ExtractCustomerEmail_WhenPayloadIsNotJson_ReturnsNull()
+    {
+        BusinessKeyExtractor.ExtractCustomerEmail("not json").Should().BeNull();
+        BusinessKeyExtractor.ExtractCustomerPhone("not json").Should().BeNull();
+        BusinessKeyExtractor.ExtractCustomerName("not json").Should().BeNull();
+    }
+
+    [Fact]
+    public void ExtractCustomerEmail_FromNestedObject_ReturnsValue()
+    {
+        const string payload = """
+        {
+          "data": {
+            "customer": {
+              "email": "nested@test.com",
+              "phone": "0909123456"
+            }
+          }
+        }
+        """;
+
+        BusinessKeyExtractor.ExtractCustomerEmail(payload).Should().Be("nested@test.com");
+        BusinessKeyExtractor.ExtractCustomerPhone(payload).Should().Be("0909123456");
+    }
+}
+
+public class EnrichCustomerInfoTests
+{
+    [Fact]
+    public void EnrichCustomerInfo_FillsMissingCustomerEmailAndPhone_FromRequestBody()
+    {
+        var message = new LogEventMessage
+        {
+            EventId = Guid.NewGuid(),
+            FlowId = "flow-1",
+            FlowType = "CHECKOUT_ESIM",
+            ServiceName = "partner-service",
+            ActionType = "HTTP_REQUEST",
+            Status = "SUCCESS",
+            CreatedAt = DateTime.UtcNow,
+            RequestBody = """
+            {
+              "fullname": "1",
+              "email": "minzdapoet@gmail.com",
+              "phoneNumber": "0867687325",
+              "voucherCode": null
+            }
+            """
+        };
+
+        EnrichCustomerInfo(message);
+
+        message.CustomerEmail.Should().Be("minzdapoet@gmail.com");
+        message.CustomerPhone.Should().Be("0867687325");
+    }
+
+    [Fact]
+    public void EnrichCustomerInfo_DoesNotOverwriteExistingCustomerEmailOrPhone()
+    {
+        var message = new LogEventMessage
+        {
+            EventId = Guid.NewGuid(),
+            FlowId = "flow-1",
+            FlowType = "CHECKOUT_ESIM",
+            ServiceName = "partner-service",
+            ActionType = "HTTP_REQUEST",
+            Status = "SUCCESS",
+            CreatedAt = DateTime.UtcNow,
+            CustomerEmail = "existing@test.com",
+            CustomerPhone = "0909000000",
+            RequestBody = """
+            {
+              "email": "new-customer@test.com",
+              "phoneNumber": "0999999999"
+            }
+            """
+        };
+
+        EnrichCustomerInfo(message);
+
+        message.CustomerEmail.Should().Be("existing@test.com");
+        message.CustomerPhone.Should().Be("0909000000");
+    }
+
+    [Fact]
+    public void EnrichCustomerInfo_DoesNotOverwriteUserEmail_WithCustomerEmail()
+    {
+        var message = new LogEventMessage
+        {
+            EventId = Guid.NewGuid(),
+            FlowId = "flow-1",
+            FlowType = "CHECKOUT_ESIM",
+            ServiceName = "partner-service",
+            ActionType = "HTTP_REQUEST",
+            Status = "SUCCESS",
+            CreatedAt = DateTime.UtcNow,
+            UserEmail = "lasoapp@gmail.com",
+            UserId = "user-123",
+            RequestBody = """
+            {
+              "email": "minzdapoet@gmail.com",
+              "phoneNumber": "0867687325"
+            }
+            """
+        };
+
+        EnrichCustomerInfo(message);
+
+        // CustomerEmail extracted from payload
+        message.CustomerEmail.Should().Be("minzdapoet@gmail.com");
+        // UserEmail preserved from JWT/auth context
+        message.UserEmail.Should().Be("lasoapp@gmail.com");
+        message.UserId.Should().Be("user-123");
+    }
+
+    [Fact]
+    public void EnrichCustomerInfo_ParsesWrapperBodyWithJsonString()
+    {
+        var message = new LogEventMessage
+        {
+            EventId = Guid.NewGuid(),
+            FlowId = "flow-1",
+            FlowType = "HTTP_ACTION",
+            ServiceName = "partner-service",
+            ActionType = "HTTP_REQUEST",
+            Status = "SUCCESS",
+            CreatedAt = DateTime.UtcNow,
+            RequestBody = """
+            {
+              "body": "{\"fullname\":\"Test\",\"email\":\"wrapper@test.com\",\"phoneNumber\":\"0909123456\"}",
+              "path": "/apis/partner/order/create"
+            }
+            """
+        };
+
+        EnrichCustomerInfo(message);
+
+        message.CustomerEmail.Should().Be("wrapper@test.com");
+        message.CustomerPhone.Should().Be("0909123456");
+    }
+
+    [Fact]
+    public void EnrichCustomerInfo_WhenBodiesAreMissing_DoesNotThrow()
+    {
+        var message = new LogEventMessage
+        {
+            EventId = Guid.NewGuid(),
+            FlowId = "flow-1",
+            FlowType = "HTTP_ACTION",
+            ServiceName = "partner-service",
+            ActionType = "HTTP_REQUEST",
+            Status = "SUCCESS",
+            CreatedAt = DateTime.UtcNow
+        };
+
+        var act = () => EnrichCustomerInfo(message);
+
+        act.Should().NotThrow();
+        message.CustomerEmail.Should().BeNull();
+        message.CustomerPhone.Should().BeNull();
+    }
+
+    [Fact]
+    public void EnrichCustomerInfo_DoesNotOverwriteWithNullOrEmpty()
+    {
+        var message = new LogEventMessage
+        {
+            EventId = Guid.NewGuid(),
+            FlowId = "flow-1",
+            FlowType = "HTTP_ACTION",
+            ServiceName = "partner-service",
+            ActionType = "HTTP_REQUEST",
+            Status = "SUCCESS",
+            CreatedAt = DateTime.UtcNow,
+            CustomerEmail = "preserved@test.com",
+            CustomerPhone = "0909000000",
+            RequestBody = """
+            {
+              "email": null,
+              "phoneNumber": "",
+              "fullname": ""
+            }
+            """
+        };
+
+        EnrichCustomerInfo(message);
+
+        message.CustomerEmail.Should().Be("preserved@test.com");
+        message.CustomerPhone.Should().Be("0909000000");
+    }
+
+    [Fact]
+    public void EnrichCustomerInfo_FallsBackToResponseBody_WhenRequestBodyMissing()
+    {
+        var message = new LogEventMessage
+        {
+            EventId = Guid.NewGuid(),
+            FlowId = "flow-1",
+            FlowType = "CHECKOUT_ESIM",
+            ServiceName = "partner-service",
+            ActionType = "ORDER_CREATED",
+            Status = "SUCCESS",
+            CreatedAt = DateTime.UtcNow,
+            ResponseBody = """
+            {
+              "data": {
+                "customerEmail": "from-response@test.com",
+                "customerPhone": "0909000000"
+              }
+            }
+            """
+        };
+
+        EnrichCustomerInfo(message);
+
+        message.CustomerEmail.Should().Be("from-response@test.com");
+        message.CustomerPhone.Should().Be("0909000000");
+    }
+
+    // Mirror of the production helper - keep in sync with KafkaLogConsumerService.EnrichCustomerInfo
+    private static void EnrichCustomerInfo(LogEventMessage message)
+    {
+        if (!string.IsNullOrWhiteSpace(message.CustomerEmail) &&
+            !string.IsNullOrWhiteSpace(message.CustomerPhone))
+        {
+            return;
+        }
+
+        var candidates = new[] { message.RequestBody, message.ResponseBody };
+
+        string? customerEmail = message.CustomerEmail;
+        string? customerPhone = message.CustomerPhone;
+
+        foreach (var raw in candidates)
+        {
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                continue;
+            }
+
+            if (string.IsNullOrWhiteSpace(customerEmail))
+            {
+                customerEmail = BusinessKeyExtractor.ExtractCustomerEmail(raw);
+            }
+
+            if (string.IsNullOrWhiteSpace(customerPhone))
+            {
+                customerPhone = BusinessKeyExtractor.ExtractCustomerPhone(raw);
+            }
+
+            if (!string.IsNullOrWhiteSpace(customerEmail) &&
+                !string.IsNullOrWhiteSpace(customerPhone))
+            {
+                break;
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(customerEmail))
+        {
+            message.CustomerEmail = customerEmail;
+        }
+
+        if (!string.IsNullOrWhiteSpace(customerPhone))
+        {
+            message.CustomerPhone = customerPhone;
+        }
     }
 }
