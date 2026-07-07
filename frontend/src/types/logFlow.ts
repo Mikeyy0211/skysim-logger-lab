@@ -50,6 +50,7 @@ export interface RecentFlowItem {
   userEmail: string | null;
   username: string | null;
   customerEmail: string | null;
+  customerPhone: string | null;
   partnerId: string | null;
   orderCode: string | null;
   orderId: string | null;

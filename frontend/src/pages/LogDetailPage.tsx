@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { StatusBadge } from '../components/StatusBadge';
 import { CheckoutTypeBadge } from '../components/CheckoutTypeBadge';
@@ -14,7 +14,7 @@ import type { LogAction, LogActionDetailsResponse } from '../types/logAction';
 const EMPTY = '—';
 
 function formatDuration(ms: number | null | undefined): string {
-  if (ms == null || ms < 0) return EMPTY;
+  if (ms == null || ms < 0) return '';
   if (ms >= 1000) return `${(ms / 1000).toFixed(1)}s`;
   return `${ms}ms`;
 }
@@ -745,6 +745,37 @@ function isFailedAction(action: LogAction): boolean {
   return s === 'FAILED' || s === 'ERROR' || s === 'TIMEOUT';
 }
 
+/**
+ * Build timeline metadata items array for a LogAction.
+ * Each entry is either a JSX element or null (filtered out before render).
+ * Separators " · " are added between non-null items at render time.
+ */
+function buildTimelineMetaItems(action: LogAction): React.ReactNode[] {
+  const items: React.ReactNode[] = [];
+
+  if (action.serviceName) {
+    items.push(
+      <span key="svc" className="font-medium text-gray-600">{action.serviceName}</span>
+    );
+  }
+
+  const duration = action.durationMs ?? parseDurationFromMessage(action.message);
+  if (duration != null) {
+    items.push(
+      <span key="dur">{formatDuration(duration)}</span>
+    );
+  }
+
+  const dateStr = formatDate(action.createdAt);
+  if (dateStr !== EMPTY) {
+    items.push(
+      <span key="time">{dateStr}</span>
+    );
+  }
+
+  return items;
+}
+
 function ActionTimelineItem({
   action,
   stepNumber,
@@ -765,7 +796,6 @@ function ActionTimelineItem({
   onRetry: () => void;
 }) {
   const failed = isFailedAction(action);
-  const actionDuration = action.durationMs ?? parseDurationFromMessage(action.message);
 
   return (
     <div className="flex gap-0">
@@ -826,11 +856,13 @@ function ActionTimelineItem({
 
           {/* Service + Duration + Time */}
           <div className="flex items-center gap-x-4 gap-y-1 text-xs text-gray-500 flex-wrap mb-2">
-            <span className="font-medium text-gray-600">{action.serviceName}</span>
-            <span className="text-gray-300">·</span>
-            <span>{formatDuration(actionDuration)}</span>
-            <span className="text-gray-300">·</span>
-            <span>{formatDate(action.createdAt)}</span>
+            {buildTimelineMetaItems(action).reduce<React.ReactNode[]>((acc, item, idx, arr) => {
+              acc.push(item);
+              if (idx < arr.length - 1) {
+                acc.push(<span key={`sep-${idx}`} className="text-gray-300">·</span>);
+              }
+              return acc;
+            }, [])}
           </div>
 
           {/* Message */}
@@ -1033,6 +1065,47 @@ export function LogDetailPage() {
           </p>
         </div>
       </div>
+
+      {/* What happened? Summary */}
+      {((): React.ReactElement | null => {
+        const overallStatus = flow.status?.toUpperCase();
+        const distinctServices = [...new Set(actions.map((a) => a.serviceName).filter(Boolean))];
+        const servicesCount = distinctServices.length;
+        const actionCount = actions.length;
+        const failedActions = actions.filter((a) => isFailedAction(a));
+        let text = '';
+        let bgClass = '';
+        let borderClass = '';
+        let textClass = '';
+
+        if (overallStatus === 'SUCCESS') {
+          text = `This flow completed successfully across ${servicesCount} service${servicesCount !== 1 ? 's' : ''} and ${actionCount} action${actionCount !== 1 ? 's' : ''}.`;
+          bgClass = 'bg-green-50';
+          borderClass = 'border-green-200';
+          textClass = 'text-green-800';
+        } else if (overallStatus === 'FAILED' || overallStatus === 'PARTIAL_FAILED') {
+          const failedAction = failedActions.length > 0 ? failedActions[failedActions.length - 1] : null;
+          if (failedAction) {
+            text = `This flow failed at ${failedAction.serviceName}: ${failedAction.errorMessage || failedAction.message || 'Unknown error'}`;
+          } else {
+            text = `This flow contains ${actionCount} action${actionCount !== 1 ? 's' : ''} across ${servicesCount} service${servicesCount !== 1 ? 's' : ''}.`;
+          }
+          bgClass = overallStatus === 'FAILED' ? 'bg-red-50' : 'bg-amber-50';
+          borderClass = overallStatus === 'FAILED' ? 'border-red-200' : 'border-amber-200';
+          textClass = overallStatus === 'FAILED' ? 'text-red-800' : 'text-amber-800';
+        } else {
+          text = `This flow contains ${actionCount} action${actionCount !== 1 ? 's' : ''} across ${servicesCount} service${servicesCount !== 1 ? 's' : ''}.`;
+          bgClass = 'bg-gray-50';
+          borderClass = 'border-gray-200';
+          textClass = 'text-gray-700';
+        }
+
+        return (
+          <div className={`rounded-lg border px-4 py-3 ${bgClass} ${borderClass}`}>
+            <p className={`text-sm font-medium ${textClass}`}>{text}</p>
+          </div>
+        );
+      })()}
 
       {/* Business Summary Card — most prominent */}
       <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">

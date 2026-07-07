@@ -175,7 +175,7 @@ export function LogListPage() {
               <input
                 id="search"
                 type="text"
-                placeholder="Search email, order code, payment id, transaction id..."
+                placeholder="Search order code, payment ID, transaction ID, user email, customer email, phone..."
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
                 value={filters.keyword}
                 onChange={handleSearchChange}
@@ -183,8 +183,16 @@ export function LogListPage() {
               />
             </div>
             <div>
-              <label htmlFor="status" className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="status" className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-1">
                 Status
+                <span className="relative group">
+                  <svg className="w-3.5 h-3.5 text-gray-400 cursor-help" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover:block w-64 text-xs text-gray-600 bg-white border border-gray-200 rounded shadow-lg p-2 z-10 pointer-events-none">
+                    SUCCESS: completed · FAILED: error/exception · RUNNING: still in progress · PARTIAL_FAILED: some actions failed
+                  </span>
+                </span>
               </label>
               <select
                 id="status"
@@ -282,7 +290,7 @@ export function LogListPage() {
               </svg>
               <p className="text-base font-medium text-gray-700 mb-1">No log flows found</p>
               <p className="text-sm text-gray-500 text-center max-w-sm">
-                No flows match your filters. Try adjusting your search criteria or clear the filters.
+                No logs found. Try another order code, payment ID, transaction ID, email, phone, or date range.
               </p>
               <button
                 onClick={handleReset}

@@ -9,6 +9,23 @@ import type { DashboardMetrics, RecentFlowItem } from '../types/logFlow';
 
 const EMPTY = '—';
 
+function hasBusinessKey(item: RecentFlowItem): boolean {
+  return !!(
+    item.orderCode?.trim() ||
+    item.paymentId?.trim() ||
+    item.transactionId?.trim() ||
+    item.customerEmail?.trim() ||
+    item.customerPhone?.trim()
+  );
+}
+
+function sortByBusinessKey(a: RecentFlowItem, b: RecentFlowItem): number {
+  const aHasKey = hasBusinessKey(a) ? 1 : 0;
+  const bHasKey = hasBusinessKey(b) ? 1 : 0;
+  if (aHasKey !== bHasKey) return bHasKey - aHasKey;
+  return new Date(b.updatedAt || b.createdAt).getTime() - new Date(a.updatedAt || a.createdAt).getTime();
+}
+
 function formatDuration(ms: number | null | undefined): string {
   if (ms == null) return EMPTY;
   const value = ms;
@@ -207,10 +224,10 @@ function RecentFlowSection({
             <thead>
               <tr className="bg-gray-50">
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  User
+                  User Email
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Order
+                  Order Code
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Service
@@ -310,7 +327,7 @@ export function DashboardPage() {
             <input
               id="quickSearch"
               type="text"
-              placeholder="Search by order code, payment ID, transaction ID..."
+              placeholder="Search order code, payment ID, transaction ID, user email, customer email, phone..."
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -339,14 +356,24 @@ export function DashboardPage() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <RecentFlowSection
               title="Recent Failed Flows"
-              items={metrics.recentFailedFlows}
+              items={[...metrics.recentFailedFlows].sort(sortByBusinessKey)}
               emptyMessage="No failed flows yet."
             />
             <RecentFlowSection
               title="Recent Successful Flows"
-              items={metrics.recentSuccessFlows}
+              items={[...metrics.recentSuccessFlows].sort(sortByBusinessKey)}
               emptyMessage="No successful flows yet."
             />
+          </div>
+
+          <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3">
+            <p className="text-xs text-blue-700">
+              <span className="font-medium">Note:</span> Some logs may not contain User Email or Order Code because they are public, internal, callback, configuration, or pre-checkout requests. Technical logs can still be searched via the{' '}
+              <Link to="/logs" className="underline hover:text-blue-900">
+                Logs page
+              </Link>
+              .
+            </p>
           </div>
 
           <div className="text-xs text-gray-500">

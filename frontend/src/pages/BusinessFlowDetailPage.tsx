@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { StatusBadge } from '../components/StatusBadge';
 import { getBusinessFlowByOrderCode } from '../services/businessFlowService';
@@ -7,7 +7,7 @@ import type { BusinessFlowDetail, BusinessFlowAction } from '../types/logFlow';
 const EMPTY = '—';
 
 function formatDuration(ms: number | null | undefined): string {
-  if (ms == null || ms < 0) return EMPTY;
+  if (ms == null || ms < 0) return '';
   if (ms >= 1000) return `${(ms / 1000).toFixed(1)}s`;
   return `${ms}ms`;
 }
@@ -431,6 +431,57 @@ function isFailedAction(action: BusinessFlowAction): boolean {
   return s === 'FAILED' || s === 'ERROR' || s === 'TIMEOUT';
 }
 
+/** Parse duration from message text like "POST /api -> 200 (22ms)" */
+function parseDurationFromMessage(message: string | null | undefined): number | null {
+  if (!message) return null;
+  const match = message.match(/\((\d+)(ms|s)\)/);
+  if (match) {
+    const num = parseInt(match[1], 10);
+    if (match[2] === 's') return num * 1000;
+    return num;
+  }
+  return null;
+}
+
+/**
+ * Build timeline metadata items array.
+ * Each entry is either a JSX element or null (filtered out before render).
+ * Separators " · " are added between non-null items at render time.
+ */
+function buildTimelineMetaItems(action: BusinessFlowAction): React.ReactNode[] {
+  const items: React.ReactNode[] = [];
+
+  if (action.serviceName) {
+    items.push(
+      <span key="svc" className="font-medium text-gray-600">{action.serviceName}</span>
+    );
+  }
+
+  const duration = action.durationMs ?? parseDurationFromMessage(action.message);
+  if (duration != null) {
+    items.push(
+      <span key="dur">{formatDuration(duration)}</span>
+    );
+  }
+
+  const dateStr = formatDate(action.createdAt);
+  if (dateStr !== EMPTY) {
+    items.push(
+      <span key="time">{dateStr}</span>
+    );
+  }
+
+  if (action.flowId) {
+    items.push(
+      <span key="fid" className="font-mono text-gray-400" title={`Flow ID: ${action.flowId}`}>
+        {action.flowId.length > 16 ? action.flowId.substring(0, 16) + '…' : action.flowId}
+      </span>
+    );
+  }
+
+  return items;
+}
+
 function BusinessActionTimelineItem({
   action,
   stepNumber,
@@ -503,15 +554,13 @@ function BusinessActionTimelineItem({
 
           {/* Service + Duration + Time + FlowId */}
           <div className="flex items-center gap-x-4 gap-y-1 text-xs text-gray-500 flex-wrap mb-2">
-            <span className="font-medium text-gray-600">{action.serviceName}</span>
-            <span className="text-gray-300">·</span>
-            <span>{formatDuration(action.durationMs)}</span>
-            <span className="text-gray-300">·</span>
-            <span>{formatDate(action.createdAt)}</span>
-            <span className="text-gray-300">·</span>
-            <span className="font-mono text-gray-400" title={`Flow ID: ${action.flowId}`}>
-              {action.flowId.length > 16 ? action.flowId.substring(0, 16) + '…' : action.flowId}
-            </span>
+            {buildTimelineMetaItems(action).reduce<React.ReactNode[]>((acc, item, idx, arr) => {
+              acc.push(item);
+              if (idx < arr.length - 1) {
+                acc.push(<span key={`sep-${idx}`} className="text-gray-300">·</span>);
+              }
+              return acc;
+            }, [])}
           </div>
 
           {/* Message */}
@@ -661,6 +710,46 @@ export function BusinessFlowDetailPage() {
           </p>
         </div>
       </div>
+
+      {/* What happened? Summary */}
+      {((): React.ReactElement | null => {
+        const overallStatus = summary.overallStatus?.toUpperCase();
+        const servicesCount = summary.services?.length ?? 0;
+        const actionCount = summary.actionCount ?? timeline.length;
+        const failedActions = timeline.filter((a) => isFailedAction(a));
+        let text = '';
+        let bgClass = '';
+        let borderClass = '';
+        let textClass = '';
+
+        if (overallStatus === 'SUCCESS') {
+          text = `This flow completed successfully across ${servicesCount} service${servicesCount !== 1 ? 's' : ''} and ${actionCount} action${actionCount !== 1 ? 's' : ''}.`;
+          bgClass = 'bg-green-50';
+          borderClass = 'border-green-200';
+          textClass = 'text-green-800';
+        } else if (overallStatus === 'FAILED' || overallStatus === 'PARTIAL_FAILED') {
+          const failedAction = failedActions.length > 0 ? failedActions[failedActions.length - 1] : null;
+          if (failedAction) {
+            text = `This flow failed at ${failedAction.serviceName}: ${failedAction.errorMessage || failedAction.message || 'Unknown error'}`;
+          } else {
+            text = `This flow contains ${actionCount} action${actionCount !== 1 ? 's' : ''} across ${servicesCount} service${servicesCount !== 1 ? 's' : ''}.`;
+          }
+          bgClass = overallStatus === 'FAILED' ? 'bg-red-50' : 'bg-amber-50';
+          borderClass = overallStatus === 'FAILED' ? 'border-red-200' : 'border-amber-200';
+          textClass = overallStatus === 'FAILED' ? 'text-red-800' : 'text-amber-800';
+        } else {
+          text = `This flow contains ${actionCount} action${actionCount !== 1 ? 's' : ''} across ${servicesCount} service${servicesCount !== 1 ? 's' : ''}.`;
+          bgClass = 'bg-gray-50';
+          borderClass = 'border-gray-200';
+          textClass = 'text-gray-700';
+        }
+
+        return (
+          <div className={`rounded-lg border px-4 py-3 ${bgClass} ${borderClass}`}>
+            <p className={`text-sm font-medium ${textClass}`}>{text}</p>
+          </div>
+        );
+      })()}
 
       {/* Business Summary Card */}
       <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
