@@ -3,6 +3,7 @@ import type { KeyboardEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { PageHeader } from '../components/PageHeader';
 import { StatusBadge } from '../components/StatusBadge';
+import { UserCustomerCell } from '../components/UserCustomerCell';
 import { getBusinessFlows } from '../services/businessFlowService';
 import type { BusinessFlowSummary } from '../types/logFlow';
 
@@ -15,15 +16,6 @@ function formatDate(value: string | null | undefined): string {
   const d = new Date(value);
   if (isNaN(d.getTime())) return EMPTY;
   return d.toLocaleString();
-}
-
-function resolveDisplayUser(bf: BusinessFlowSummary): string {
-  return (
-    bf.userEmail?.trim() ||
-    bf.customerEmail?.trim() ||
-    bf.customerPhone?.trim() ||
-    EMPTY
-  );
 }
 
 function resolveDisplayPaymentId(bf: BusinessFlowSummary): string {
@@ -238,7 +230,6 @@ export function BusinessFlowsListPage() {
                 </thead>
                 <tbody className="divide-y divide-gray-200">
                   {flows.map((bf) => {
-                    const user = resolveDisplayUser(bf);
                     const paymentId = resolveDisplayPaymentId(bf);
                     const transactionId = resolveDisplayTransactionId(bf);
                     const services = resolveDisplayServices(bf);
@@ -249,10 +240,11 @@ export function BusinessFlowsListPage() {
                         <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
                           {formatDate(bf.lastSeenAt)}
                         </td>
-                        <td className="px-4 py-4 whitespace-nowrap max-w-[200px] text-sm text-gray-700">
-                          <span className="truncate block" title={user !== EMPTY ? user : undefined}>
-                            {user}
-                          </span>
+                        <td className="px-4 py-4 whitespace-nowrap max-w-[200px]">
+                          <UserCustomerCell
+                            userEmail={bf.userEmail}
+                            customerEmail={bf.customerEmail}
+                          />
                         </td>
                         <td className="px-4 py-4 whitespace-nowrap max-w-[180px] text-sm text-gray-900 font-mono font-medium">
                           <span className="truncate block" title={bf.orderCode}>

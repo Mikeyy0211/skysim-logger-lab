@@ -3,6 +3,7 @@ import type { ChangeEvent } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { PageHeader } from '../components/PageHeader';
 import { StatusBadge } from '../components/StatusBadge';
+import { UserCustomerCell } from '../components/UserCustomerCell';
 import { getLogFlows } from '../services/logFlowService';
 import type { LogFlowSummary } from '../types/logFlow';
 import { useAppDispatch, useAppSelector } from '../app/hooks';
@@ -23,15 +24,6 @@ function formatDate(value: string | null | undefined): string {
   const d = new Date(value);
   if (isNaN(d.getTime())) return EMPTY;
   return d.toLocaleString();
-}
-
-function resolveDisplayUserEmail(flow: LogFlowSummary): string {
-  return (
-    flow.userEmail?.trim() ||
-    flow.customerEmail?.trim() ||
-    flow.userId?.trim() ||
-    EMPTY
-  );
 }
 
 function resolveDisplayOrder(flow: LogFlowSummary): string {
@@ -308,7 +300,7 @@ export function LogListPage() {
                       Time
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      User Email
+                      User / Customer
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Order Code
@@ -332,7 +324,6 @@ export function LogListPage() {
                 </thead>
                 <tbody className="divide-y divide-gray-200">
                   {flows.map((flow) => {
-                    const userEmail = resolveDisplayUserEmail(flow);
                     const order = resolveDisplayOrder(flow);
                     const service = resolveDisplayService(flow);
                     const action = resolveDisplayAction(flow);
@@ -343,10 +334,12 @@ export function LogListPage() {
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                           {formatDate(flow.updatedAt)}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap max-w-[220px] text-sm text-gray-700">
-                          <span className="truncate block" title={userEmail !== EMPTY ? userEmail : undefined}>
-                            {userEmail}
-                          </span>
+                        <td className="px-6 py-4 whitespace-nowrap max-w-[220px]">
+                          <UserCustomerCell
+                            userEmail={flow.userEmail}
+                            customerEmail={flow.customerEmail}
+                            userId={flow.userId}
+                          />
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap max-w-[200px] text-sm text-gray-600 font-mono">
                           <span className="truncate block" title={order !== EMPTY ? order : undefined}>

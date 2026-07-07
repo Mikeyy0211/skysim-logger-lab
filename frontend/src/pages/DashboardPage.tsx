@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { PageHeader } from '../components/PageHeader';
 import { MetricCard } from '../components/MetricCard';
 import { StatusBadge } from '../components/StatusBadge';
+import { UserCustomerCell } from '../components/UserCustomerCell';
 import { getDashboardMetrics } from '../services/logFlowService';
 import type { DashboardMetrics, RecentFlowItem } from '../types/logFlow';
 
@@ -56,17 +57,6 @@ function formatDate(value: string | null | undefined): string {
   const d = new Date(value);
   if (isNaN(d.getTime())) return EMPTY;
   return d.toLocaleString();
-}
-
-// Priority: username -> userEmail -> customerEmail -> userId -> —
-function resolveUser(item: RecentFlowItem): string {
-  return (
-    item.username?.trim() ||
-    item.userEmail?.trim() ||
-    item.customerEmail?.trim() ||
-    item.userId?.trim() ||
-    EMPTY
-  );
 }
 
 // Priority: orderCode -> orderId -> paymentId -> transactionId -> —
@@ -150,7 +140,6 @@ function EmptySection({ message }: { message: string }) {
 }
 
 function RecentFlowRow({ item }: { item: RecentFlowItem }) {
-  const user = resolveUser(item);
   const order = resolveOrder(item);
   const service = resolveService(item);
   const action = resolveAction(item);
@@ -159,10 +148,12 @@ function RecentFlowRow({ item }: { item: RecentFlowItem }) {
 
   return (
     <tr className="hover:bg-gray-50">
-      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700">
-        <span className="truncate inline-block max-w-[200px]" title={user !== EMPTY ? user : undefined}>
-          {user}
-        </span>
+      <td className="px-4 py-3 whitespace-nowrap max-w-[200px]">
+        <UserCustomerCell
+          userEmail={item.userEmail}
+          customerEmail={item.customerEmail}
+          userId={item.userId}
+        />
       </td>
       <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700 font-mono">
         <span className="truncate inline-block max-w-[200px]" title={order !== EMPTY ? order : undefined}>
@@ -224,7 +215,7 @@ function RecentFlowSection({
             <thead>
               <tr className="bg-gray-50">
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  User Email
+                  User / Customer
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Order Code
