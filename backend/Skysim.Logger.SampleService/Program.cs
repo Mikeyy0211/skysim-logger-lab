@@ -19,6 +19,12 @@ builder.Services.AddLogging(logging =>
 // Register SensitiveDataMasker
 builder.Services.AddSingleton<ISensitiveDataMasker, SensitiveDataMasker>();
 
+// FlowContextForwardingHandler resolves via DI when AddHttpMessageHandler<T>() is used.
+// It also implements IHttpContextAccessor based fallbacks, so the explicit AddHttpContextAccessor()
+// call here is required for the typed-client configured below.
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddTransient<FlowContextForwardingHandler>();
+
 // Configure Kafka settings
 var kafkaSection = builder.Configuration.GetSection("Kafka");
 var bootstrapServers = kafkaSection["BootstrapServers"] ?? "localhost:9092";

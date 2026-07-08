@@ -3,6 +3,7 @@ using FluentAssertions;
 using Microsoft.AspNetCore.Http;
 using Moq;
 using Skysim.Logger.Client.Http;
+using Skysim.Logger.Client.Middlewares;
 using Xunit;
 using HeaderNames = Skysim.Logger.Contracts.Constants.HeaderNames;
 
@@ -181,7 +182,7 @@ public class FlowContextForwardingHandlerTests
         var innerHandler = new CapturingTestHandler(req => capturedRequest = req);
 
         var context = new DefaultHttpContext();
-        // No X-Flow-Id or X-Correlation-Id headers
+        // No X-Flow-Id or X-Correlation-Id headers and no FlowContext item
 
         var accessor = CreateAccessor(context);
         var handler = new FlowContextForwardingHandler(accessor) { InnerHandler = innerHandler };
@@ -193,6 +194,161 @@ public class FlowContextForwardingHandlerTests
         await client.SendAsync(request);
 
         // Assert
+        capturedRequest.Should().NotBeNull();
+        capturedRequest!.Headers.Any(h => h.Key == HeaderNames.FlowId).Should().BeFalse();
+        capturedRequest.Headers.Any(h => h.Key == HeaderNames.CorrelationId).Should().BeFalse();
+    }
+
+    #endregion
+
+    #region Fallback to HttpContext.Items["FlowContext"] (set by LoggerMiddleware even when inbound request had no X-Flow-Id)
+
+    [Fact]
+    public async Task SendAsync_FlowContextInHttpContextItems_WithoutInboundHeaders_ForwardsFlowId()
+    {
+        // Arrange: simulate LoggerMiddleware having synthesised a flowId for a request
+        // that arrived with no X-Flow-Id / X-Correlation-Id header. The middleware
+        // stores the resolved FlowContext under "FlowContext" in HttpContext.Items.
+        HttpRequestMessage? capturedRequest = null;
+        var innerHandler = new CapturingTestHandler(req => capturedRequest = req);
+
+        var context = new DefaultHttpContext();
+        context.Items[FlowContext.HttpContextItemKey] = new FlowContext
+        {
+            FlowId = "generated-flow-XYZ",
+            CorrelationId = "generated-corr-XYZ"
+        };
+
+        var accessor = CreateAccessor(context);
+        var handler = new FlowContextForwardingHandler(accessor) { InnerHandler = innerHandler };
+        var client = new HttpClient(handler);
+
+        var request = new HttpRequestMessage(HttpMethod.Get, "http://localhost/api/test");
+
+        // Act
+        await client.SendAsync(request);
+
+        // Assert
+        capturedRequest.Should().NotBeNull();
+        capturedRequest!.Headers.GetValues(HeaderNames.FlowId).Should().Contain("generated-flow-XYZ");
+        capturedRequest.Headers.GetValues(HeaderNames.CorrelationId).Should().Contain("generated-corr-XYZ");
+    }
+
+    [Fact]
+    public async Task SendAsync_FlowContextItemPreferredOverInboundHeaders_WhenBothPresent()
+    {
+        // Arrange: FlowContext is the middleware's authoritative source. If both
+        // an inbound header and a typed FlowContext are present, the typed FlowContext wins.
+        HttpRequestMessage? capturedRequest = null;
+        var innerHandler = new CapturingTestHandler(req => capturedRequest = req);
+
+        var context = new DefaultHttpContext();
+        context.Request.Headers[HeaderNames.FlowId] = "inbound-flow";
+        context.Request.Headers[HeaderNames.CorrelationId] = "inbound-corr";
+        context.Items[FlowContext.HttpContextItemKey] = new FlowContext
+        {
+            FlowId = "items-flow",
+            CorrelationId = "items-corr"
+        };
+
+        var accessor = CreateAccessor(context);
+        var handler = new FlowContextForwardingHandler(accessor) { InnerHandler = innerHandler };
+        var client = new HttpClient(handler);
+
+        var request = new HttpRequestMessage(HttpMethod.Get, "http://localhost/api/test");
+
+        // Act
+        await client.SendAsync(request);
+
+        // Assert
+        capturedRequest.Should().NotBeNull();
+        capturedRequest!.Headers.GetValues(HeaderNames.FlowId).Should().Contain("items-flow");
+        capturedRequest.Headers.GetValues(HeaderNames.CorrelationId).Should().Contain("items-corr");
+    }
+
+    [Fact]
+    public async Task SendAsync_FlowContextItemPresent_DoesNotOverwriteExistingOutboundHeader()
+    {
+        // Arrange: outbound already carries X-Flow-Id — caller wins, regardless of source.
+        HttpRequestMessage? capturedRequest = null;
+        var innerHandler = new CapturingTestHandler(req => capturedRequest = req);
+
+        var context = new DefaultHttpContext();
+        context.Items[FlowContext.HttpContextItemKey] = new FlowContext
+        {
+            FlowId = "items-flow",
+            CorrelationId = "items-corr"
+        };
+
+        var accessor = CreateAccessor(context);
+        var handler = new FlowContextForwardingHandler(accessor) { InnerHandler = innerHandler };
+        var client = new HttpClient(handler);
+
+        var request = new HttpRequestMessage(HttpMethod.Get, "http://localhost/api/test");
+        request.Headers.TryAddWithoutValidation(HeaderNames.FlowId, "explicit-outbound-flow");
+        request.Headers.TryAddWithoutValidation(HeaderNames.CorrelationId, "explicit-outbound-corr");
+
+        // Act
+        await client.SendAsync(request);
+
+        // Assert
+        capturedRequest.Should().NotBeNull();
+        capturedRequest!.Headers.GetValues(HeaderNames.FlowId).Should().Contain("explicit-outbound-flow");
+        capturedRequest.Headers.GetValues(HeaderNames.FlowId).Should().NotContain("items-flow");
+        capturedRequest.Headers.GetValues(HeaderNames.CorrelationId).Should().Contain("explicit-outbound-corr");
+        capturedRequest.Headers.GetValues(HeaderNames.CorrelationId).Should().NotContain("items-corr");
+    }
+
+    [Fact]
+    public async Task SendAsync_FlowContextItemMissing_FallsBackToInboundHeaders()
+    {
+        // Arrange: legacy path — service did not register LoggerMiddleware but
+        // did have X-Flow-Id on the inbound request. Handler should still forward.
+        HttpRequestMessage? capturedRequest = null;
+        var innerHandler = new CapturingTestHandler(req => capturedRequest = req);
+
+        var context = new DefaultHttpContext();
+        context.Request.Headers[HeaderNames.FlowId] = "legacy-inbound-flow";
+        context.Request.Headers[HeaderNames.CorrelationId] = "legacy-inbound-corr";
+        // No FlowContext item
+
+        var accessor = CreateAccessor(context);
+        var handler = new FlowContextForwardingHandler(accessor) { InnerHandler = innerHandler };
+        var client = new HttpClient(handler);
+
+        var request = new HttpRequestMessage(HttpMethod.Get, "http://localhost/api/test");
+
+        // Act
+        await client.SendAsync(request);
+
+        // Assert
+        capturedRequest.Should().NotBeNull();
+        capturedRequest!.Headers.GetValues(HeaderNames.FlowId).Should().Contain("legacy-inbound-flow");
+        capturedRequest.Headers.GetValues(HeaderNames.CorrelationId).Should().Contain("legacy-inbound-corr");
+    }
+
+    [Fact]
+    public async Task SendAsync_FlowContextItemIsWrongType_IgnoresItAndDoesNotForward()
+    {
+        // Arrange: defensive — if some other middleware stored a non-FlowContext
+        // value under the key, the handler should not crash and not forward anything.
+        HttpRequestMessage? capturedRequest = null;
+        var innerHandler = new CapturingTestHandler(req => capturedRequest = req);
+
+        var context = new DefaultHttpContext();
+        context.Items[FlowContext.HttpContextItemKey] = "not-a-flow-context";
+
+        var accessor = CreateAccessor(context);
+        var handler = new FlowContextForwardingHandler(accessor) { InnerHandler = innerHandler };
+        var client = new HttpClient(handler);
+
+        var request = new HttpRequestMessage(HttpMethod.Get, "http://localhost/api/test");
+
+        // Act
+        Func<Task> act = () => client.SendAsync(request);
+
+        // Assert
+        await act.Should().NotThrowAsync();
         capturedRequest.Should().NotBeNull();
         capturedRequest!.Headers.Any(h => h.Key == HeaderNames.FlowId).Should().BeFalse();
         capturedRequest.Headers.Any(h => h.Key == HeaderNames.CorrelationId).Should().BeFalse();

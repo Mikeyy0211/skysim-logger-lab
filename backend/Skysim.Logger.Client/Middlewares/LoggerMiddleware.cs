@@ -12,6 +12,13 @@ public class FlowContext
 {
     public string FlowId { get; init; } = string.Empty;
     public string CorrelationId { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Key used by both <see cref="LoggerMiddleware"/> and
+    /// <c>FlowContextForwardingHandler</c> to exchange the resolved flow context
+    /// inside a single HTTP request scope.
+    /// </summary>
+    public const string HttpContextItemKey = "FlowContext";
 }
 
 public class LoggerMiddleware
@@ -128,12 +135,22 @@ public class LoggerMiddleware
             correlationId = flowId;
         }
 
-        // Expose context to downstream code (e.g. HttpClient via IHttpContextAccessor)
-        context.Items["FlowContext"] = new FlowContext
+        // Expose context to downstream code (e.g. HttpClient via IHttpContextAccessor).
+        // Stored under the well-known key defined on FlowContext so FlowContextForwardingHandler
+        // can read it without depending on Request.Headers being mutated.
+        var resolvedFlowContext = new FlowContext
         {
             FlowId = flowId,
             CorrelationId = correlationId
         };
+        context.Items[FlowContext.HttpContextItemKey] = resolvedFlowContext;
+
+        // Tag the inbound request itself so any reader (tools, downstream handlers,
+        // BackgroundService, BusinessActionLogger) sees the resolved flowId even when
+        // the caller did not send X-Flow-Id. This is the hook that makes the same
+        // flowId propagate through nested HttpClient calls in the same request scope.
+        context.Request.Headers[HeaderNames.FlowId] = flowId;
+        context.Request.Headers[HeaderNames.CorrelationId] = correlationId;
 
         if (!context.Response.HasStarted)
         {
@@ -141,7 +158,7 @@ public class LoggerMiddleware
             context.Response.Headers[HeaderNames.CorrelationId] = correlationId;
         }
 
-        return new FlowContext { FlowId = flowId, CorrelationId = correlationId };
+        return resolvedFlowContext;
     }
 
     private static string BuildFullUrl(HttpRequest request)

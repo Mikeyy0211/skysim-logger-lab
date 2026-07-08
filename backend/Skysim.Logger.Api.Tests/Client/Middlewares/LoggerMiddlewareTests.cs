@@ -682,6 +682,65 @@ public class LoggerMiddlewareTests
 
     #endregion
 
+    #region Request header propagation (so FlowContextForwardingHandler can read flowId even when caller did not send X-Flow-Id)
+
+    [Fact]
+    public async Task InvokeAsync_GeneratesFlowId_WhenInboundMissing_AlsoSetsRequestHeader()
+    {
+        _producerMock
+            .Setup(p => p.PublishAsync(It.IsAny<object>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var middleware = CreateMiddleware();
+        var context = CreateHttpContext("GET", "/api/test");
+
+        await middleware.InvokeAsync(context);
+
+        var flowIdResponse = context.Response.Headers["X-Flow-Id"].ToString();
+        var flowIdRequest = context.Request.Headers["X-Flow-Id"].ToString();
+        flowIdRequest.Should().NotBeNullOrEmpty();
+        flowIdRequest.Should().Be(flowIdResponse);
+    }
+
+    [Fact]
+    public async Task InvokeAsync_GeneratesCorrelationId_WhenInboundMissing_AlsoSetsRequestHeader()
+    {
+        _producerMock
+            .Setup(p => p.PublishAsync(It.IsAny<object>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var middleware = CreateMiddleware();
+        var context = CreateHttpContext("GET", "/api/test");
+
+        await middleware.InvokeAsync(context);
+
+        var corrIdResponse = context.Response.Headers["X-Correlation-Id"].ToString();
+        var corrIdRequest = context.Request.Headers["X-Correlation-Id"].ToString();
+        corrIdRequest.Should().NotBeNullOrEmpty();
+        corrIdRequest.Should().Be(corrIdResponse);
+    }
+
+    [Fact]
+    public async Task InvokeAsync_PreservesCallerXFlowId_OnRequestAndResponseHeaders()
+    {
+        _producerMock
+            .Setup(p => p.PublishAsync(It.IsAny<object>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var middleware = CreateMiddleware();
+        var context = CreateHttpContext("GET", "/api/test");
+        context.Request.Headers["X-Flow-Id"] = "caller-supplied-flow";
+
+        await middleware.InvokeAsync(context);
+
+        context.Request.Headers["X-Flow-Id"].ToString().Should().Be("caller-supplied-flow");
+        context.Response.Headers["X-Flow-Id"].ToString().Should().Be("caller-supplied-flow");
+        context.Request.Headers["X-Correlation-Id"].ToString().Should().Be("caller-supplied-flow");
+        context.Response.Headers["X-Correlation-Id"].ToString().Should().Be("caller-supplied-flow");
+    }
+
+    #endregion
+
     private LoggerMiddleware CreateMiddleware(RequestDelegate? next = null)
     {
         var middlewareOptions = new LoggerMiddlewareOptions { ServiceName = "test-service" };

@@ -22,6 +22,11 @@ public static class ServiceCollectionExtensions
     {
         services.AddHttpContextAccessor();
 
+        // Required so that downstream `services.AddHttpClient(...).AddHttpMessageHandler<FlowContextForwardingHandler>()`
+        // calls can resolve the handler from DI. Transient lifetime matches the
+        // default for DelegatingHandler / HttpMessageHandler in ASP.NET Core.
+        services.AddTransient<FlowContextForwardingHandler>();
+
         services.Configure<LoggerMiddlewareOptions>(opts =>
         {
             var section = configuration.GetSection(LoggerMiddlewareOptions.SectionName);
