@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Skysim.Logger.Client.Http;
 using Skysim.Logger.Client.Middlewares;
 using Skysim.Logger.Client.Producers;
+using Skysim.Logger.Contracts.Kafka;
 
 namespace Skysim.Logger.Client.Extensions;
 
@@ -33,26 +34,35 @@ public static class ServiceCollectionExtensions
             section.Bind(opts);
         });
 
-        var kafkaSection = configuration.GetSection("Kafka");
-        var bootstrapServers = kafkaSection["BootstrapServers"] ?? "localhost:9092";
-        var producerTopic = kafkaSection.GetSection("Producer")["Topic"] ?? "skysim.action.logs";
-        var producerAcks = kafkaSection.GetSection("Producer")["Acks"] ?? "all";
-        var retryMaxAttempts = int.Parse(kafkaSection.GetSection("Producer")["RetryMaxAttempts"] ?? "3");
-        var retryBaseDelayMs = int.Parse(kafkaSection.GetSection("Producer")["RetryBaseDelayMs"] ?? "100");
-        var serviceName = configuration[$"{LoggerMiddlewareOptions.SectionName}:ServiceName"] ?? "unknown-service";
-
-        services.AddSingleton<IKafkaLogProducer>(sp =>
+        services.Configure<KafkaConsumerOptions>(opts =>
         {
-            var logger = sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<KafkaLogProducer>>();
-            return new KafkaLogProducer(
-                bootstrapServers,
-                producerTopic,
-                producerAcks,
-                retryMaxAttempts,
-                retryBaseDelayMs,
-                serviceName,
-                logger);
+            var kafkaSection = configuration.GetSection("Kafka");
+            kafkaSection.Bind(opts);
+
+            opts.Producer.BootstrapServers =
+                kafkaSection.GetSection("Producer")["BootstrapServers"]
+                ?? kafkaSection["BootstrapServers"]
+                ?? opts.Producer.BootstrapServers;
+
+            opts.Retry.MaxAttempts =
+                kafkaSection.GetValue<int?>("Retry:MaxAttempts")
+                ?? kafkaSection.GetValue<int?>("Producer:RetryMaxAttempts")
+                ?? 3;
+
+            opts.Retry.InitialDelayMs =
+                kafkaSection.GetValue<int?>("Retry:InitialDelayMs")
+                ?? kafkaSection.GetValue<int?>("Producer:RetryBaseDelayMs")
+                ?? 100;
         });
+
+        services.Configure<LoggerOptions>(opts =>
+        {
+            var section = configuration.GetSection(LoggerMiddlewareOptions.SectionName);
+            section.Bind(opts);
+            opts.ServiceName = section["ServiceName"] ?? "unknown-service";
+        });
+
+        services.AddSingleton<IKafkaLogProducer, KafkaLogProducer>();
 
         return services;
     }

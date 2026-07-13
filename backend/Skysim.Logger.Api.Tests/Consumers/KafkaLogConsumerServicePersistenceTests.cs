@@ -4,10 +4,12 @@ using System.Text.Json;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Moq;
 using Skysim.Logger.Api.Consumers;
 using Skysim.Logger.Api.Kafka;
 using Skysim.Logger.Client.Masking;
+using Skysim.Logger.Contracts.Kafka;
 using Skysim.Logger.Infrastructure.Entities;
 using Skysim.Logger.Infrastructure.Repositories;
 using Xunit;
@@ -515,7 +517,7 @@ public class KafkaLogConsumerServicePersistenceTests
 
         return new KafkaLogConsumerService(
             scopeFactoryMock.Object,
-            Mock.Of<Microsoft.Extensions.Options.IOptions<KafkaConsumerOptions>>(o => o.Value == options),
+            Mock.Of<IOptions<KafkaConsumerOptions>>(o => o.Value == options),
             Mock.Of<IDlqPublisher>(),
             loggerMock.Object,
             masker,

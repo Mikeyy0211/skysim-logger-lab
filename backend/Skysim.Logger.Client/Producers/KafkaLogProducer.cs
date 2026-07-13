@@ -3,8 +3,10 @@ using System.Text;
 using System.Text.Json;
 using Confluent.Kafka;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Skysim.Logger.Contracts.Events;
 using Skysim.Logger.Contracts.Constants;
+using Skysim.Logger.Contracts.Kafka;
 
 namespace Skysim.Logger.Client.Producers;
 
@@ -18,28 +20,33 @@ public class KafkaLogProducer : IKafkaLogProducer, IDisposable
     private readonly Acks _acks;
     private readonly int _retryMaxAttempts;
     private readonly int _retryBaseDelayMs;
-    private readonly double _backoffMultiplier = 2.0;
-    private readonly int _maxDelayMs = 3200;
+    private readonly double _backoffMultiplier;
+    private readonly int _maxDelayMs;
     private readonly string _serviceName;
     private readonly ILogger<KafkaLogProducer> _logger;
 
     private IProducer<string, byte[]>? _producer;
 
     public KafkaLogProducer(
-        string bootstrapServers,
-        string topic,
-        string acks,
-        int retryMaxAttempts,
-        int retryBaseDelayMs,
-        string serviceName,
+        IOptions<KafkaConsumerOptions> kafkaOptions,
+        IOptions<LoggerOptions> loggerOptions,
         ILogger<KafkaLogProducer> logger)
     {
-        _bootstrapServers = bootstrapServers;
-        _topic = string.IsNullOrWhiteSpace(topic) ? DefaultTopic : topic;
-        _acks = ParseAcks(acks);
-        _retryMaxAttempts = retryMaxAttempts;
-        _retryBaseDelayMs = retryBaseDelayMs;
-        _serviceName = serviceName;
+        ArgumentNullException.ThrowIfNull(kafkaOptions);
+        ArgumentNullException.ThrowIfNull(loggerOptions);
+        ArgumentNullException.ThrowIfNull(logger);
+
+        var kafka = kafkaOptions.Value;
+        var loggerConfig = loggerOptions.Value;
+
+        _bootstrapServers = kafka.Producer.BootstrapServers;
+        _topic = string.IsNullOrWhiteSpace(kafka.Producer.Topic) ? DefaultTopic : kafka.Producer.Topic;
+        _acks = ParseAcks(kafka.Producer.Acks);
+        _retryMaxAttempts = kafka.Retry.MaxAttempts;
+        _retryBaseDelayMs = kafka.Retry.InitialDelayMs;
+        _backoffMultiplier = kafka.Retry.BackoffMultiplier;
+        _maxDelayMs = kafka.Retry.MaxDelayMs;
+        _serviceName = loggerConfig.ServiceName;
         _logger = logger;
     }
 
@@ -52,8 +59,16 @@ public class KafkaLogProducer : IKafkaLogProducer, IDisposable
         string serviceName,
         ILogger<KafkaLogProducer> logger,
         IProducer<string, byte[]> producer)
-        : this(bootstrapServers, topic, acks, retryMaxAttempts, retryBaseDelayMs, serviceName, logger)
     {
+        _bootstrapServers = bootstrapServers;
+        _topic = string.IsNullOrWhiteSpace(topic) ? DefaultTopic : topic;
+        _acks = ParseAcks(acks);
+        _retryMaxAttempts = retryMaxAttempts;
+        _retryBaseDelayMs = retryBaseDelayMs;
+        _backoffMultiplier = 2.0;
+        _maxDelayMs = 3200;
+        _serviceName = serviceName;
+        _logger = logger;
         _producer = producer;
     }
 

@@ -236,137 +236,116 @@ Notification Service gửi email/thông báo
   ↓
 Customer nhận thông tin eSIM
 ```
+
+---
+
+### 7.1 Technical HTTP Logging + Flow Propagation
+
+**Ý chính:** LoggerMiddleware tự động capture mọi HTTP request/response và publish lên Kafka ngay lập tức. FlowId được forward qua các service.
+
 ```mermaid
 sequenceDiagram
     autonumber
     actor User
-    participant FE as Frontend<br/>(Web Portal)
-    participant KONG as KONG Gateway
-    participant AUTH as Keycloak
-    participant ORD as Order Service
+    participant FE as Frontend / Caller
+    participant KONG as KONG
+    participant PARTNER as Partner Service
     participant PAY as Payment Service
-    participant CORE as Core Service
     participant PROV as Provider Service
-    participant EXT as External Provider
-    participant KAFKA as Kafka<br/>(skysim.action.logs)
-    participant NOTI as Notification Service
-    participant LOG as Logger Service
+    participant KAFKA as Kafka
+    participant LOG as Logger Consumer
+    participant DB as PostgreSQL
 
-    User->>FE: Bắt đầu checkout eSIM
-    FE->>KONG: HTTP Request + JWT
-    KONG->>AUTH: Validate JWT
-    AUTH-->>KONG: OK / userId
+    User->>FE: Checkout eSIM
+    FE->>KONG: Request + JWT<br/>X-Flow-Id=flow-123
 
-    KONG->>ORD: Tạo đơn hàng
-    ORD->>KAFKA: publish ORDER_CREATED
+    KONG->>PARTNER: /order/create<br/>X-Flow-Id=flow-123
+    PARTNER-->>KAFKA: HTTP_REQUEST<br/>partner-service, flow-123
+    KAFKA-->>LOG: consume immediately
+    LOG->>DB: upsert flow + insert action
 
-    KONG->>PAY: Request payment (orderId)
-    PAY->>KAFKA: publish PAYMENT_REQUESTED
-    PAY->>EXT: Gọi Payment Gateway
-    EXT-->>PAY: Payment success callback
-    PAY->>KAFKA: publish PAYMENT_SUCCESS
 
-    KONG->>CORE: Tiếp tục fulfillment
-    CORE->>PROV: Request eSIM activation
-    PROV->>KAFKA: publish PROVIDER_REQUESTED
-    PROV->>EXT: Provider API request eSIM
-    EXT-->>PROV: eSIM profile / LDU
-    PROV->>KAFKA: publish ESIM_ACTIVATED
+    PARTNER->>PAY: /payment/check<br/>X-Flow-Id=flow-123
+    PAY-->>KAFKA: HTTP_REQUEST<br/>payment-service, flow-123
+    KAFKA-->>LOG: consume immediately
+    LOG->>DB: append action
 
-    par Notification
-        KAFKA->>NOTI: consume ESIM_ACTIVATED
-        NOTI->>NOTI: Gửi email/SMS
-        NOTI->>KAFKA: publish EMAIL_SENT
-    and Logger
-        KAFKA->>LOG: consume events
-        LOG->>LOG: Persist to PostgreSQL
-    end
+    PAY->>PROV: /provider/esim<br/>X-Flow-Id=flow-123
+    PROV-->>KAFKA: HTTP_REQUEST<br/>provider-service, flow-123
+    KAFKA-->>LOG: consume immediately
+    LOG->>DB: append action
+
+    PROV-->>PAY: result
+    PAY-->>PARTNER: result
+    PARTNER-->>KONG: response + X-Flow-Id
+    KONG-->>FE: response + X-Flow-Id
 ```
 
+**Rule quan trọng:**
 
-Song song với nghiệp vụ chính, các service publish action log vào Kafka:
+- Nếu request đã có `X-Flow-Id`, `LoggerMiddleware` dùng lại flowId đó.
+- Nếu request thiếu `X-Flow-Id`, `LoggerMiddleware` tạo flowId mới.
+- `FlowContextForwardingHandler` chỉ có tác dụng khi service gọi downstream bằng đúng `HttpClient` đã gắn handler.
+- Nếu một endpoint được gọi từ caller/path khác, caller đó cũng phải truyền `X-Flow-Id`, nếu không service sẽ sinh flowId riêng.
 
-```text
-Order Service          → ORDER_CREATED
-Payment Service        → PAYMENT_REQUESTED / PAYMENT_SUCCESS
-Core Service           → PROVIDER_REQUESTED / ESIM_ACTIVATED (eSIM)
-                        → SIM_SERIAL_SUBMITTED / SIM_CONNECTION_REQUESTED (SIM)
-Notification Service   → EMAIL_SENT
-                      ↓
-                    Kafka
-                      ↓
-                Logger Service
-                      ↓
-              PostgreSQL Logger DB
-```
+**Đặc điểm:**
+
+- `actionType` = `HTTP_REQUEST`
+- Payload: request/response (masked), duration, status, userId
+- Dùng cho: debug latency, trace request path, performance monitoring
+
+---
+
+### 7.2 Business Event Logging + Incremental Persist
+
+**Ý chính:** Business code publish events tại mỗi milestone. Logger Consumer consume ngay và append incremental vào cùng flow.
 
 ```mermaid
-flowchart TB
-    K[(Kafka Topic<br/>skysim.action.logs)]
+sequenceDiagram
+    autonumber
+    actor User
+    participant FE as Frontend
+    participant KONG as KONG
+    participant PARTNER as Partner Service
+    participant PAY as Payment Service
+    participant PROV as Provider Service
+    participant KAFKA as Kafka
+    participant LOG as Logger Consumer
+    participant DB as PostgreSQL
 
-    K --> C[Consume Message]
-    C --> P[Parse JSON to LogEventMessage]
-    P --> V[Validate Fields & Enum]
-    V --> M[Mask Sensitive Data]
-    M --> PERSIST[TryPersist with Retry<br/>(Polly)]
+    User->>FE: Checkout eSIM
+    FE->>KONG: Request + JWT
 
-    PERSIST --> TX[Begin DB Transaction]
-    TX --> FLOW[Upsert log_flows]
-    FLOW --> ACTION[Insert log_actions]
-    ACTION --> DETAIL[Upsert log_action_details]
-    DETAIL --> COMDB[Commit DB Transaction]
-    COMDB --> CO[Commit Kafka Offset]
+    KONG->>PARTNER: Create Order
+    PARTNER->>KAFKA: ORDER_CREATED<br/>flow-123, SUCCESS
+    KAFKA-->>LOG: consume
+    LOG->>DB: upsert flow + insert action(step=1)
 
-    P -.-> DLQ_P[→ Publish DLQ<br/>→ Commit Offset]
-    V -.-> DLQ_V[→ Publish DLQ<br/>→ Commit Offset]
-    PERSIST -.-> DLQ_R[→ Publish DLQ<br/>→ Commit Offset]
-    COMDB -.-> DUP[Duplicate eventId?<br/>→ Skip → Commit]
+    PARTNER->>PAY: Process Payment
+    PAY->>KAFKA: PAYMENT_SUCCESS<br/>flow-123, SUCCESS
+    KAFKA-->>LOG: consume
+    LOG->>DB: append action(step=2)
+
+    PAY->>PROV: Activate eSIM
+    PROV->>KAFKA: ESIM_ACTIVATED<br/>flow-123, SUCCESS
+    KAFKA-->>LOG: consume
+    LOG->>DB: append action(step=3)
+
+    Note over DB: Flow completed:<br/>totalSteps=3, successSteps=3<br/>status=SUCCESS
 ```
 
-**Kafka Topic Design:**
-- Topic: `skysim.action.logs`
-- Message key: `flowId`
-- Message value: JSON payload
-- Idempotency key: `eventId`
-- Required fields: `eventId`, `flowId`, `flowType`, `serviceName`, `actionType`, `status`, `createdAt`
+**Đặc điểm:**
 
-**Error Handling:**
-- Invalid JSON / Validation Failed → Publish to DLQ → Commit Offset
-- Retry Exhausted → Publish to DLQ → Commit Offset
-- Duplicate `eventId` → Skip → Commit Offset
+- `actionType` = business event name: `ORDER_CREATED`, `PAYMENT_SUCCESS`, `ESIM_ACTIVATED`, ...
+- Payload: request/response, status, error details (nếu failed)
+- Dùng cho: business tracking, audit trail, customer support lookup
 
-```mermaid
-flowchart TB
-    REQ[HTTP Request] --> MID[Logging Middleware]
-    
-    MID --> CAPTURE_REQ[Capture Request Body<br/>CorrelationId]
-    CAPTURE_REQ --> NEXT[Call Next Middleware<br/>/ Controller]
-    
-    NEXT --> RESP[HTTP Response]
-    NEXT --> EXC[Exception]
-    
-    RESP --> CAPTURE_RESP[Capture Response]
-    EXC --> CAPTURE_RESP
-    
-    CAPTURE_RESP --> BUILD[Create LogEventMessage]
-    BUILD --> MASK[Mask Sensitive Data]
-    MASK --> PUBLISH[Publish to Kafka]
-```
+**Upsert log_flows:**
 
-## 8. Ghi chú về phạm vi local development
+| Event status | Action |
+|--------------|--------|
+| SUCCESS | `successSteps++` |
+| FAILED | `failedSteps++`, status → FAILED |
+| Final | `completedAt`, final status |
 
-Hiện tại chưa được cấp source code dự án thật, nên trong giai đoạn đầu em sẽ tự dựng một local workspace mô phỏng module Logger.
-
-Local workspace gồm:
-
-- Backend: .NET Web API cho Logger Service.
-- Frontend: ReactJS app cho màn hình tra cứu log.
-- Infrastructure: PostgreSQL, Kafka, Kafka UI chạy bằng Docker.
-- Docs: tài liệu phân tích và thiết kế.
-
-Mục tiêu của local workspace:
-
-- Không phụ thuộc source thật.
-- Chủ động chứng minh được flow Service → Kafka → Logger Consumer → PostgreSQL → API → ReactJS.
-- Có nền tảng để implement Logger Module ở Tuần 2.
-
+**Không phải final step:** Logger Consumer chạy song song, không phải đợi tất cả service xong mới log.

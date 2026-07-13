@@ -1,4 +1,5 @@
 using Confluent.Kafka;
+using Skysim.Logger.Contracts.Kafka;
 
 namespace Skysim.Logger.Api.Kafka;
 
@@ -20,12 +21,4 @@ public static class KafkaCommon
         var delay = options.InitialDelayMs * Math.Pow(options.BackoffMultiplier, attempt - 1);
         return TimeSpan.FromMilliseconds(Math.Min(delay, options.MaxDelayMs));
     }
-}
-
-public class RetryOptions
-{
-    public int MaxAttempts { get; set; } = 5;
-    public int InitialDelayMs { get; set; } = 200;
-    public double BackoffMultiplier { get; set; } = 2.0;
-    public int MaxDelayMs { get; set; } = 3200;
 }

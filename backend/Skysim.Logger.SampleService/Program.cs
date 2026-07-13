@@ -1,9 +1,9 @@
 using System.Net.Http.Headers;
-using Microsoft.Extensions.Options;
 using Skysim.Logger.Client.Http;
 using Skysim.Logger.Client.Masking;
 using Skysim.Logger.Client.Middlewares;
 using Skysim.Logger.Client.Producers;
+using Skysim.Logger.Contracts.Kafka;
 using Skysim.Logger.SampleService.Middlewares;
 using Skysim.Logger.SampleService.Services;
 
@@ -25,32 +25,40 @@ builder.Services.AddSingleton<ISensitiveDataMasker, SensitiveDataMasker>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddTransient<FlowContextForwardingHandler>();
 
-// Configure Kafka settings
-var kafkaSection = builder.Configuration.GetSection("Kafka");
-var bootstrapServers = kafkaSection["BootstrapServers"] ?? "localhost:9092";
-var producerAcks = kafkaSection.GetSection("Producer")["Acks"] ?? "all";
-var retryMaxAttempts = int.Parse(kafkaSection.GetSection("Producer")["RetryMaxAttempts"] ?? "3");
-var retryBaseDelayMs = int.Parse(kafkaSection.GetSection("Producer")["RetryBaseDelayMs"] ?? "100");
-var producerTopic = kafkaSection.GetSection("Producer")["Topic"] ?? "skysim.action.logs";
-
-// Register KafkaLogProducer
-builder.Services.AddSingleton<IKafkaLogProducer>(sp =>
+// Configure KafkaLogProducer
+builder.Services.Configure<KafkaConsumerOptions>(options =>
 {
-    var logger = sp.GetRequiredService<ILogger<KafkaLogProducer>>();
-    var serviceName = builder.Configuration["Logger:ServiceName"] ?? "sample-checkout-service";
-    return new KafkaLogProducer(
-        bootstrapServers,
-        producerTopic,
-        producerAcks,
-        retryMaxAttempts,
-        retryBaseDelayMs,
-        serviceName,
-        logger);
+    var kafkaSection = builder.Configuration.GetSection("Kafka");
+    kafkaSection.Bind(options);
+
+    options.Producer.BootstrapServers =
+        kafkaSection.GetSection("Producer")["BootstrapServers"]
+        ?? kafkaSection["BootstrapServers"]
+        ?? options.Producer.BootstrapServers;
+
+    options.Retry.MaxAttempts =
+        kafkaSection.GetValue<int?>("Retry:MaxAttempts")
+        ?? kafkaSection.GetValue<int?>("Producer:RetryMaxAttempts")
+        ?? 3;
+
+    options.Retry.InitialDelayMs =
+        kafkaSection.GetValue<int?>("Retry:InitialDelayMs")
+        ?? kafkaSection.GetValue<int?>("Producer:RetryBaseDelayMs")
+        ?? 100;
 });
 
 // Configure LoggerMiddlewareOptions
 builder.Services.Configure<LoggerMiddlewareOptions>(
     builder.Configuration.GetSection("Logger"));
+
+builder.Services.Configure<LoggerOptions>(options =>
+{
+    var loggerSection = builder.Configuration.GetSection("Logger");
+    loggerSection.Bind(options);
+    options.ServiceName = loggerSection["ServiceName"] ?? "sample-checkout-service";
+});
+
+builder.Services.AddSingleton<IKafkaLogProducer, KafkaLogProducer>();
 
 // Register BusinessActionLogger
 builder.Services.AddScoped<IBusinessActionLogger, BusinessActionLogger>();

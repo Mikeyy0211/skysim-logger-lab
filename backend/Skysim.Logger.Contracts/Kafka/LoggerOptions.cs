@@ -1,4 +1,4 @@
-namespace Skysim.Logger.Api.Kafka;
+namespace Skysim.Logger.Contracts.Kafka;
 
 public class LoggerOptions
 {

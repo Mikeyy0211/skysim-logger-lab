@@ -10,11 +10,13 @@ using Skysim.Logger.Api.Kafka;
 using Skysim.Logger.Api.Options;
 using Skysim.Logger.Api.Services.Query;
 using Skysim.Logger.Api.Validators;
+using Skysim.Logger.Client.Masking;
 using Skysim.Logger.Client.Middlewares;
+using Skysim.Logger.Client.Producers;
+using Skysim.Logger.Contracts.Kafka;
 using Skysim.Logger.Infrastructure.Data;
 using Skysim.Logger.Infrastructure.Repositories;
 using LogEventMessage = Skysim.Logger.Contracts.Events.LogEventMessage;
-using LoggerOptions = Skysim.Logger.Api.Kafka.LoggerOptions;
 using LogFlowListQuery = Skysim.Logger.Api.Contracts.Queries.LogFlowListQuery;
 using LogActionListQuery = Skysim.Logger.Api.Contracts.Queries.LogActionListQuery;
 
@@ -53,26 +55,13 @@ builder.Services.AddScoped<IValidator<LogEventMessage>, Skysim.Logger.Api.Valida
 builder.Services.AddScoped<IValidator<LogFlowListQuery>, LogFlowListQueryValidator>();
 builder.Services.AddScoped<IValidator<LogActionListQuery>, LogActionListQueryValidator>();
 
-builder.Services.AddSingleton<Skysim.Logger.Client.Masking.ISensitiveDataMasker, Skysim.Logger.Client.Masking.SensitiveDataMasker>();
+builder.Services.AddSingleton<ISensitiveDataMasker, SensitiveDataMasker>();
 
 builder.Services.AddSingleton<IKafkaProducerFactory, KafkaProducerFactory>();
 builder.Services.AddSingleton<IDlqPublisher, DlqPublisher>();
 builder.Services.AddSingleton<IJwtAuthContextExtractor, JwtAuthContextExtractor>();
 
-builder.Services.AddSingleton<Skysim.Logger.Client.Producers.IKafkaLogProducer>(sp =>
-{
-    var kafkaOptions = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<KafkaConsumerOptions>>().Value;
-    var loggerOptions = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<LoggerOptions>>().Value;
-    var logger = sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<Skysim.Logger.Client.Producers.KafkaLogProducer>>();
-    return new Skysim.Logger.Client.Producers.KafkaLogProducer(
-        kafkaOptions.Producer.BootstrapServers,
-        kafkaOptions.Producer.Topic,
-        kafkaOptions.Producer.Acks,
-        kafkaOptions.Retry.MaxAttempts,
-        kafkaOptions.Retry.InitialDelayMs,
-        loggerOptions.ServiceName,
-        logger);
-});
+builder.Services.AddSingleton<IKafkaLogProducer, KafkaLogProducer>();
 
 builder.Services.AddHostedService<KafkaLogConsumerService>();
 

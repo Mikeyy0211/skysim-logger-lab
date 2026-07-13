@@ -1,6 +1,4 @@
-using Skysim.Logger.Api.Kafka;
-
-namespace Skysim.Logger.Api.Kafka;
+namespace Skysim.Logger.Contracts.Kafka;
 
 public class KafkaConsumerOptions
 {
@@ -27,4 +25,12 @@ public class ProducerOptions
     public string BootstrapServers { get; set; } = "localhost:9092";
     public string Topic { get; set; } = "skysim.action.logs";
     public string Acks { get; set; } = "all";
+}
+
+public class RetryOptions
+{
+    public int MaxAttempts { get; set; } = 5;
+    public int InitialDelayMs { get; set; } = 200;
+    public double BackoffMultiplier { get; set; } = 2.0;
+    public int MaxDelayMs { get; set; } = 3200;
 }

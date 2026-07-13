@@ -3,6 +3,7 @@ using Microsoft.Extensions.Options;
 using Npgsql;
 using Polly;
 using Polly.Retry;
+using Skysim.Logger.Contracts.Kafka;
 
 namespace Skysim.Logger.Api.Kafka;
 
