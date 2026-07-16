@@ -6,6 +6,7 @@ namespace Skysim.Logger.Api.Contracts.DTOs;
 public record BusinessFlowSummaryDto(
     string OrderCode,
     string RepresentativeFlowId,
+    string? UserId,
     string? UserEmail,
     string? CustomerEmail,
     string? CustomerPhone,
@@ -21,7 +22,11 @@ public record BusinessFlowSummaryDto(
     DateTime LastSeenAt,
     string? LastMessage,
     string? LastServiceName,
-    string? LastActionType);
+    string? LastActionType,
+    string? AttentionActionType,
+    string? AttentionMessage,
+    string? IssueSummary,
+    int TechnicalFlowCount);
 
 /// <summary>
 /// Represents the full detail of a business flow, including all grouped flows and actions.
@@ -35,6 +40,7 @@ public record BusinessFlowDetailDto(
 /// Includes payload summaries loaded lazily from the detail endpoint.
 /// </summary>
 public record BusinessFlowActionDto(
+    Guid ActionId,
     string FlowId,
     Guid EventId,
     string ServiceName,

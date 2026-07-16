@@ -8,11 +8,8 @@ function truncate(value: string, maxLen: number): { display: string; full: strin
 /**
  * Shared helper component for displaying user/customer info in tables.
  *
- * Display rules (applied in order):
- *  1. userEmail present  →  "User: {userEmail}"  [+ "Customer: {customerEmail}" if different]
- *  2. no userEmail, customerEmail present  →  "Customer: {customerEmail}"
- *  3. no emails, userId present  →  "User ID: {truncated}" (muted, full value in title)
- *  4. nothing  →  "—"
+ * User and customer identities are intentionally rendered as independent fields.
+ * A guest checkout may have customer data without an authenticated user.
  */
 export function UserCustomerCell({
   userEmail,
@@ -32,29 +29,19 @@ export function UserCustomerCell({
   const hasUserEmail = userEmailTrimmed.length > 0;
   const hasCustomerEmail = customerEmailTrimmed.length > 0;
   const hasUserId = userIdTrimmed.length > 0;
-  const customerIsDifferent = hasCustomerEmail && customerEmailTrimmed !== userEmailTrimmed;
-
-  if (hasUserEmail) {
+  if (hasUserEmail || hasCustomerEmail) {
     return (
       <div className="flex flex-col gap-0.5 min-w-0">
-        <span className="text-sm text-gray-700 truncate" title={userEmailTrimmed}>
-          User: {userEmailTrimmed}
-        </span>
-        {customerIsDifferent && (
-          <span className="text-xs text-gray-500 truncate" title={customerEmailTrimmed}>
-            Customer: {customerEmailTrimmed}
+        {hasUserEmail && (
+          <span className="text-sm text-gray-700 truncate" title={userEmailTrimmed}>
+            Người dùng: {userEmailTrimmed}
           </span>
         )}
-      </div>
-    );
-  }
-
-  if (hasCustomerEmail) {
-    return (
-      <div className="flex flex-col gap-0.5 min-w-0">
-        <span className="text-sm text-gray-700 truncate" title={customerEmailTrimmed}>
-          Customer: {customerEmailTrimmed}
-        </span>
+        {hasCustomerEmail && (
+          <span className="text-xs text-gray-500 truncate" title={customerEmailTrimmed}>
+            Khách hàng: {customerEmailTrimmed}
+          </span>
+        )}
       </div>
     );
   }
@@ -67,7 +54,7 @@ export function UserCustomerCell({
           className="text-xs text-gray-400 font-mono truncate"
           title={full}
         >
-          User ID: {display}
+          Mã người dùng: {display}
         </span>
       </div>
     );

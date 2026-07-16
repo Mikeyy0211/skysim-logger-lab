@@ -1,377 +1,211 @@
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { PageHeader } from '../components/PageHeader';
 import { MetricCard } from '../components/MetricCard';
+import { PageHeader } from '../components/PageHeader';
 import { StatusBadge } from '../components/StatusBadge';
 import { UserCustomerCell } from '../components/UserCustomerCell';
-import { getDashboardMetrics } from '../services/logFlowService';
-import type { DashboardMetrics, RecentFlowItem } from '../types/logFlow';
+import { buildListIssueSummary } from '../features/logs/businessFlowSummary';
+import { getCurrentStepDisplay } from '../features/logs/businessActionMapping';
+import { getBusinessDashboardSummary } from '../services/businessFlowService';
+import type { BusinessDashboardOrder, BusinessDashboardSummary } from '../types/logFlow';
 
 const EMPTY = '—';
 
-function hasBusinessKey(item: RecentFlowItem): boolean {
-  return !!(
-    item.orderCode?.trim() ||
-    item.paymentId?.trim() ||
-    item.transactionId?.trim() ||
-    item.customerEmail?.trim() ||
-    item.customerPhone?.trim()
-  );
-}
-
-function sortByBusinessKey(a: RecentFlowItem, b: RecentFlowItem): number {
-  const aHasKey = hasBusinessKey(a) ? 1 : 0;
-  const bHasKey = hasBusinessKey(b) ? 1 : 0;
-  if (aHasKey !== bHasKey) return bHasKey - aHasKey;
-  return new Date(b.updatedAt || b.createdAt).getTime() - new Date(a.updatedAt || a.createdAt).getTime();
-}
-
-function formatDuration(ms: number | null | undefined): string {
-  if (ms == null) return EMPTY;
-  const value = ms;
-
-  if (value < 1000) {
-    return `${Math.round(value)}ms`;
-  }
-
-  if (value < 60_000) {
-    return `${(value / 1000).toFixed(1)}s`;
-  }
-
-  if (value < 3_600_000) {
-    const totalSeconds = Math.floor(value / 1000);
-    const minutes = Math.floor(totalSeconds / 60);
-    const seconds = totalSeconds % 60;
-    return seconds > 0 ? `${minutes}m ${seconds}s` : `${minutes}m`;
-  }
-
-  const totalSeconds = Math.floor(value / 1000);
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
-}
-
 function formatDate(value: string | null | undefined): string {
   if (!value) return EMPTY;
-  const d = new Date(value);
-  if (isNaN(d.getTime())) return EMPTY;
-  return d.toLocaleString();
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? EMPTY : date.toLocaleString();
 }
 
-// Priority: orderCode -> orderId -> paymentId -> transactionId -> —
-function resolveOrder(item: RecentFlowItem): string {
+function PaymentTransactionCell({ item }: { item: BusinessDashboardOrder }) {
+  if (!item.paymentId && !item.transactionId) return <span className="text-gray-400">{EMPTY}</span>;
+
   return (
-    item.orderCode?.trim() ||
-    item.orderId?.trim() ||
-    item.paymentId?.trim() ||
-    item.transactionId?.trim() ||
-    EMPTY
+    <div className="flex flex-col gap-0.5 text-xs text-gray-600">
+      {item.paymentId && <span className="truncate" title={item.paymentId}>Thanh toán: <span className="font-mono">{item.paymentId}</span></span>}
+      {item.transactionId && <span className="truncate" title={item.transactionId}>Giao dịch: <span className="font-mono">{item.transactionId}</span></span>}
+    </div>
   );
 }
 
-function resolveService(item: RecentFlowItem): string {
-  return item.lastServiceName?.trim() || EMPTY;
-}
-
-function resolveAction(item: RecentFlowItem): string {
-  return item.lastActionType?.trim() || EMPTY;
-}
-
-function resolveMessage(item: RecentFlowItem): string {
-  return item.lastMessage?.trim() || EMPTY;
-}
-
-function resolveTime(item: RecentFlowItem): string {
-  return formatDate(item.updatedAt || item.createdAt);
-}
-
-function LoadingSpinner({ label }: { label: string }) {
+function LoadingState() {
   return (
-    <div className="flex flex-col items-center justify-center p-12">
-      <svg
-        className="animate-spin w-8 h-8 text-blue-600 mb-3"
-        xmlns="http://www.w3.org/2000/svg"
-        fill="none"
-        viewBox="0 0 24 24"
-      >
-        <circle
-          className="opacity-25"
-          cx="12"
-          cy="12"
-          r="10"
-          stroke="currentColor"
-          strokeWidth="4"
-        />
-        <path
-          className="opacity-75"
-          fill="currentColor"
-          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-        />
+    <div className="bg-white rounded-lg border border-gray-200 shadow-sm flex flex-col items-center justify-center p-12">
+      <svg className="animate-spin w-8 h-8 text-blue-600 mb-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" aria-hidden="true">
+        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
       </svg>
-      <p className="text-sm text-gray-500">{label}</p>
+      <p className="text-sm text-gray-500">Đang tải tổng quan...</p>
     </div>
   );
 }
 
-function ErrorBanner({ message, onRetry }: { message: string; onRetry: () => void }) {
+function ErrorState({ onRetry }: { onRetry: () => void }) {
   return (
-    <div className="p-6">
-      <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700">
-        <p className="font-medium mb-1">Failed to load dashboard</p>
-        <p className="text-sm">{message}</p>
-        <button
-          onClick={onRetry}
-          className="mt-3 px-4 py-2 bg-red-100 text-red-700 text-sm font-medium rounded-lg hover:bg-red-200 focus:outline-none focus:ring-2 focus:ring-red-500 transition-colors"
-        >
-          Retry
-        </button>
-      </div>
+    <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700">
+      <p className="font-medium mb-1">Không thể tải dữ liệu tổng quan</p>
+      <p className="text-sm">Vui lòng thử lại.</p>
+      <button type="button" onClick={onRetry} className="mt-3 px-4 py-2 bg-red-100 text-red-700 text-sm font-medium rounded-lg hover:bg-red-200">
+        Thử lại
+      </button>
     </div>
   );
 }
 
-function EmptySection({ message }: { message: string }) {
-  return (
-    <div className="px-6 py-10 text-center">
-      <p className="text-sm text-gray-500">{message}</p>
-    </div>
-  );
-}
-
-function RecentFlowRow({ item }: { item: RecentFlowItem }) {
-  const order = resolveOrder(item);
-  const service = resolveService(item);
-  const action = resolveAction(item);
-  const message = resolveMessage(item);
-  const time = resolveTime(item);
-
-  return (
-    <tr className="hover:bg-gray-50">
-      <td className="px-4 py-3 whitespace-nowrap max-w-[200px]">
-        <UserCustomerCell
-          userEmail={item.userEmail}
-          customerEmail={item.customerEmail}
-          userId={item.userId}
-        />
-      </td>
-      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700 font-mono">
-        <span className="truncate inline-block max-w-[200px]" title={order !== EMPTY ? order : undefined}>
-          {order}
-        </span>
-      </td>
-      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">
-        {service !== EMPTY ? service : <span className="text-gray-400 italic">unknown</span>}
-      </td>
-      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">{action}</td>
-      <td className="px-4 py-3 whitespace-nowrap">
-        <StatusBadge status={item.status} />
-      </td>
-      <td className="px-4 py-3 text-sm text-gray-600 max-w-[240px]">
-        {message !== EMPTY ? (
-          <div className="truncate" title={message}>
-            {message}
-          </div>
-        ) : (
-          <span className="text-gray-400 italic">unknown</span>
-        )}
-      </td>
-      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{time}</td>
-      <td className="px-4 py-3 whitespace-nowrap text-sm">
-        <Link
-          to={
-            item.orderCode
-              ? `/business-flows/${encodeURIComponent(item.orderCode)}`
-              : `/logs/${item.flowId}`
-          }
-          className="text-blue-600 hover:text-blue-800 font-medium"
-        >
-          View
-        </Link>
-      </td>
-    </tr>
-  );
-}
-
-function RecentFlowSection({
+function BusinessOrderTable({
   title,
-  items,
-  emptyMessage,
+  orders,
+  requiresAttention,
 }: {
   title: string;
-  items: RecentFlowItem[];
-  emptyMessage: string;
+  orders: BusinessDashboardOrder[];
+  requiresAttention: boolean;
 }) {
   return (
-    <div className="bg-white rounded-lg border border-gray-200 shadow-sm">
+    <section className="bg-white rounded-lg border border-gray-200 shadow-sm">
       <div className="px-6 py-4 border-b border-gray-200">
         <h2 className="text-lg font-semibold text-gray-900">{title}</h2>
       </div>
-      {items.length === 0 ? (
-        <EmptySection message={emptyMessage} />
+      {orders.length === 0 ? (
+        <p className="px-6 py-10 text-center text-sm text-gray-500">{requiresAttention ? 'Chưa có đơn hàng cần kiểm tra.' : 'Chưa có đơn hàng hoàn tất.'}</p>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full">
+          <table className="w-full min-w-[1100px]">
             <thead>
               <tr className="bg-gray-50">
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  User / Customer
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Order Code
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Service
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Action
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Status
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Message
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Time
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  View
-                </th>
+                {(requiresAttention
+                  ? ['Mã đơn hàng', 'Người dùng / Khách hàng', 'Thanh toán / Giao dịch', 'Bước cần kiểm tra', 'Vấn đề', 'Cập nhật gần nhất', 'Thao tác']
+                  : ['Mã đơn hàng', 'Người dùng / Khách hàng', 'Thanh toán / Giao dịch', 'Bước gần nhất', 'Trạng thái', 'Cập nhật gần nhất', 'Thao tác']
+                ).map((label) => (
+                  <th key={label} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{label}</th>
+                ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {items.map((item) => (
-                <RecentFlowRow key={item.flowId} item={item} />
-              ))}
+              {orders.map((order) => {
+                const stepActionType = requiresAttention ? order.attentionActionType : order.lastActionType;
+                const stepMessage = requiresAttention ? order.attentionMessage : order.lastMessage;
+                const currentStep = getCurrentStepDisplay(stepActionType, stepMessage);
+                const issue = buildListIssueSummary(order.status, stepActionType, stepMessage, order.issueSummary);
+                return (
+                  <tr key={order.orderCode} className="hover:bg-gray-50 align-top">
+                    <td className="px-4 py-4 max-w-[190px] text-sm font-mono font-medium text-gray-900">
+                      <span className="truncate block" title={order.orderCode}>{order.orderCode}</span>
+                    </td>
+                    <td className="px-4 py-4 max-w-[240px]"><UserCustomerCell userEmail={order.userEmail} customerEmail={order.customerEmail} /></td>
+                    <td className="px-4 py-4 max-w-[220px]"><PaymentTransactionCell item={order} /></td>
+                    <td className="px-4 py-4 max-w-[250px] text-sm text-gray-700"><span className="truncate block" title={currentStep}>{currentStep}</span></td>
+                    <td className="px-4 py-4 max-w-[260px] text-sm text-gray-600">
+                      {requiresAttention ? <span className="truncate block" title={issue}>{issue}</span> : <StatusBadge status={order.status} friendly />}
+                    </td>
+                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">{formatDate(order.lastSeen)}</td>
+                    <td className="px-4 py-4 whitespace-nowrap text-sm">
+                      <Link to={`/business-flows/${encodeURIComponent(order.orderCode)}`} className="text-blue-600 hover:text-blue-800 font-medium">
+                        Xem hành trình
+                      </Link>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
       )}
-    </div>
+    </section>
   );
 }
 
-function MetricCardsGrid({ metrics }: { metrics: DashboardMetrics }) {
+function TechnicalHealth({ summary }: { summary: BusinessDashboardSummary['technicalSummary'] }) {
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-      <MetricCard title="Total Flows" value={metrics.totalFlows} />
-      <MetricCard title="Total Logs / Actions" value={metrics.totalActions} />
-      <MetricCard title="Logs Today" value={metrics.logsToday} />
-      <MetricCard title="Logs This Week" value={metrics.logsThisWeek} />
-      <MetricCard title="Failed Flows" value={metrics.failedFlows} />
-      <MetricCard title="Success Rate" value={`${metrics.successRate.toFixed(1)}%`} />
-    </div>
+    <section className="bg-slate-50 border border-slate-200 rounded-lg p-5">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+        <div>
+          <h2 className="text-lg font-semibold text-gray-900">Sức khỏe kỹ thuật</h2>
+          <p className="text-sm text-gray-500 mt-1">Các chỉ số kỹ thuật được giữ ở phần phụ để hỗ trợ gỡ lỗi.</p>
+        </div>
+        <Link to="/logs?tab=technical" className="text-sm font-medium text-blue-600 hover:text-blue-800">Xem nhật ký kỹ thuật</Link>
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        <MetricCard title="Tổng luồng kỹ thuật" value={summary.totalFlows} />
+        <MetricCard title="Tổng hành động log" value={summary.totalActions} />
+        <MetricCard title="Log kỹ thuật hôm nay" value={summary.logsToday} />
+        <MetricCard title="Luồng kỹ thuật lỗi" value={summary.failedFlows} />
+        <MetricCard title="Tỷ lệ thành công kỹ thuật" value={`${summary.successRate.toFixed(1)}%`} />
+      </div>
+    </section>
   );
 }
 
 export function DashboardPage() {
   const navigate = useNavigate();
-  const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
+  const [summary, setSummary] = useState<BusinessDashboardSummary | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState(false);
   const [search, setSearch] = useState('');
 
   async function load() {
+    setIsLoading(true);
+    setError(false);
     try {
-      setIsLoading(true);
-      setError(null);
-      const data = await getDashboardMetrics();
-      setMetrics(data);
+      setSummary(await getBusinessDashboardSummary());
     } catch {
-      setError('Unable to load dashboard data.');
+      setError(true);
     } finally {
       setIsLoading(false);
     }
   }
 
   useEffect(() => {
-    load();
+    void load();
   }, []);
 
-  function handleSearchSubmit(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
+  function handleSearchSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
     const keyword = search.trim();
-    if (!keyword) return;
-    navigate(`/logs?keyword=${encodeURIComponent(keyword)}`);
+    if (keyword) navigate(`/logs?tab=business&keyword=${encodeURIComponent(keyword)}`);
   }
 
   return (
     <div className="p-6 space-y-6">
-      <PageHeader
-        title="Logger Dashboard"
-        subtitle="Operational health snapshot of the logger system"
-      />
+      <PageHeader title="Tổng quan vận hành" subtitle="Theo dõi đơn hàng, trạng thái xử lý và các vấn đề cần kiểm tra" />
 
-      <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-4">
-        <form
-          onSubmit={handleSearchSubmit}
-          className="flex flex-col sm:flex-row sm:items-end gap-3"
-        >
+      <section className="bg-white rounded-lg border border-gray-200 shadow-sm p-4">
+        <form onSubmit={handleSearchSubmit} className="flex flex-col sm:flex-row sm:items-end gap-3">
           <div className="flex-1">
-            <label
-              htmlFor="quickSearch"
-              className="block text-sm font-medium text-gray-700 mb-1"
-            >
-              Quick Search
-            </label>
+            <label htmlFor="quickSearch" className="block text-sm font-medium text-gray-700 mb-1">Tra cứu nhanh</label>
             <input
               id="quickSearch"
               type="text"
-              placeholder="Search order code, payment ID, transaction ID, user email, customer email, phone..."
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+              placeholder="Tìm theo mã đơn hàng, mã thanh toán, mã giao dịch, email hoặc số điện thoại..."
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(event) => setSearch(event.target.value)}
             />
           </div>
-          <button
-            type="submit"
-            disabled={!search.trim()}
-            className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            Search
+          <button type="submit" disabled={!search.trim()} className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed">
+            Tìm kiếm
           </button>
         </form>
-      </div>
+      </section>
 
-      {isLoading ? (
-        <div className="bg-white rounded-lg border border-gray-200 shadow-sm">
-          <LoadingSpinner label="Loading dashboard..." />
-        </div>
-      ) : error ? (
-        <ErrorBanner message={error} onRetry={load} />
-      ) : metrics ? (
+      {isLoading ? <LoadingState /> : error ? <ErrorState onRetry={load} /> : summary ? (
         <>
-          <MetricCardsGrid metrics={metrics} />
+          <section>
+            <h2 className="sr-only">Chỉ số đơn hàng</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <MetricCard title="Tổng đơn hàng" value={summary.totalOrders} />
+              <MetricCard title="Đơn hàng hôm nay" value={summary.ordersToday} />
+              <MetricCard title="Đang xử lý" value={summary.runningOrders} />
+              <MetricCard title="Cần kiểm tra" value={summary.requiresAttentionOrders} />
+              <MetricCard title="Hoàn tất" value={summary.completedOrders} />
+              <MetricCard title="Tỷ lệ hoàn tất" value={`${summary.completionRate.toFixed(1)}%`} />
+            </div>
+          </section>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <RecentFlowSection
-              title="Recent Failed Flows"
-              items={[...metrics.recentFailedFlows].sort(sortByBusinessKey)}
-              emptyMessage="No failed flows yet."
-            />
-            <RecentFlowSection
-              title="Recent Successful Flows"
-              items={[...metrics.recentSuccessFlows].sort(sortByBusinessKey)}
-              emptyMessage="No successful flows yet."
-            />
-          </div>
-
-          <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3">
-            <p className="text-xs text-blue-700">
-              <span className="font-medium">Note:</span> Some logs may not contain User Email or Order Code because they are public, internal, callback, configuration, or pre-checkout requests. Technical logs can still be searched via the{' '}
-              <Link to="/logs" className="underline hover:text-blue-900">
-                Logs page
-              </Link>
-              .
-            </p>
-          </div>
-
-          <div className="text-xs text-gray-500">
-            Average flow duration: {formatDuration(metrics.averageDurationMs)} ·
-            Running: {metrics.runningFlows} · Partial Failed: {metrics.partialFailed} ·
-            Success: {metrics.successFlows}
-          </div>
+          <BusinessOrderTable title="Đơn hàng cần kiểm tra gần đây" orders={summary.recentRequiresAttention} requiresAttention />
+          <BusinessOrderTable title="Đơn hàng hoàn tất gần đây" orders={summary.recentCompleted} requiresAttention={false} />
+          <TechnicalHealth summary={summary.technicalSummary} />
         </>
       ) : null}
     </div>

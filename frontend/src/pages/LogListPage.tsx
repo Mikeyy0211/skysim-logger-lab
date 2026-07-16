@@ -1,11 +1,12 @@
-import { useEffect, useState, useRef } from 'react';
-import type { ChangeEvent } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import type { ChangeEvent, KeyboardEvent } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { PageHeader } from '../components/PageHeader';
 import { StatusBadge } from '../components/StatusBadge';
-import { UserCustomerCell } from '../components/UserCustomerCell';
+import { BusinessLogTable } from '../components/BusinessLogTable';
 import { getLogFlows } from '../services/logFlowService';
-import type { LogFlowSummary } from '../types/logFlow';
+import { getBusinessFlows } from '../services/businessFlowService';
+import type { BusinessFlowSummary, LogFlowSummary } from '../types/logFlow';
 import { useAppDispatch, useAppSelector } from '../app/hooks';
 import {
   setKeyword,
@@ -17,399 +18,248 @@ import {
   hydrateFiltersFromUrl,
 } from '../features/logs/logFilterSlice';
 
+type LogMode = 'business' | 'technical';
 const EMPTY = '—';
 
 function formatDate(value: string | null | undefined): string {
   if (!value) return EMPTY;
-  const d = new Date(value);
-  if (isNaN(d.getTime())) return EMPTY;
-  return d.toLocaleString();
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? EMPTY : date.toLocaleString();
 }
 
-function resolveDisplayOrder(flow: LogFlowSummary): string {
+function formatDuration(value: number | null | undefined): string {
+  if (value == null || value < 0) return EMPTY;
+  return value >= 1000 ? `${(value / 1000).toFixed(1)}s` : `${value}ms`;
+}
+
+function resolveTechnicalMessage(flow: LogFlowSummary): string {
+  return flow.lastMessage?.trim() || '—';
+}
+
+function resolveTechnicalOrder(flow: LogFlowSummary): string {
+  return flow.orderCode?.trim() || flow.orderId?.trim() || flow.paymentId?.trim() || EMPTY;
+}
+
+function TechnicalLogTable({ flows }: { flows: LogFlowSummary[] }) {
   return (
-    flow.orderCode?.trim() ||
-    flow.orderId?.trim() ||
-    flow.paymentId?.trim() ||
-    EMPTY
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[980px]">
+        <thead>
+          <tr className="bg-gray-50">
+            {['Thời gian', 'FlowId', 'Đơn hàng / Khóa', 'Dịch vụ', 'Hành động', 'Trạng thái', 'Thông báo', 'Thời gian xử lý', 'Thao tác'].map((label) => (
+              <th key={label} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{label}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-200">
+          {flows.map((flow) => {
+            const message = resolveTechnicalMessage(flow);
+            return (
+              <tr key={flow.flowId} className="hover:bg-gray-50 align-top">
+                <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">{formatDate(flow.updatedAt)}</td>
+                <td className="px-4 py-4 max-w-[150px] text-xs font-mono text-gray-600"><span className="truncate block" title={flow.flowId}>{flow.flowId}</span></td>
+                <td className="px-4 py-4 max-w-[180px] text-sm font-mono text-gray-600"><span className="truncate block" title={resolveTechnicalOrder(flow)}>{resolveTechnicalOrder(flow)}</span></td>
+                <td className="px-4 py-4 text-sm text-gray-600">{flow.lastServiceName || EMPTY}</td>
+                <td className="px-4 py-4 text-sm text-gray-600">{flow.lastActionType || EMPTY}</td>
+                <td className="px-4 py-4 whitespace-nowrap"><StatusBadge status={flow.status} /></td>
+                <td className="px-4 py-4 max-w-[260px] text-sm text-gray-600"><span className="truncate block" title={message}>{message}</span></td>
+                <td className="px-4 py-4 whitespace-nowrap text-sm font-mono text-gray-600">{formatDuration(flow.durationMs)}</td>
+                <td className="px-4 py-4 whitespace-nowrap text-sm">
+                  <Link to={`/logs/${encodeURIComponent(flow.flowId)}`} className="text-blue-600 hover:text-blue-800 font-medium">
+                    Xem chi tiết
+                  </Link>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
-function resolveDisplayService(flow: LogFlowSummary): string {
-  return flow.lastServiceName?.trim() || EMPTY;
+function LoadingState({ label }: { label: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center p-12">
+      <svg className="animate-spin w-8 h-8 text-blue-600 mb-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+      </svg>
+      <p className="text-sm text-gray-500">{label}</p>
+    </div>
+  );
 }
 
-function resolveDisplayAction(flow: LogFlowSummary): string {
-  return flow.lastActionType?.trim() || EMPTY;
-}
-
-function resolveDisplayMessage(flow: LogFlowSummary): string {
-  return flow.lastMessage?.trim() || EMPTY;
+function EmptyState({ mode, onReset }: { mode: LogMode; onReset: () => void }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-16 px-4">
+      <p className="text-base font-medium text-gray-700 mb-1">
+        {mode === 'business' ? 'Không tìm thấy đơn hàng phù hợp.' : 'Không tìm thấy nhật ký kỹ thuật phù hợp.'}
+      </p>
+      <p className="text-sm text-gray-500 text-center max-w-sm">
+        Hãy thử điều chỉnh từ khóa, trạng thái hoặc khoảng thời gian.
+      </p>
+      <button type="button" onClick={onReset} className="mt-4 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700">
+        Xóa bộ lọc
+      </button>
+    </div>
+  );
 }
 
 export function LogListPage() {
   const dispatch = useAppDispatch();
   const [searchParams] = useSearchParams();
   const urlKeyword = searchParams.get('keyword') ?? '';
-
-  // Sync URL keyword into Redux once on first render
+  const filters = useAppSelector((state) => state.logFilters);
+  const [mode, setMode] = useState<LogMode>(() => searchParams.get('tab') === 'technical' ? 'technical' : 'business');
+  const [draftKeyword, setDraftKeyword] = useState(() => urlKeyword || filters.keyword);
+  const [filtersReady, setFiltersReady] = useState(!urlKeyword);
   const filtersInitialized = useRef(false);
-
-  const filters = useAppSelector((s) => s.logFilters);
-  const [flows, setFlows] = useState<LogFlowSummary[]>([]);
+  const [businessFlows, setBusinessFlows] = useState<BusinessFlowSummary[]>([]);
+  const [technicalFlows, setTechnicalFlows] = useState<LogFlowSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState(false);
   const [totalPages, setTotalPages] = useState(1);
 
-  // Sync URL keyword → Redux on mount (only once)
   useEffect(() => {
-    if (!filtersInitialized.current) {
-      filtersInitialized.current = true;
-      if (urlKeyword) {
-        dispatch(hydrateFiltersFromUrl({ keyword: urlKeyword }));
-        return;
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    if (filtersInitialized.current) return;
+    filtersInitialized.current = true;
+    if (urlKeyword) dispatch(hydrateFiltersFromUrl({ keyword: urlKeyword }));
+    setFiltersReady(true);
+  }, [dispatch, urlKeyword]);
 
-  async function fetchFlows(currentPage: number) {
+  async function fetchLogs(currentPage: number) {
+    setIsLoading(true);
+    setError(false);
     try {
-      setIsLoading(true);
-      setError(null);
-
-      const params: Record<string, unknown> = {
-        page: currentPage,
-        pageSize: filters.pageSize,
-      };
-      if (filters.keyword.trim()) params.search = filters.keyword.trim();
-      if (filters.status) params.status = filters.status;
-      if (filters.fromDate) params.fromDate = filters.fromDate;
-      if (filters.toDate) params.toDate = filters.toDate;
-
-      const paged = await getLogFlows(params as Parameters<typeof getLogFlows>[0]);
-
-      setFlows(paged.items);
-      setTotalPages(paged.totalPages);
+      if (mode === 'business') {
+        const response = await getBusinessFlows({
+          keyword: filters.keyword.trim() || undefined,
+          status: filters.status || undefined,
+          fromDate: filters.fromDate || undefined,
+          toDate: filters.toDate || undefined,
+          page: currentPage,
+          pageSize: filters.pageSize,
+          sortBy: 'lastSeenAt',
+          sortDirection: 'desc',
+        });
+        setBusinessFlows(response.items);
+        setTotalPages(response.totalPages || 1);
+      } else {
+        const response = await getLogFlows({
+          search: filters.keyword.trim() || undefined,
+          status: filters.status || undefined,
+          fromDate: filters.fromDate || undefined,
+          toDate: filters.toDate || undefined,
+          page: currentPage,
+          pageSize: filters.pageSize,
+        });
+        setTechnicalFlows(response.items);
+        setTotalPages(response.totalPages || 1);
+      }
     } catch {
-      setError('Unable to load log flows.');
+      setError(true);
     } finally {
       setIsLoading(false);
     }
   }
 
-  // Fetch whenever filters or page change
   useEffect(() => {
-    fetchFlows(filters.page);
+    if (!filtersReady) return;
+    void fetchLogs(filters.page);
+    // fetchLogs intentionally reads the applied Redux filters for the active mode.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.keyword, filters.status, filters.fromDate, filters.toDate, filters.page]);
+  }, [filtersReady, filters.keyword, filters.status, filters.fromDate, filters.toDate, filters.page, filters.pageSize, mode]);
 
-  function handleSearchKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key === 'Enter') {
-      dispatch(setKeyword(filters.keyword));
-    }
+  function applyKeyword() {
+    dispatch(setKeyword(draftKeyword));
   }
 
-  function handleSearchChange(e: ChangeEvent<HTMLInputElement>) {
-    dispatch(setKeyword(e.target.value));
-  }
-
-  function handleSearchClick() {
-    dispatch(setKeyword(filters.keyword));
-  }
-
-  function handleStatusChange(e: ChangeEvent<HTMLSelectElement>) {
-    dispatch(setStatus(e.target.value));
-  }
-
-  function handleFromDateChange(e: ChangeEvent<HTMLInputElement>) {
-    dispatch(setFromDate(e.target.value));
-  }
-
-  function handleToDateChange(e: ChangeEvent<HTMLInputElement>) {
-    dispatch(setToDate(e.target.value));
+  function handleSearchKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.key === 'Enter') applyKeyword();
   }
 
   function handleReset() {
+    setDraftKeyword('');
     dispatch(resetFilters());
     const url = new URL(window.location.href);
-    url.searchParams.delete('flowType');
-    url.searchParams.delete('checkoutType');
+    url.searchParams.delete('keyword');
     window.history.replaceState(null, '', url.pathname + url.search);
   }
 
   function handlePrevious() {
-    if (filters.page > 1) {
-      dispatch(setPage(filters.page - 1));
-    }
+    if (filters.page > 1) dispatch(setPage(filters.page - 1));
   }
 
   function handleNext() {
-    if (filters.page < totalPages) {
-      dispatch(setPage(filters.page + 1));
-    }
+    if (filters.page < totalPages) dispatch(setPage(filters.page + 1));
   }
+
+  const rows = mode === 'business' ? businessFlows : technicalFlows;
 
   return (
     <div className="p-6">
-      <PageHeader
-        title="Flow Monitoring"
-        subtitle="Search and inspect backend processing flows"
-      />
+      <PageHeader title="Nhật ký" subtitle="Bắt đầu từ hành trình đơn hàng; mở dữ liệu kỹ thuật khi cần." />
 
-      <div className="bg-white rounded-lg border border-gray-200 shadow-sm mb-6">
+      <div className="mb-6 inline-flex rounded-lg border border-gray-200 bg-white p-1 shadow-sm" role="tablist" aria-label="Chế độ xem nhật ký">
+        <button type="button" role="tab" aria-selected={mode === 'business'} onClick={() => setMode('business')} className={`px-4 py-2 text-sm font-medium rounded-md ${mode === 'business' ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>
+          Nhật ký nghiệp vụ
+        </button>
+        <button type="button" role="tab" aria-selected={mode === 'technical'} onClick={() => setMode('technical')} className={`px-4 py-2 text-sm font-medium rounded-md ${mode === 'technical' ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>
+          Nhật ký kỹ thuật
+        </button>
+      </div>
+
+      <div className="bg-white rounded-lg border border-gray-200 shadow-sm">
         <div className="p-4 border-b border-gray-200">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="lg:col-span-2">
-              <label htmlFor="search" className="block text-sm font-medium text-gray-700 mb-1">
-                Search
-              </label>
-              <input
-                id="search"
-                type="text"
-                placeholder="Search order code, payment ID, transaction ID, user email, customer email, phone..."
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
-                value={filters.keyword}
-                onChange={handleSearchChange}
-                onKeyDown={handleSearchKeyDown}
-              />
+              <label htmlFor="log-search" className="block text-sm font-medium text-gray-700 mb-1">Tìm kiếm</label>
+              <input id="log-search" type="text" placeholder="Mã đơn hàng, thanh toán, giao dịch, email hoặc số điện thoại" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" value={draftKeyword} onChange={(event: ChangeEvent<HTMLInputElement>) => setDraftKeyword(event.target.value)} onKeyDown={handleSearchKeyDown} />
             </div>
             <div>
-              <label htmlFor="status" className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-1">
-                Status
-                <span className="relative group">
-                  <svg className="w-3.5 h-3.5 text-gray-400 cursor-help" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover:block w-64 text-xs text-gray-600 bg-white border border-gray-200 rounded shadow-lg p-2 z-10 pointer-events-none">
-                    SUCCESS: completed · FAILED: error/exception · RUNNING: still in progress · PARTIAL_FAILED: some actions failed
-                  </span>
-                </span>
-              </label>
-              <select
-                id="status"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
-                value={filters.status}
-                onChange={handleStatusChange}
-              >
-                <option value="">All Statuses</option>
-                <option value="SUCCESS">Success</option>
-                <option value="FAILED">Failed</option>
-                <option value="RUNNING">Running</option>
-                <option value="PARTIAL_FAILED">Partial Failed</option>
+              <label htmlFor="log-status" className="block text-sm font-medium text-gray-700 mb-1">Trạng thái</label>
+              <select id="log-status" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" value={filters.status} onChange={(event) => dispatch(setStatus(event.target.value))}>
+                <option value="">Tất cả trạng thái</option>
+                <option value="SUCCESS">Hoàn tất</option>
+                <option value="FAILED">Thất bại</option>
+                <option value="RUNNING">Đang xử lý</option>
+                <option value="PARTIAL_FAILED">Cần kiểm tra</option>
               </select>
             </div>
             <div>
-              <label htmlFor="fromDate" className="block text-sm font-medium text-gray-700 mb-1">
-                From Date
-              </label>
-              <input
-                id="fromDate"
-                type="date"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
-                value={filters.fromDate}
-                onChange={handleFromDateChange}
-              />
+              <label htmlFor="log-from-date" className="block text-sm font-medium text-gray-700 mb-1">Từ ngày</label>
+              <input id="log-from-date" type="date" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" value={filters.fromDate} onChange={(event) => dispatch(setFromDate(event.target.value))} />
             </div>
             <div>
-              <label htmlFor="toDate" className="block text-sm font-medium text-gray-700 mb-1">
-                To Date
-              </label>
-              <input
-                id="toDate"
-                type="date"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
-                value={filters.toDate}
-                onChange={handleToDateChange}
-              />
+              <label htmlFor="log-to-date" className="block text-sm font-medium text-gray-700 mb-1">Đến ngày</label>
+              <input id="log-to-date" type="date" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" value={filters.toDate} onChange={(event) => dispatch(setToDate(event.target.value))} />
             </div>
           </div>
-
           <div className="mt-4 flex items-center gap-2">
-            <button
-              type="button"
-              onClick={handleSearchClick}
-              className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
-            >
-              Search
-            </button>
-            <button
-              type="button"
-              onClick={handleReset}
-              className="px-4 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-400 transition-colors"
-            >
-              Reset Filters
-            </button>
+            <button type="button" onClick={applyKeyword} className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700">Tìm kiếm</button>
+            <button type="button" onClick={handleReset} className="px-4 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-200">Xóa bộ lọc</button>
           </div>
         </div>
 
-        <div className="overflow-x-auto">
-          {isLoading ? (
-            <div className="flex flex-col items-center justify-center p-12">
-              <svg className="animate-spin w-8 h-8 text-blue-600 mb-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-              </svg>
-              <p className="text-sm text-gray-500">Loading log flows...</p>
+        {isLoading ? <LoadingState label={mode === 'business' ? 'Đang tải đơn hàng…' : 'Đang tải nhật ký kỹ thuật…'} /> : error ? (
+          <div className="p-6">
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700">
+              <p className="font-medium">Không thể tải dữ liệu.</p>
+              <p className="text-sm mt-1">Vui lòng thử lại.</p>
+              <button type="button" onClick={() => void fetchLogs(filters.page)} className="mt-3 px-4 py-2 bg-red-100 text-red-700 text-sm font-medium rounded-lg hover:bg-red-200">Thử lại</button>
             </div>
-          ) : error ? (
-            <div className="p-6">
-              <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700">
-                <p className="font-medium mb-1">Failed to load log flows</p>
-                <p className="text-sm">{error}</p>
-                <button
-                  onClick={() => fetchFlows(filters.page)}
-                  className="mt-3 px-4 py-2 bg-red-100 text-red-700 text-sm font-medium rounded-lg hover:bg-red-200 focus:outline-none focus:ring-2 focus:ring-red-500 transition-colors"
-                >
-                  Retry
-                </button>
-              </div>
+          </div>
+        ) : rows.length === 0 ? <EmptyState mode={mode} onReset={handleReset} /> : (
+          <>
+            {mode === 'business' ? <BusinessLogTable flows={businessFlows} /> : <TechnicalLogTable flows={technicalFlows} />}
+            <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
+              <button type="button" onClick={handlePrevious} disabled={filters.page <= 1} className="px-4 py-2 bg-white border border-gray-300 text-sm font-medium rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed">Trước</button>
+              <span className="text-sm text-gray-600">Trang {filters.page} / {totalPages}</span>
+              <button type="button" onClick={handleNext} disabled={filters.page >= totalPages} className="px-4 py-2 bg-white border border-gray-300 text-sm font-medium rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed">Sau</button>
             </div>
-          ) : flows.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 px-4">
-              <svg
-                className="w-12 h-12 mb-4 text-gray-300"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={1.5}
-                  d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                />
-              </svg>
-              <p className="text-base font-medium text-gray-700 mb-1">No log flows found</p>
-              <p className="text-sm text-gray-500 text-center max-w-sm">
-                No logs found. Try another order code, payment ID, transaction ID, email, phone, or date range.
-              </p>
-              <button
-                onClick={handleReset}
-                className="mt-4 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
-              >
-                Clear Filters
-              </button>
-            </div>
-          ) : (
-            <>
-              <table className="w-full">
-                <thead>
-                  <tr className="bg-gray-50">
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Time
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      User / Customer
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Order Code
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Service
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Action
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Status
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Message
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {flows.map((flow) => {
-                    const order = resolveDisplayOrder(flow);
-                    const service = resolveDisplayService(flow);
-                    const action = resolveDisplayAction(flow);
-                    const message = resolveDisplayMessage(flow);
-
-                    return (
-                      <tr key={flow.flowId} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {formatDate(flow.updatedAt)}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap max-w-[220px]">
-                          <UserCustomerCell
-                            userEmail={flow.userEmail}
-                            customerEmail={flow.customerEmail}
-                            userId={flow.userId}
-                          />
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap max-w-[200px] text-sm text-gray-600 font-mono">
-                          <span className="truncate block" title={order !== EMPTY ? order : undefined}>
-                            {order}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                          {service !== EMPTY ? (
-                            service
-                          ) : (
-                            <span className="text-gray-400 italic">unknown</span>
-                          )}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                          {action}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <StatusBadge status={flow.status} />
-                        </td>
-                        <td className="px-6 py-4 text-sm text-gray-600 max-w-[260px]">
-                          {message !== EMPTY ? (
-                            <div className="truncate" title={message}>
-                              {message}
-                            </div>
-                          ) : (
-                            <span className="text-gray-400 italic">unknown</span>
-                          )}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm">
-                          <Link
-                            to={
-                              flow.orderCode
-                                ? `/business-flows/${encodeURIComponent(flow.orderCode)}`
-                                : `/logs/${flow.flowId}`
-                            }
-                            className="text-blue-600 hover:text-blue-800 font-medium"
-                          >
-                            View Detail
-                          </Link>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-
-              <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
-                <button
-                  type="button"
-                  onClick={handlePrevious}
-                  disabled={filters.page <= 1}
-                  className="px-4 py-2 bg-white border border-gray-300 text-sm font-medium rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  Previous
-                </button>
-                <span className="text-sm text-gray-600">
-                  Page {filters.page} of {totalPages}
-                </span>
-                <button
-                  type="button"
-                  onClick={handleNext}
-                  disabled={filters.page >= totalPages}
-                  className="px-4 py-2 bg-white border border-gray-300 text-sm font-medium rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  Next
-                </button>
-              </div>
-            </>
-          )}
-        </div>
+          </>
+        )}
       </div>
     </div>
   );

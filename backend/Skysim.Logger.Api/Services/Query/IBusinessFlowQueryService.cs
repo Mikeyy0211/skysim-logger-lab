@@ -10,6 +10,13 @@ namespace Skysim.Logger.Api.Services.Query;
 public interface IBusinessFlowQueryService
 {
     /// <summary>
+    /// Retrieves the business-first dashboard summary. Business counts are grouped by valid
+    /// order code before counting; technical health is returned as a compact secondary summary.
+    /// </summary>
+    Task<BusinessDashboardDto> GetDashboardSummaryAsync(
+        CancellationToken ct = default);
+
+    /// <summary>
     /// Retrieves a paginated list of business flows grouped by order code.
     /// Only flows with a non-null, non-empty orderCode are included.
     /// </summary>

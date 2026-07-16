@@ -319,67 +319,42 @@ public class EnrichBusinessKeysTests
         message.OrderCode.Should().Be("FROM-REQ");
     }
 
-    // Mirror of the production helper - keep in sync with KafkaLogConsumerService.EnrichBusinessKeys
-    private static void EnrichBusinessKeys(LogEventMessage message)
+    [Fact]
+    public void EnrichBusinessKeys_DoesNotPersistWaitingOnePayAsOrderCode()
     {
-        if (!string.IsNullOrWhiteSpace(message.OrderCode) &&
-            !string.IsNullOrWhiteSpace(message.PaymentId) &&
-            !string.IsNullOrWhiteSpace(message.TransactionId))
+        var message = new LogEventMessage
         {
-            return;
-        }
-
-        var candidates = new[] { message.ResponseBody, message.RequestBody };
-
-        string? orderCode = message.OrderCode;
-        string? paymentId = message.PaymentId;
-        string? transactionId = message.TransactionId;
-
-        foreach (var raw in candidates)
-        {
-            if (string.IsNullOrWhiteSpace(raw))
+            EventId = Guid.NewGuid(),
+            FlowId = "flow-waiting-onepay",
+            FlowType = "HTTP_ACTION",
+            ServiceName = "payment-service",
+            ActionType = "HTTP_REQUEST",
+            Status = "SUCCESS",
+            CreatedAt = DateTime.UtcNow,
+            OrderCode = "WAITING_ONEPAY",
+            PaymentId = "PAY-001",
+            TransactionId = "TX-001",
+            ResponseBody = """
             {
-                continue;
+              "data": {
+                "payment": {
+                  "billOrder": "H3MYCC613B76254959",
+                  "transPaymentId": "PAY-001",
+                  "transactionId": "TX-001",
+                  "transactionChannelId": "WAITING_ONEPAY"
+                }
+              }
             }
+            """
+        };
 
-            if (string.IsNullOrWhiteSpace(orderCode))
-            {
-                orderCode = BusinessKeyExtractor.ExtractOrderCode(raw);
-            }
+        KafkaLogConsumerService.EnrichBusinessKeys(message);
 
-            if (string.IsNullOrWhiteSpace(paymentId))
-            {
-                paymentId = BusinessKeyExtractor.ExtractPaymentId(raw);
-            }
-
-            if (string.IsNullOrWhiteSpace(transactionId))
-            {
-                transactionId = BusinessKeyExtractor.ExtractTransactionId(raw);
-            }
-
-            if (!string.IsNullOrWhiteSpace(orderCode) &&
-                !string.IsNullOrWhiteSpace(paymentId) &&
-                !string.IsNullOrWhiteSpace(transactionId))
-            {
-                break;
-            }
-        }
-
-        if (!string.IsNullOrWhiteSpace(orderCode))
-        {
-            message.OrderCode = orderCode;
-        }
-
-        if (!string.IsNullOrWhiteSpace(paymentId))
-        {
-            message.PaymentId = paymentId;
-        }
-
-        if (!string.IsNullOrWhiteSpace(transactionId))
-        {
-            message.TransactionId = transactionId;
-        }
+        message.OrderCode.Should().Be("H3MYCC613B76254959");
     }
+
+    private static void EnrichBusinessKeys(LogEventMessage message)
+        => KafkaLogConsumerService.EnrichBusinessKeys(message);
 }
 
 public class MapFlowFromMessageTransactionIdTests
@@ -451,34 +426,9 @@ public class MapFlowFromMessageTransactionIdTests
         flow.TransactionId.Should().Be("EXISTING-TX");
     }
 
-        // Mirror of the production mapper - keep in sync with KafkaLogConsumerService.MapFlowFromMessage
     private static void MapFlowFromMessage(LogFlow flow, LogEventMessage message)
     {
-        if (!string.IsNullOrWhiteSpace(message.FlowType) &&
-            (string.IsNullOrWhiteSpace(flow.FlowType) ||
-             flow.FlowType == "HTTP_ACTION" ||
-             message.FlowType == "CHECKOUT_ESIM"))
-        {
-            flow.FlowType = message.FlowType;
-        }
-
-        flow.CheckoutType ??= message.CheckoutType;
-        flow.CustomerEmail ??= message.CustomerEmail;
-        flow.CustomerPhone ??= message.CustomerPhone;
-        flow.UserId ??= message.UserId;
-        flow.UserEmail ??= message.UserEmail;
-        flow.Username ??= message.Username;
-        flow.PartnerId ??= message.PartnerId;
-        flow.OrderId ??= message.OrderId;
-        flow.OrderCode ??= message.OrderCode;
-        flow.PaymentId ??= message.PaymentId;
-        flow.TransactionId ??= message.TransactionId;
-
-        flow.Status = message.Status;
-        flow.StartedAt = message.CreatedAt;
-        flow.LastActionType = message.ActionType;
-        flow.LastMessage = message.Message;
-        flow.TotalSteps++;
+        KafkaLogConsumerService.MapFlowFromMessage(flow, message);
     }
 }
 

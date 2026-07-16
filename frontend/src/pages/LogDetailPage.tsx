@@ -164,7 +164,7 @@ function ErrorCard({
               d="M15 19l-7-7 7-7"
             />
           </svg>
-          Back to Logs
+          Quay lại Nhật ký
         </Link>
       )}
       <div className="bg-red-50 border border-red-200 rounded-lg p-6">
@@ -174,7 +174,7 @@ function ErrorCard({
           onClick={onRetry}
           className="mt-4 px-4 py-2 bg-red-100 text-red-700 text-sm font-medium rounded-lg hover:bg-red-200 focus:outline-none focus:ring-2 focus:ring-red-500 transition-colors"
         >
-          Retry
+          Thử lại
         </button>
       </div>
     </div>
@@ -290,19 +290,19 @@ function RequestSummaryView({ raw }: { raw: string | null | undefined }) {
         <div className="grid grid-cols-[7rem_minmax(0,1fr)] gap-x-2 gap-y-1 text-xs items-baseline min-w-0">
           {method && (
             <>
-              <span className="text-gray-500 truncate">Method</span>
+              <span className="text-gray-500 truncate">Phương thức</span>
               <span className="text-gray-900 font-mono break-all min-w-0">{method}</span>
             </>
           )}
           {path && (
             <>
-              <span className="text-gray-500 truncate">Path</span>
+              <span className="text-gray-500 truncate">Đường dẫn</span>
               <span className="text-gray-900 font-mono break-all min-w-0">{path}</span>
             </>
           )}
           {displayUrl && (
             <>
-              <span className="text-gray-500 truncate">Full URL</span>
+              <span className="text-gray-500 truncate">URL đầy đủ</span>
               <span
                 className="text-gray-900 font-mono break-all min-w-0"
                 title={fullUrl ?? undefined}
@@ -313,7 +313,7 @@ function RequestSummaryView({ raw }: { raw: string | null | undefined }) {
           )}
           {clientIp && (
             <>
-              <span className="text-gray-500 truncate">Client IP</span>
+              <span className="text-gray-500 truncate">IP máy khách</span>
               <span className="text-gray-900 font-mono break-all min-w-0">{clientIp}</span>
             </>
           )}
@@ -335,7 +335,7 @@ function RequestSummaryView({ raw }: { raw: string | null | undefined }) {
       {/* Body preview */}
       {bodyPreview && (
         <div className="min-w-0">
-          <p className="text-xs text-gray-500 mb-1">Body</p>
+          <p className="text-xs text-gray-500 mb-1">Nội dung</p>
           <pre className="text-xs text-gray-800 bg-gray-50 p-2 rounded border border-gray-200 font-mono whitespace-pre-wrap break-words max-w-full overflow-x-auto">
             {bodyPreview}
           </pre>
@@ -349,7 +349,7 @@ function RequestSummaryView({ raw }: { raw: string | null | undefined }) {
             onClick={() => setShowFullHeaders((prev) => !prev)}
             className="text-xs text-blue-600 hover:text-blue-800 font-medium focus:outline-none focus:underline"
           >
-            {showFullHeaders ? 'Hide' : 'Show'} full headers ({Object.keys(headers).length})
+            {showFullHeaders ? 'Ẩn' : 'Hiện'} toàn bộ header ({Object.keys(headers).length})
           </button>
           {showFullHeaders && (
             <div className="mt-1 bg-white rounded border border-gray-200 p-2 max-h-64 overflow-y-auto max-w-full">
@@ -446,13 +446,13 @@ function ResponseSummaryView({ raw }: { raw: string | null | undefined }) {
         <div className="grid grid-cols-[7rem_minmax(0,1fr)] gap-x-2 gap-y-1 text-xs items-baseline min-w-0">
           {statusCode !== undefined && (
             <>
-              <span className="text-gray-500 truncate">Status Code</span>
+              <span className="text-gray-500 truncate">Mã HTTP</span>
               <span className="text-gray-900 font-mono break-all min-w-0">{statusCode}</span>
             </>
           )}
           {durationMs !== undefined && (
             <>
-              <span className="text-gray-500 truncate">Duration</span>
+              <span className="text-gray-500 truncate">Thời gian xử lý</span>
               <span className="text-gray-900 font-mono break-all min-w-0">{durationMs}ms</span>
             </>
           )}
@@ -515,7 +515,7 @@ function ResponseSummaryView({ raw }: { raw: string | null | undefined }) {
       {/* Body preview */}
       {bodyPreview && (
         <div className="min-w-0">
-          <p className="text-xs text-gray-500 mb-1">Body</p>
+          <p className="text-xs text-gray-500 mb-1">Nội dung</p>
           <pre className="text-xs text-gray-800 bg-gray-50 p-2 rounded border border-gray-200 font-mono whitespace-pre-wrap break-words max-w-full overflow-x-auto">
             {bodyPreview}
           </pre>
@@ -604,13 +604,13 @@ function ActionPayloadsPanel({
   if (error) {
     return (
       <div className="bg-red-50 border border-red-200 rounded p-3">
-        <p className="text-red-700 text-xs font-medium">Failed to load details</p>
+          <p className="text-red-700 text-xs font-medium">Không thể tải chi tiết</p>
         <p className="text-red-600 text-xs mt-1">{error}</p>
         <button
           onClick={onRetry}
           className="mt-2 px-3 py-1 bg-red-100 text-red-700 text-xs font-medium rounded hover:bg-red-200"
         >
-          Retry
+          Thử lại
         </button>
       </div>
     );
@@ -630,43 +630,43 @@ function ActionPayloadsPanel({
       {/* Action Overview — always open by default */}
       <div>
         <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">
-          Action Overview
+          Tổng quan hành động
         </h4>
         <div className="bg-white rounded border border-gray-200 p-3 max-w-full overflow-hidden">
           <div className="grid grid-cols-[7rem_minmax(0,1fr)] gap-x-2 gap-y-1 text-xs items-baseline min-w-0">
-            <span className="text-gray-500 truncate">Service</span>
+            <span className="text-gray-500 truncate">Dịch vụ</span>
             <span className="text-gray-900 break-all min-w-0">{details.action.serviceName}</span>
 
-            <span className="text-gray-500 truncate">Action</span>
+            <span className="text-gray-500 truncate">Hành động</span>
             <span className="text-gray-900 break-all min-w-0">{details.action.actionType}</span>
 
-            <span className="text-gray-500 truncate">Status</span>
+            <span className="text-gray-500 truncate">Trạng thái</span>
             <span className="text-gray-900 break-all min-w-0">{details.action.status}</span>
 
-            <span className="text-gray-500 truncate">Duration</span>
+            <span className="text-gray-500 truncate">Thời gian xử lý</span>
             <span className="text-gray-900 break-all min-w-0">{formatDuration(actionDuration)}</span>
 
             {details.action.message && (
               <>
-                <span className="text-gray-500 truncate">Message</span>
+                <span className="text-gray-500 truncate">Thông báo</span>
                 <span className="text-gray-900 break-all min-w-0">{details.action.message}</span>
               </>
             )}
             {details.action.errorCode && (
               <>
-                <span className="text-gray-500 truncate">Error Code</span>
+                <span className="text-gray-500 truncate">Mã lỗi</span>
                 <span className="text-gray-900 break-all min-w-0">{details.action.errorCode}</span>
               </>
             )}
             {details.action.errorMessage && (
               <>
-                <span className="text-gray-500 truncate">Error Message</span>
+                <span className="text-gray-500 truncate">Thông báo lỗi</span>
                 <span className="text-gray-900 break-all min-w-0">{details.action.errorMessage}</span>
               </>
             )}
-            <span className="text-gray-500 truncate">Started</span>
+            <span className="text-gray-500 truncate">Bắt đầu</span>
             <span className="text-gray-900 break-all min-w-0">{formatDate(details.action.createdAt)}</span>
-            <span className="text-gray-500 truncate">Finished</span>
+            <span className="text-gray-500 truncate">Kết thúc</span>
             <span className="text-gray-900 break-all min-w-0">{formatDate(details.action.finishedAt ?? null)}</span>
           </div>
         </div>
@@ -676,7 +676,7 @@ function ActionPayloadsPanel({
       {details.requestPayload && (
         <div>
           <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">
-            Request
+            Dữ liệu request
           </h4>
           <RequestSummaryView raw={details.requestPayload} />
         </div>
@@ -686,7 +686,7 @@ function ActionPayloadsPanel({
       {details.responsePayload && (
         <div>
           <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">
-            Response
+            Dữ liệu response
           </h4>
           <ResponseSummaryView raw={details.responsePayload} />
         </div>
@@ -696,7 +696,7 @@ function ActionPayloadsPanel({
       {details.errorPayload && (
         <div>
           <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">
-            Error
+            Dữ liệu lỗi
           </h4>
           <CompactRawBlock
             value={parseJsonSafely(details.errorPayload) ?? details.errorPayload}
@@ -716,21 +716,21 @@ function ActionPayloadsPanel({
 
       {/* Raw Request — collapsed by default */}
       {details.requestPayload && (
-        <CollapsibleSection title="Raw Request" defaultOpen={false}>
+        <CollapsibleSection title="Request gốc" defaultOpen={false}>
           <CompactRawBlock value={parseJsonSafely(details.requestPayload) ?? details.requestPayload} />
         </CollapsibleSection>
       )}
 
       {/* Raw Response — collapsed by default */}
       {details.responsePayload && (
-        <CollapsibleSection title="Raw Response" defaultOpen={false}>
+        <CollapsibleSection title="Response gốc" defaultOpen={false}>
           <CompactRawBlock value={parseJsonSafely(details.responsePayload) ?? details.responsePayload} />
         </CollapsibleSection>
       )}
 
       {/* Raw Metadata — collapsed by default */}
       {details.metadata && (
-        <CollapsibleSection title="Raw Metadata" defaultOpen={false}>
+        <CollapsibleSection title="Metadata gốc" defaultOpen={false}>
           <CompactRawBlock value={parseJsonSafely(details.metadata) ?? details.metadata} />
         </CollapsibleSection>
       )}
@@ -850,7 +850,7 @@ function ActionTimelineItem({
                   : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
               }`}
             >
-              {isSelected ? 'Hide Details' : 'View Details'}
+              {isSelected ? 'Ẩn chi tiết' : 'Xem chi tiết'}
             </button>
           </div>
 
@@ -931,7 +931,7 @@ export function LogDetailPage() {
         if (error.response?.status === 404) {
           setFlowNotFound(true);
         } else {
-          setFlowError('Unable to load flow detail.');
+          setFlowError('Không thể tải chi tiết luồng.');
         }
       })
       .finally(() => setIsLoadingFlow(false));
@@ -948,7 +948,7 @@ export function LogDetailPage() {
         setActions(Array.isArray(data) ? data : []);
       })
       .catch(() => {
-        setActionsError('Unable to load actions.');
+        setActionsError('Không thể tải các hành động.');
       })
       .finally(() => setIsLoadingActions(false));
   }, [flowId]);
@@ -970,7 +970,7 @@ export function LogDetailPage() {
           setSelectedActionDetails(data);
         })
         .catch(() => {
-          setDetailsError('Unable to load action details.');
+          setDetailsError('Không thể tải chi tiết hành động.');
         })
         .finally(() => setIsLoadingDetails(false));
     },
@@ -999,8 +999,8 @@ export function LogDetailPage() {
   if (flowNotFound) {
     return (
       <ErrorCard
-        title="Flow not found"
-        message="The requested flow does not exist or has been removed."
+        title="Không tìm thấy luồng"
+        message="Luồng được yêu cầu không tồn tại hoặc đã bị xóa."
         onRetry={loadFlow}
         backLink="/logs"
       />
@@ -1010,8 +1010,8 @@ export function LogDetailPage() {
   if (flowError || !flow) {
     return (
       <ErrorCard
-        title="Failed to load flow"
-        message={flowError ?? 'An unexpected error occurred.'}
+        title="Không thể tải luồng"
+        message={flowError ?? 'Đã xảy ra lỗi không xác định.'}
         onRetry={loadFlow}
         backLink="/logs"
       />
@@ -1050,11 +1050,11 @@ export function LogDetailPage() {
               d="M15 19l-7-7 7-7"
             />
           </svg>
-          Logs
+          Nhật ký
         </Link>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-3 flex-wrap">
-            <h1 className="text-xl font-semibold text-gray-900">Flow Detail</h1>
+            <h1 className="text-xl font-semibold text-gray-900">Chi tiết luồng kỹ thuật</h1>
             <StatusBadge status={flow.status} />
           </div>
           <p
@@ -1079,22 +1079,22 @@ export function LogDetailPage() {
         let textClass = '';
 
         if (overallStatus === 'SUCCESS') {
-          text = `This flow completed successfully across ${servicesCount} service${servicesCount !== 1 ? 's' : ''} and ${actionCount} action${actionCount !== 1 ? 's' : ''}.`;
+          text = `Luồng đã hoàn tất qua ${servicesCount} dịch vụ và ${actionCount} hành động.`;
           bgClass = 'bg-green-50';
           borderClass = 'border-green-200';
           textClass = 'text-green-800';
         } else if (overallStatus === 'FAILED' || overallStatus === 'PARTIAL_FAILED') {
           const failedAction = failedActions.length > 0 ? failedActions[failedActions.length - 1] : null;
           if (failedAction) {
-            text = `This flow failed at ${failedAction.serviceName}: ${failedAction.errorMessage || failedAction.message || 'Unknown error'}`;
+            text = `Luồng gặp lỗi tại ${failedAction.serviceName}: ${failedAction.errorMessage || failedAction.message || 'Không xác định'}`;
           } else {
-            text = `This flow contains ${actionCount} action${actionCount !== 1 ? 's' : ''} across ${servicesCount} service${servicesCount !== 1 ? 's' : ''}.`;
+            text = `Luồng gồm ${actionCount} hành động qua ${servicesCount} dịch vụ.`;
           }
           bgClass = overallStatus === 'FAILED' ? 'bg-red-50' : 'bg-amber-50';
           borderClass = overallStatus === 'FAILED' ? 'border-red-200' : 'border-amber-200';
           textClass = overallStatus === 'FAILED' ? 'text-red-800' : 'text-amber-800';
         } else {
-          text = `This flow contains ${actionCount} action${actionCount !== 1 ? 's' : ''} across ${servicesCount} service${servicesCount !== 1 ? 's' : ''}.`;
+          text = `Luồng gồm ${actionCount} hành động qua ${servicesCount} dịch vụ.`;
           bgClass = 'bg-gray-50';
           borderClass = 'border-gray-200';
           textClass = 'text-gray-700';
@@ -1111,56 +1111,56 @@ export function LogDetailPage() {
       <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-100 bg-gray-50">
           <h2 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">
-            Business Summary
+            Tổng hợp nghiệp vụ
           </h2>
         </div>
         <div className="p-6">
           {/* User / Email / Partner / Customer Phone row */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-6 pb-6 border-b border-gray-100">
             <FieldRow
-              label="User Email"
+              label="Email người dùng"
               value={formatFieldValue(flow.userEmail)}
             />
             <FieldRow
-              label="Customer Email"
+              label="Email khách hàng"
               value={formatFieldValue(flow.customerEmail)}
             />
-            <FieldRow label="Partner ID" value={formatFieldValue(flow.partnerId)} />
+            <FieldRow label="Mã đối tác" value={formatFieldValue(flow.partnerId)} />
             <FieldRow
-              label="Customer Phone"
+              label="Số điện thoại khách hàng"
               value={formatFieldValue(flow.customerPhone)}
             />
           </div>
 
           {/* Order identifiers row */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-6 pb-6 border-b border-gray-100">
-            <FieldRow label="Order Code" value={formatFieldValue(flow.orderCode)} isMonospace />
-            <FieldRow label="Order ID" value={formatFieldValue(flow.orderId)} isMonospace />
-            <FieldRow label="Payment ID" value={formatFieldValue(flow.paymentId)} isMonospace />
-            <FieldRow label="Transaction ID" value={formatFieldValue(flow.transactionId)} isMonospace />
+            <FieldRow label="Mã đơn hàng" value={formatFieldValue(flow.orderCode)} isMonospace />
+            <FieldRow label="Mã Order" value={formatFieldValue(flow.orderId)} isMonospace />
+            <FieldRow label="Mã thanh toán" value={formatFieldValue(flow.paymentId)} isMonospace />
+            <FieldRow label="Mã giao dịch" value={formatFieldValue(flow.transactionId)} isMonospace />
           </div>
 
           {/* Status + Service + Action + Duration row */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-6 pb-6 border-b border-gray-100">
-            <MetricPill label="Status" value={flow.status.replace(/_/g, ' ')} />
-            <MetricPill label="Last Service" value={formatFieldValue(flow.lastServiceName)} />
-            <MetricPill label="Last Action" value={formatFieldValue(flow.lastActionType)} />
-            <MetricPill label="Duration" value={flowDurationDisplay} />
+            <MetricPill label="Trạng thái" value={flow.status.replace(/_/g, ' ')} />
+            <MetricPill label="Dịch vụ gần nhất" value={formatFieldValue(flow.lastServiceName)} />
+            <MetricPill label="Hành động gần nhất" value={formatFieldValue(flow.lastActionType)} />
+            <MetricPill label="Thời gian xử lý" value={flowDurationDisplay} />
           </div>
 
           {/* Last Message */}
           {flow.lastMessage && (
             <div className="mb-6 pb-6 border-b border-gray-100">
-              <FieldRow label="Last Message" value={flow.lastMessage} />
+              <FieldRow label="Thông báo gần nhất" value={flow.lastMessage} />
             </div>
           )}
 
           {/* Timestamps row */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-            <FieldRow label="Started At" value={formatDate(flow.startedAt)} />
-            <FieldRow label="Completed At" value={formatDate(flow.completedAt)} />
-            <FieldRow label="Created At" value={formatDate(flow.createdAt)} />
-            <FieldRow label="Updated At" value={formatDate(flow.updatedAt)} />
+            <FieldRow label="Bắt đầu lúc" value={formatDate(flow.startedAt)} />
+            <FieldRow label="Hoàn tất lúc" value={formatDate(flow.completedAt)} />
+            <FieldRow label="Tạo lúc" value={formatDate(flow.createdAt)} />
+            <FieldRow label="Cập nhật lúc" value={formatDate(flow.updatedAt)} />
           </div>
         </div>
       </div>
@@ -1169,15 +1169,15 @@ export function LogDetailPage() {
       <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-100 bg-gray-50">
           <h2 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">
-            Technical Details
+            Chi tiết kỹ thuật
           </h2>
         </div>
         <div className="p-6">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-            <FieldRow label="Flow ID" value={flow.flowId} isMonospace />
-            <FieldRow label="Flow Type" value={formatFieldValue(flow.flowType)} />
+            <FieldRow label="FlowId" value={flow.flowId} isMonospace />
+            <FieldRow label="Loại luồng" value={formatFieldValue(flow.flowType)} />
             <FieldRow
-              label="Checkout Type"
+              label="Loại checkout"
               value={
                 flow.checkoutType ? (
                   <span className="inline-flex items-center">
@@ -1188,26 +1188,26 @@ export function LogDetailPage() {
                 )
               }
             />
-            <FieldRow label="User ID" value={formatFieldValue(flow.userId)} isMonospace />
+            <FieldRow label="UserId" value={formatFieldValue(flow.userId)} isMonospace />
           </div>
 
           {/* Action counts */}
           <div className="grid grid-cols-3 gap-6 mt-6 pt-6 border-t border-gray-100">
             <div className="flex flex-col gap-1">
               <span className="text-xs text-gray-500 uppercase tracking-wide font-medium">
-                Total Steps
+                Tổng số bước
               </span>
               <span className="text-lg font-bold text-gray-900">{flow.totalSteps}</span>
             </div>
             <div className="flex flex-col gap-1">
               <span className="text-xs text-gray-500 uppercase tracking-wide font-medium">
-                Success Steps
+                Bước thành công
               </span>
               <span className="text-lg font-bold text-green-600">{flow.successSteps}</span>
             </div>
             <div className="flex flex-col gap-1">
               <span className="text-xs text-gray-500 uppercase tracking-wide font-medium">
-                Failed Steps
+                Bước thất bại
               </span>
               <span className="text-lg font-bold text-red-600">{flow.failedSteps}</span>
             </div>
@@ -1219,7 +1219,7 @@ export function LogDetailPage() {
       <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-100 bg-gray-50">
           <h2 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">
-            Action Timeline
+            Dòng thời gian hành động
           </h2>
         </div>
         <div className="p-6">
@@ -1241,17 +1241,17 @@ export function LogDetailPage() {
             </div>
           ) : actionsError ? (
             <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-              <p className="text-red-700 text-sm font-medium">Failed to load actions</p>
+              <p className="text-red-700 text-sm font-medium">Không thể tải các hành động</p>
               <p className="text-red-600 text-sm mt-1">{actionsError}</p>
               <button
                 onClick={loadActions}
                 className="mt-3 px-4 py-2 bg-red-100 text-red-700 text-sm font-medium rounded-lg hover:bg-red-200"
               >
-                Retry
+                Thử lại
               </button>
             </div>
           ) : actions.length === 0 ? (
-            <EmptyState message="No actions found for this flow." />
+            <EmptyState message="Không có hành động cho luồng này." />
           ) : (
             <div className="space-y-0">
               {actions.map((action, index) => (

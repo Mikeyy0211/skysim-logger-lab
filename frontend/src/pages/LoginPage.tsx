@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAppSelector } from '../app/hooks';
 import { setCredentials } from '../features/auth/authSlice';
@@ -15,19 +15,20 @@ export function LoginPage() {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  const from = (location.state as { from?: Location })?.from?.pathname || '/dashboard';
+  const from = (location.state as { from?: { pathname?: string } })?.from?.pathname || '/dashboard';
 
-  if (isAuthenticated) {
-    navigate(from, { replace: true });
-    return null;
-  }
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate(from, { replace: true });
+    }
+  }, [isAuthenticated, navigate, from]);
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError('');
 
     if (!username.trim() || !password.trim()) {
-      setError('Username and password are required.');
+      setError('Vui lòng nhập tên đăng nhập và mật khẩu.');
       return;
     }
 
@@ -37,11 +38,10 @@ export function LoginPage() {
 
     setIsLoading(false);
 
-    if (result.success) {
-      dispatch(setCredentials({ accessToken: username, username }));
-      navigate(from, { replace: true });
+    if (result.success && result.accessToken) {
+      dispatch(setCredentials({ accessToken: result.accessToken, username }));
     } else {
-      setError(result.error || 'Login failed. Please try again.');
+      setError(result.error || 'Không thể đăng nhập. Vui lòng thử lại.');
     }
   };
 
@@ -49,8 +49,8 @@ export function LoginPage() {
     <div className="flex items-center justify-center min-h-screen bg-gray-50">
       <div className="w-full max-w-md p-8 bg-white rounded-lg border border-gray-200 shadow-sm">
         <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-gray-900">SkySim Logger Admin</h1>
-          <p className="text-gray-600 mt-2">Sign in to monitor system logs</p>
+          <h1 className="text-2xl font-bold text-gray-900">Quản trị nhật ký SkySim</h1>
+          <p className="text-gray-600 mt-2">Đăng nhập để theo dõi nhật ký hệ thống</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -62,7 +62,7 @@ export function LoginPage() {
 
           <div>
             <label htmlFor="username" className="block text-sm font-medium text-gray-700 mb-1">
-              Username or Email
+              Tên đăng nhập
             </label>
             <input
               id="username"
@@ -70,7 +70,7 @@ export function LoginPage() {
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              placeholder="Enter your username"
+              placeholder="Nhập tên đăng nhập"
               disabled={isLoading}
               autoComplete="username"
             />
@@ -78,7 +78,7 @@ export function LoginPage() {
 
           <div>
             <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
-              Password
+              Mật khẩu
             </label>
             <input
               id="password"
@@ -86,7 +86,7 @@ export function LoginPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              placeholder="Enter your password"
+              placeholder="Nhập mật khẩu"
               disabled={isLoading}
               autoComplete="current-password"
             />
@@ -97,12 +97,12 @@ export function LoginPage() {
             disabled={isLoading}
             className="w-full py-2 px-4 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {isLoading ? 'Signing in...' : 'Login'}
+            {isLoading ? 'Đang đăng nhập...' : 'Đăng nhập'}
           </button>
         </form>
 
         <p className="text-center text-sm text-gray-500 mt-6">
-          Use your internal account to access logger monitoring
+          Sử dụng tài khoản nội bộ để truy cập màn hình theo dõi nhật ký
         </p>
       </div>
     </div>

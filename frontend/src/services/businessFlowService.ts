@@ -1,11 +1,21 @@
 import { apiClient } from './api';
-import type { BusinessFlowSummary, BusinessFlowDetail, PagedResponse } from '../types/logFlow';
+import type {
+  BusinessDashboardSummary,
+  BusinessFlowSummary,
+  BusinessFlowDetail,
+  PagedResponse,
+} from '../types/logFlow';
 import type { LogActionDetailsResponse } from '../types/logAction';
 
 export interface BusinessFlowListParams {
   keyword?: string;
+  status?: string;
+  fromDate?: string;
+  toDate?: string;
   page?: number;
   pageSize?: number;
+  sortBy?: string;
+  sortDirection?: string;
 }
 
 export async function getBusinessFlows(
@@ -49,6 +59,11 @@ export async function getBusinessFlows(
 
 export async function getBusinessFlowByOrderCode(orderCode: string): Promise<BusinessFlowDetail> {
   const response = await apiClient.get<BusinessFlowDetail>(`/api/business-flows/${encodeURIComponent(orderCode)}`);
+  return response.data;
+}
+
+export async function getBusinessDashboardSummary(): Promise<BusinessDashboardSummary> {
+  const response = await apiClient.get<BusinessDashboardSummary>('/api/dashboard/business-summary');
   return response.data;
 }
 

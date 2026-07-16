@@ -43,7 +43,7 @@ export function FlowIdCell({ flowId }: FlowIdCellProps) {
       </span>
       <button
         onClick={handleCopy}
-        title="Copy Flow ID"
+        title="Sao chép FlowId"
         className="p-0.5 text-gray-400 hover:text-gray-600 focus:outline-none"
       >
         {copied ? (

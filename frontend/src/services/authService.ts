@@ -14,6 +14,7 @@ interface KeycloakTokenResponse {
 
 export interface LoginResult {
   success: boolean;
+  accessToken?: string;
   error?: string;
 }
 
@@ -39,23 +40,27 @@ export async function login(username: string, password: string): Promise<LoginRe
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Keycloak auth error:', response.status, errorText);
       return {
         success: false,
-        error: 'Login failed. Please check your username and password.',
+        error: 'Tên đăng nhập hoặc mật khẩu không đúng',
       };
     }
 
     const data: KeycloakTokenResponse = await response.json();
+    if (!data.access_token) {
+      return {
+        success: false,
+        error: 'Không thể đăng nhập. Vui lòng thử lại.',
+      };
+    }
+
     setToken(data.access_token);
 
-    return { success: true };
-  } catch (networkError) {
-    console.error('Network error during login:', networkError);
+    return { success: true, accessToken: data.access_token };
+  } catch {
     return {
       success: false,
-      error: 'Unable to connect to authentication server.',
+      error: 'Không thể kết nối đến máy chủ xác thực.',
     };
   }
 }

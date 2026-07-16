@@ -1,4 +1,4 @@
-export type FlowStatus = 'RUNNING' | 'SUCCESS' | 'FAILED' | 'PARTIAL_FAILED';
+export type FlowStatus = 'RUNNING' | 'IN_PROGRESS' | 'PROCESSING' | 'SUCCESS' | 'FAILED' | 'PARTIAL_FAILED';
 
 export interface LogFlowSummary {
   flowId: string;
@@ -79,11 +79,52 @@ export interface DashboardMetrics {
   recentSuccessFlows: RecentFlowItem[];
 }
 
+export interface TechnicalDashboardSummary {
+  totalFlows: number;
+  totalActions: number;
+  logsToday: number;
+  failedFlows: number;
+  successRate: number;
+}
+
+export interface BusinessDashboardOrder {
+  orderCode: string;
+  userEmail: string | null;
+  customerEmail: string | null;
+  customerPhone: string | null;
+  paymentId: string | null;
+  transactionId: string | null;
+  status: string;
+  lastActionType: string | null;
+  lastMessage: string | null;
+  attentionActionType: string | null;
+  attentionMessage: string | null;
+  issueSummary: string | null;
+  firstSeen: string;
+  lastSeen: string;
+  totalActions: number;
+  failedActions: number;
+  technicalFlowCount: number;
+}
+
+export interface BusinessDashboardSummary {
+  totalOrders: number;
+  ordersToday: number;
+  runningOrders: number;
+  requiresAttentionOrders: number;
+  completedOrders: number;
+  completionRate: number;
+  recentRequiresAttention: BusinessDashboardOrder[];
+  recentCompleted: BusinessDashboardOrder[];
+  technicalSummary: TechnicalDashboardSummary;
+}
+
 // ─── Business Flow Types ──────────────────────────────────────────────────────
 
 export interface BusinessFlowSummary {
   orderCode: string;
   representativeFlowId: string;
+  userId: string | null;
   userEmail: string | null;
   customerEmail: string | null;
   customerPhone: string | null;
@@ -100,9 +141,14 @@ export interface BusinessFlowSummary {
   lastMessage: string | null;
   lastServiceName: string | null;
   lastActionType: string | null;
+  attentionActionType: string | null;
+  attentionMessage: string | null;
+  issueSummary: string | null;
+  technicalFlowCount: number;
 }
 
 export interface BusinessFlowAction {
+  actionId: string;
   flowId: string;
   eventId: string;
   serviceName: string;

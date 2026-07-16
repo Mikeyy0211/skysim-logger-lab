@@ -1,8 +1,8 @@
 import { Link, useLocation } from 'react-router-dom';
 
 const navItems = [
-  { path: '/dashboard', label: 'Dashboard' },
-  { path: '/logs', label: 'Logs' },
+  { path: '/dashboard', label: 'Tổng quan' },
+  { path: '/logs', label: 'Nhật ký' },
 ];
 
 export function Sidebar({
@@ -103,7 +103,7 @@ export function Sidebar({
       <button
         onClick={onToggle}
         className="absolute -right-3 top-1/2 -translate-y-1/2 w-6 h-6 bg-gray-700 hover:bg-gray-600 border border-gray-600 rounded-full flex items-center justify-center text-gray-300 hover:text-white transition-colors shadow-sm z-10 focus:outline-none focus:ring-2 focus:ring-blue-500"
-        title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        title={isCollapsed ? 'Mở rộng thanh điều hướng' : 'Thu gọn thanh điều hướng'}
       >
         {isCollapsed ? (
           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">

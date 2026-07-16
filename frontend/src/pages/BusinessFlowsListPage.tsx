@@ -61,7 +61,7 @@ export function BusinessFlowsListPage() {
       setPage(paged.page);
       setTotalPages(paged.totalPages);
     } catch {
-      setError('Unable to load business flows.');
+      setError('Không thể tải danh sách luồng nghiệp vụ.');
     } finally {
       setIsLoading(false);
     }
@@ -109,8 +109,8 @@ export function BusinessFlowsListPage() {
   return (
     <div className="p-6">
       <PageHeader
-        title="Business Flows"
-        subtitle="Grouped order-level view across all service requests"
+        title="Luồng nghiệp vụ"
+        subtitle="Danh sách theo đơn hàng, tổng hợp từ các yêu cầu dịch vụ"
       />
 
       <div className="bg-white rounded-lg border border-gray-200 shadow-sm mb-6">
@@ -118,12 +118,12 @@ export function BusinessFlowsListPage() {
           <div className="flex items-center gap-3">
             <div className="flex-1">
               <label htmlFor="search" className="block text-sm font-medium text-gray-700 mb-1">
-                Search
+                Tìm kiếm
               </label>
               <input
                 id="search"
                 type="text"
-                placeholder="Search by order code, payment ID, transaction ID, customer email, phone..."
+                placeholder="Mã đơn hàng, mã thanh toán, mã giao dịch, email khách hàng hoặc số điện thoại..."
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
@@ -136,14 +136,14 @@ export function BusinessFlowsListPage() {
                 onClick={handleSearchClick}
                 className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
               >
-                Search
+                Tìm kiếm
               </button>
               <button
                 type="button"
                 onClick={handleReset}
                 className="px-4 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-400 transition-colors"
               >
-                Reset
+                Đặt lại
               </button>
             </div>
           </div>
@@ -156,18 +156,18 @@ export function BusinessFlowsListPage() {
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
               </svg>
-              <p className="text-sm text-gray-500">Loading business flows...</p>
+              <p className="text-sm text-gray-500">Đang tải luồng nghiệp vụ...</p>
             </div>
           ) : error ? (
             <div className="p-6">
               <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700">
-                <p className="font-medium mb-1">Failed to load business flows</p>
+                <p className="font-medium mb-1">Không thể tải luồng nghiệp vụ</p>
                 <p className="text-sm">{error}</p>
                 <button
                   onClick={() => fetchFlows(page)}
                   className="mt-3 px-4 py-2 bg-red-100 text-red-700 text-sm font-medium rounded-lg hover:bg-red-200 focus:outline-none focus:ring-2 focus:ring-red-500 transition-colors"
                 >
-                  Retry
+                  Thử lại
                 </button>
               </div>
             </div>
@@ -186,9 +186,9 @@ export function BusinessFlowsListPage() {
                   d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
                 />
               </svg>
-              <p className="text-base font-medium text-gray-700 mb-1">No business flows found</p>
+              <p className="text-base font-medium text-gray-700 mb-1">Không tìm thấy luồng nghiệp vụ</p>
               <p className="text-sm text-gray-500 text-center max-w-sm">
-                No flows with order codes match your search. Try adjusting your search criteria.
+                Không có luồng có mã đơn hàng phù hợp. Hãy thử điều chỉnh tiêu chí tìm kiếm.
               </p>
             </div>
           ) : (
@@ -197,34 +197,34 @@ export function BusinessFlowsListPage() {
                 <thead>
                   <tr className="bg-gray-50">
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Last Seen
+                      Cập nhật gần nhất
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      User / Customer
+                      Người dùng / Khách hàng
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Order Code
+                      Mã đơn hàng
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Payment ID
+                      Mã thanh toán
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Transaction ID
+                      Mã giao dịch
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Services
+                      Dịch vụ
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Actions
+                      Số bước
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Status
+                      Trạng thái
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Last Message
+                      Thông báo gần nhất
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Actions
+                      Thao tác
                     </th>
                   </tr>
                 </thead>
@@ -269,11 +269,11 @@ export function BusinessFlowsListPage() {
                         <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-600">
                           <span className="font-medium">{bf.actionCount}</span>
                           {bf.failedCount > 0 && (
-                            <span className="text-red-500 ml-1">({bf.failedCount} failed)</span>
+                            <span className="text-red-500 ml-1">({bf.failedCount} bước lỗi)</span>
                           )}
                         </td>
                         <td className="px-4 py-4 whitespace-nowrap">
-                          <StatusBadge status={bf.overallStatus} />
+                          <StatusBadge status={bf.overallStatus} friendly />
                         </td>
                         <td className="px-4 py-4 text-sm text-gray-600 max-w-[240px]">
                           {lastMessage !== EMPTY ? (
@@ -281,7 +281,7 @@ export function BusinessFlowsListPage() {
                               {lastMessage}
                             </div>
                           ) : (
-                            <span className="text-gray-400 italic">unknown</span>
+                            <span className="text-gray-400 italic">Không có dữ liệu</span>
                           )}
                         </td>
                         <td className="px-4 py-4 whitespace-nowrap text-sm">
@@ -289,7 +289,7 @@ export function BusinessFlowsListPage() {
                             to={`/business-flows/${encodeURIComponent(bf.orderCode)}`}
                             className="text-blue-600 hover:text-blue-800 font-medium"
                           >
-                            View Business Detail
+                            Xem chi tiết nghiệp vụ
                           </Link>
                         </td>
                       </tr>
@@ -305,10 +305,10 @@ export function BusinessFlowsListPage() {
                   disabled={page <= 1}
                   className="px-4 py-2 bg-white border border-gray-300 text-sm font-medium rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  Previous
+                  Trước
                 </button>
                 <span className="text-sm text-gray-600">
-                  Page {page} of {totalPages}
+                  Trang {page} / {totalPages}
                 </span>
                 <button
                   type="button"
@@ -316,7 +316,7 @@ export function BusinessFlowsListPage() {
                   disabled={page >= totalPages}
                   className="px-4 py-2 bg-white border border-gray-300 text-sm font-medium rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  Next
+                  Sau
                 </button>
               </div>
             </>

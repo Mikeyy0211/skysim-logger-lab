@@ -26,6 +26,18 @@ public class BusinessFlowsController : ApiControllerBase
     }
 
     /// <summary>
+    /// Retrieves the business-first dashboard summary, including compact technical health.
+    /// </summary>
+    [HttpGet("/api/dashboard/business-summary")]
+    [ProducesResponseType(typeof(BusinessDashboardDto), StatusCodes.Status200OK)]
+    public async Task<ActionResult<BusinessDashboardDto>> GetBusinessDashboardSummary(
+        CancellationToken cancellationToken)
+    {
+        var result = await _businessFlowQueryService.GetDashboardSummaryAsync(cancellationToken);
+        return Ok(result);
+    }
+
+    /// <summary>
     /// Retrieves a paginated list of business flows grouped by order code.
     /// Only flows with a non-null, non-empty orderCode are included.
     /// </summary>

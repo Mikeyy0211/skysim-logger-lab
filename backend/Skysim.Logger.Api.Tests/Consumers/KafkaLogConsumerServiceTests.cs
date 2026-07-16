@@ -3,6 +3,7 @@ using System.Text.Json;
 using FluentAssertions;
 using FluentValidation;
 using FluentValidation.TestHelper;
+using Skysim.Logger.Api.Consumers;
 using Skysim.Logger.Api.Validators;
 using Skysim.Logger.Api.Infrastructure.Persistence.Exceptions;
 using Skysim.Logger.Api.Domain.Services;
@@ -829,63 +830,7 @@ public class MapFlowFromMessageMergeTests
 
     private static void MapFlowFromMessage(LogFlow flow, LogEventMessage message)
     {
-        // Set flowType from message when safe.
-        // - Set when current is empty (new flow) so HTTP_ACTION-only flows are persisted.
-        // - Always allow CHECKOUT_ESIM to upgrade HTTP_ACTION or empty.
-        // - Never downgrade an existing CHECKOUT_ESIM to HTTP_ACTION (avoids
-        //   HTTP_REQUEST middleware events clobbering business flow type).
-        if (!string.IsNullOrWhiteSpace(message.FlowType) &&
-            (string.IsNullOrWhiteSpace(flow.FlowType) ||
-             flow.FlowType == FlowTypes.HttpAction ||
-             message.FlowType == FlowTypes.CheckoutEsim))
-        {
-            flow.FlowType = message.FlowType;
-        }
-
-        // Merge business fields: use incoming non-null values, preserve existing non-null values
-        flow.CheckoutType ??= message.CheckoutType;
-        flow.CustomerEmail ??= message.CustomerEmail;
-        flow.CustomerPhone ??= message.CustomerPhone;
-        flow.UserId ??= message.UserId;
-        flow.UserEmail ??= message.UserEmail;
-        flow.Username ??= message.Username;
-        flow.PartnerId ??= message.PartnerId;
-        flow.OrderId ??= message.OrderId;
-        flow.OrderCode ??= message.OrderCode;
-        flow.PaymentId ??= message.PaymentId;
-
-        // Update status from latest event
-        flow.Status = message.Status;
-        flow.StartedAt = message.CreatedAt;
-
-        // Preserve lastActionType/lastMessage: HTTP_REQUEST after CHECKOUT_ESIM should not overwrite business action
-        bool isExistingBusinessFlow = flow.FlowType == FlowTypes.CheckoutEsim;
-        bool isHttpRequest = message.ActionType == ActionTypes.HttpRequest;
-
-        if (isHttpRequest && isExistingBusinessFlow)
-        {
-            // Preserve existing lastActionType/lastMessage (business action preserved)
-        }
-        else
-        {
-            flow.LastActionType = message.ActionType;
-            flow.LastMessage = message.Message;
-        }
-
-        if (message.Status == StatusTypes.Success)
-        {
-            flow.SuccessSteps++;
-            if (FlowDomainService.IsTerminalAction(message.ActionType, message.Status))
-            {
-                flow.CompletedAt = DateTime.UtcNow;
-            }
-        }
-        else if (message.Status == StatusTypes.Failed)
-        {
-            flow.FailedSteps++;
-            flow.CompletedAt = DateTime.UtcNow;
-        }
-        flow.TotalSteps++;
+        KafkaLogConsumerService.MapFlowFromMessage(flow, message);
     }
 }
 
@@ -1212,58 +1157,10 @@ public class FlowContextIncrementalAppendTests
 
     #endregion
 
-    // Mirror MapFlowFromMessage from KafkaLogConsumerService (same logic used in tests)
+    // Use the production mapper so these tests cover its merge behavior.
     private static void MapFlowFromMessage(LogFlow flow, LogEventMessage message)
     {
-        if (!string.IsNullOrWhiteSpace(message.FlowType) &&
-            (string.IsNullOrWhiteSpace(flow.FlowType) ||
-             flow.FlowType == FlowTypes.HttpAction ||
-             message.FlowType == FlowTypes.CheckoutEsim))
-        {
-            flow.FlowType = message.FlowType;
-        }
-
-        flow.CheckoutType ??= message.CheckoutType;
-        flow.CustomerEmail ??= message.CustomerEmail;
-        flow.CustomerPhone ??= message.CustomerPhone;
-        flow.UserId ??= message.UserId;
-        flow.UserEmail ??= message.UserEmail;
-        flow.Username ??= message.Username;
-        flow.PartnerId ??= message.PartnerId;
-        flow.OrderId ??= message.OrderId;
-        flow.OrderCode ??= message.OrderCode;
-        flow.PaymentId ??= message.PaymentId;
-
-        flow.Status = message.Status;
-        flow.StartedAt = message.CreatedAt;
-
-        bool isExistingBusinessFlow = flow.FlowType == FlowTypes.CheckoutEsim;
-        bool isHttpRequest = message.ActionType == ActionTypes.HttpRequest;
-
-        if (isHttpRequest && isExistingBusinessFlow)
-        {
-            // Preserve existing lastActionType/lastMessage
-        }
-        else
-        {
-            flow.LastActionType = message.ActionType;
-            flow.LastMessage = message.Message;
-        }
-
-        if (message.Status == StatusTypes.Success)
-        {
-            flow.SuccessSteps++;
-            if (Skysim.Logger.Api.Domain.Services.FlowDomainService.IsTerminalAction(message.ActionType, message.Status))
-            {
-                flow.CompletedAt = DateTime.UtcNow;
-            }
-        }
-        else if (message.Status == StatusTypes.Failed)
-        {
-            flow.FailedSteps++;
-            flow.CompletedAt = DateTime.UtcNow;
-        }
-        flow.TotalSteps++;
+        KafkaLogConsumerService.MapFlowFromMessage(flow, message);
     }
 }
 

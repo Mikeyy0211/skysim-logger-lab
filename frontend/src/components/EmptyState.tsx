@@ -8,7 +8,7 @@ interface EmptyStateProps {
 }
 
 export function EmptyState({
-  message = 'No data available',
+  message = 'Không có dữ liệu',
   description,
   action,
 }: EmptyStateProps) {

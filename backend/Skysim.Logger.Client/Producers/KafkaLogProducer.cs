@@ -1,11 +1,9 @@
-using System.Collections.Generic;
 using System.Text;
 using System.Text.Json;
 using Confluent.Kafka;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Skysim.Logger.Contracts.Events;
-using Skysim.Logger.Contracts.Constants;
 using Skysim.Logger.Contracts.Kafka;
 
 namespace Skysim.Logger.Client.Producers;

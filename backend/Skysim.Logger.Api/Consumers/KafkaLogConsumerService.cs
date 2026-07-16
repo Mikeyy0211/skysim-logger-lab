@@ -230,10 +230,17 @@ public class KafkaLogConsumerService : BackgroundService
         }
     }
 
-    private static void EnrichBusinessKeys(LogEventMessage message)
+    internal static void EnrichBusinessKeys(LogEventMessage message)
     {
+        // WAITING_ONEPAY is a payment state/channel value observed in the payload,
+        // not an order identifier. Treat this exact known value as missing so a real
+        // billOrder/orderCode can be extracted from the body without guessing from text.
+        var suppliedOrderCode = IsKnownNonOrderCode(message.OrderCode)
+            ? null
+            : message.OrderCode;
+
         // Already populated from producer, no extraction needed.
-        if (!string.IsNullOrWhiteSpace(message.OrderCode) &&
+        if (!string.IsNullOrWhiteSpace(suppliedOrderCode) &&
             !string.IsNullOrWhiteSpace(message.PaymentId) &&
             !string.IsNullOrWhiteSpace(message.TransactionId))
         {
@@ -242,7 +249,7 @@ public class KafkaLogConsumerService : BackgroundService
 
         var candidates = new[] { message.ResponseBody, message.RequestBody };
 
-        string? orderCode = message.OrderCode;
+        string? orderCode = suppliedOrderCode;
         string? paymentId = message.PaymentId;
         string? transactionId = message.TransactionId;
 
@@ -276,10 +283,7 @@ public class KafkaLogConsumerService : BackgroundService
             }
         }
 
-        if (!string.IsNullOrWhiteSpace(orderCode))
-        {
-            message.OrderCode = orderCode;
-        }
+        message.OrderCode = string.IsNullOrWhiteSpace(orderCode) ? null : orderCode;
 
         if (!string.IsNullOrWhiteSpace(paymentId))
         {
@@ -291,6 +295,9 @@ public class KafkaLogConsumerService : BackgroundService
             message.TransactionId = transactionId;
         }
     }
+
+    private static bool IsKnownNonOrderCode(string? value) =>
+        string.Equals(value?.Trim(), "WAITING_ONEPAY", StringComparison.OrdinalIgnoreCase);
 
     private static void EnrichCustomerInfo(LogEventMessage message)
     {
@@ -399,7 +406,7 @@ public class KafkaLogConsumerService : BackgroundService
         }
     }
 
-    private static void MapFlowFromMessage(LogFlow flow, LogEventMessage message)
+    internal static void MapFlowFromMessage(LogFlow flow, LogEventMessage message)
     {
         // 1.2: Set flowType from message when safe.
         // - Set when current is empty (new flow) so HTTP_ACTION-only flows are persisted.
@@ -427,8 +434,6 @@ public class KafkaLogConsumerService : BackgroundService
         flow.PaymentId ??= message.PaymentId;
         flow.TransactionId ??= message.TransactionId;
 
-        // Update status from latest event
-        flow.Status = message.Status;
         flow.StartedAt = message.CreatedAt;
 
         // 1.4: Preserve lastActionType/lastMessage: HTTP_REQUEST after CHECKOUT_ESIM should not overwrite business action
@@ -447,20 +452,29 @@ public class KafkaLogConsumerService : BackgroundService
             flow.LastMessage = message.Message;
         }
 
+        bool isTerminalSuccess =
+            message.Status == StatusTypes.Success &&
+            FlowDomainService.IsTerminalAction(message.ActionType, message.Status);
+
         if (message.Status == StatusTypes.Success)
         {
             flow.SuccessSteps++;
-            if (FlowDomainService.IsTerminalAction(message.ActionType, message.Status))
-            {
-                flow.CompletedAt = DateTime.UtcNow;
-            }
         }
         else if (message.Status == StatusTypes.Failed)
         {
             flow.FailedSteps++;
-            flow.CompletedAt = DateTime.UtcNow;
         }
+
         flow.TotalSteps++;
+        flow.Status = FlowStatusResolver.ResolveFlowStatus(
+            flow.SuccessSteps,
+            flow.FailedSteps,
+            isTerminalSuccess);
+
+        if (message.Status == StatusTypes.Failed || isTerminalSuccess)
+        {
+            flow.CompletedAt ??= DateTime.UtcNow;
+        }
     }
 
     private static LogAction CreateLogAction(LogEventMessage message, Guid flowId)
